@@ -65,6 +65,19 @@ from openhands.tools.preset.default import get_default_tools  # noqa: E402
 from openhands.tools.grep import GrepTool  # noqa: E402
 from openhands.tools.glob import GlobTool  # noqa: E402
 from openhands.tools.file_editor import FileEditorTool  # noqa: E402
+import search_tool  # noqa: E402,F401  registers the "search" tool (ripgrep + context)
+
+# v2 toolset switch: when OH_SEARCH_V2 is set, subagents also get `search` (content+context,
+# single-file) and are told to prefer it over grep->view. Gated so the baseline stays pure.
+_V2 = bool(os.environ.get("OH_SEARCH_V2"))
+_SEARCH_GUIDE = (
+    "\n\nPREFER the `search` tool to READ code: search(pattern, path=<file_or_dir>, "
+    "context=N) returns the matching lines WITH surrounding context (file:line: code) in "
+    "ONE call — use it to read a method body, a config block, or a symbol's "
+    "definition/usages. It accepts a single FILE and repo-relative paths. Use `grep`/`glob` "
+    "only to LOCATE files, and `file_editor view` only when you need a large contiguous "
+    "region you can't target by pattern. Don't grep for a filename then view the whole "
+    "file — one `search` does it.")
 
 # Force the SUBPROCESS terminal backend instead of tmux. The tmux backend opens a
 # pane/window per subagent terminal via a pool; at GEPA scale (many rollouts x
@@ -206,12 +219,16 @@ def _register_subagents():
     global _SUBAGENTS_READY
     if _SUBAGENTS_READY:
         return
-    for n, cls in (("grep", GrepTool), ("glob", GlobTool), ("file_editor", FileEditorTool)):
+    from search_tool import SearchTool
+    for n, cls in (("grep", GrepTool), ("glob", GlobTool), ("file_editor", FileEditorTool),
+                   ("search", SearchTool)):
         try:
             register_tool(n, cls)
         except Exception:  # noqa: BLE001  (already registered)
             pass
     read_tools = [Tool(name="grep"), Tool(name="glob"), Tool(name="file_editor")]
+    if _V2:
+        read_tools = [Tool(name="search")] + read_tools     # search first = preferred
     task_spec = [t for t in get_default_tools(enable_browser=False, enable_sub_agents=True)
                  if getattr(t, "name", None) == "task_tool_set"]
 
@@ -221,7 +238,8 @@ def _register_subagents():
         # slice starved them. With the full changed files in context they don't burn
         # tool calls re-reading the changed files (cutting the duplicate-read waste);
         # they spend tools only on SURROUNDING base code, which is their job.
-        return base_sys + "\n\n--- PULL REQUEST (title + diff + FULL CHANGED FILES; the " \
+        guide = _SEARCH_GUIDE if _V2 else ""
+        return base_sys + guide + "\n\n--- PULL REQUEST (title + diff + FULL CHANGED FILES; the " \
             "changed files are HERE, investigate SURROUNDING code only) ---\n" + \
             _CURRENT_PR["input"][:240000]
 

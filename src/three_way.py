@@ -142,7 +142,8 @@ def _summary(out):
     print("\n" + "=" * 96, flush=True)
     print("per cell: net / sec / SENT_tok / RECV_tok", flush=True)
     print(f"{'PR':24} {'mr':>22} {'mr_code':>22} {'mr_code_tools':>22}", flush=True)
-    tot = {c: [0, 0.0, 0, 0, 0] for c, _ in CONDS}  # net, sec, sent, recv, n_tok
+    # per cond: net_sum, net_n, sec_sum, sec_n, sent_sum, recv_sum, tok_n
+    tot = {c: [0, 0, 0.0, 0, 0, 0, 0] for c, _ in CONDS}
     for r in sorted(out, key=lambda r: r["repo"]):
         cells = []
         for c, _ in CONDS:
@@ -151,22 +152,24 @@ def _summary(out):
             tk = cc.get("tok") or {}
             sent, recv = tk.get("prompt"), tk.get("completion")
             if n is not None:
-                tot[c][0] += n
+                tot[c][0] += n; tot[c][1] += 1
             if s:
-                tot[c][1] += s
+                tot[c][2] += s; tot[c][3] += 1
             if sent or recv:
-                tot[c][2] += sent or 0; tot[c][3] += recv or 0; tot[c][4] += 1
+                tot[c][4] += sent or 0; tot[c][5] += recv or 0; tot[c][6] += 1
             cells.append(f"{n if n is not None else '-':>3}/{int(s) if s else '-':>4}/"
                          f"{k(sent):>4}/{k(recv):>4}")
         tag = r["repo"].split("/")[-1] + "#" + str(r["pr"])
         print(f"{tag:24} {cells[0]:>22} {cells[1]:>22} {cells[2]:>22}", flush=True)
     print("-" * 96, flush=True)
+    avg = lambda x, d: (x / d) if d else 0  # noqa: E731
+    acells = []
     for c, _ in CONDS:
-        net, sec, sent, recv, ntk = tot[c]
-        n = ntk or 1
-        print(f"  {c:14} net {net:>4}   {sec:>6.0f}s   "
-              f"sent {sent:>9,} (avg {sent//n:>7,})   "
-              f"recv {recv:>9,} (avg {recv//n:>7,})   n={ntk}", flush=True)
+        ns, nn, ss, sn, sent, recv, tn = tot[c]
+        acells.append(f"{avg(ns, nn):>4.1f}/{avg(ss, sn):>4.0f}/"
+                       f"{k(round(avg(sent, tn))):>4}/{k(round(avg(recv, tn))):>4}")
+    print(f"{'AVG/PR (net/s/sent/recv)':24} {acells[0]:>22} {acells[1]:>22} "
+          f"{acells[2]:>22}", flush=True)
 
 
 if __name__ == "__main__":
