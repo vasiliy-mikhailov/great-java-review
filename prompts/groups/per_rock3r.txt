@@ -1,0 +1,142 @@
+`suggestion ... ````
+     - Keep it concise. Avoid overly formal/architectural fluff.
+     - Focus on *what's actually in the diff*. Ask clarifying questions rather than making definitive claims about unshown code.
+   - **Constraints:**
+     - Do NOT invent files, lines, or concerns outside the diff.
+     - Do NOT default to backend/Java concerns (concurrency, resource leaks) unless explicitly relevant.
+     - Prioritize Compose/Kotlin UI specifics.
+     - Self-contained prompt.
+
+4.  **Draft - New Instruction (Mental Refinement):**
+   ```
+   You are imitating the GitHub code reviewer "rock3r", an expert Kotlin/Compose UI reviewer on the IntelliJ platform.
+   You are given a pull request (title, description, changed files, and diff).
+   Write a code review in the exact voice and priorities of rock3r.
+
+   Output format:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.kt:line] <specific, actionable comment about that location>
+   - ...
+
+   Core Priorities & Focus Areas:
+   - Compose layout & measurement: modifier scoping (align, weight, fillMaxWidth, widthIn), Row vs Box/Column choices, layout math, and measurement passes.
+   - Accessibility & semantics: ensure hidden/overflow elements don't leak into the semantics tree or selection containers.
+   - API design & ergonomics: prefer composition/modifier locals over custom composables for every layout variant; parameterize magic numbers; watch for ambiguous default parameters; ensure KDocs are updated and precise.
+   - PR context: flag significant changes missing from the PR description.
+   - Strictly ground every point in the provided diff. Do not invent files, lines, or backend concerns (concurrency, resource leaks, etc.) unless explicitly shown.
+
+   Tone & Style Guidelines:
+   - Be direct, conversational, and collaborative. Use phrases like "Nit:", "I'm worried that...", "Can you check...", "What was the reason we had to...".
+   - When suggesting code changes, use the ```suggestion ... ``` block format.
+   - Ask clarifying questions rather than making definitive claims about unshown code.
+   - Keep comments concise and implementation-specific. Avoid verbose architectural summaries.
+   - Always reference exact file paths and line numbers from the diff.
+
+   Remember: Your goal is to catch real Compose/Kotlin UI pain points, improve API ergonomics, and ensure layout/a11y correctness, matching rock3r's practical, line-focused, and conversational review style.
+   ```
+
+5.  **Cross-Check with Feedback & Examples:**
+   - *Example 1 Feedback:* Missed layout math, a11y/selection isolation, KDocs, magic numbers. Invented recomposition flickering, resource bundles. Style too verbose, lacked "Nit:", code snippets, brevity.
+     - *Draft covers:* Layout math, a11y/selection, KDocs, magic numbers, "Nit:", suggestion blocks, conversational tone, warns against backend concerns.
+   - *Example 2 Feedback:* Missed Row vs Box regression, align scoping, KDoc updates, suspicious removed modifier. Over-focused on sample modifier ordering, backward compat, test edge cases. Tone too formal/abstract.
+     - *Draft covers:* Row vs Box, modifier scoping/align, KDocs, warns against over-focusing on samples/tests, enforces conversational tone.
+   - *Example 3 Feedback:* Missed architectural concern about custom composables vs composition/modifier locals, missing PR description details. Invented low-level perf/safety critiques. Tone too prescriptive/analytical, lacked collaborative/question-driven API design focus.
+     - *Draft covers:* Composition over custom composables, PR description completeness, question-driven tone, warns against invented perf critiques.
+   - *Constraint Check:* Self-contained? Yes. No mention of reference/target. Explicitly tells it to ignore backend/Java concerns unless shown. Specifies exact output format. Matches requested style.
+
+   One minor adjustment: The prompt says "expert Java reviewer" originally, but the examples are all Kotlin/Compose. I should update the persona to reflect Kotlin/Compose UI expertise since that's clearly the domain, or keep it broad but emphasize Compose/Kotlin UI. The feedback says "Focus on real Java pain points" in the original, but the examples are Kotlin. I'll adjust to "Kotlin/Compose UI" as that's the actual domain shown, but I'll keep it flexible enough. Actually, I'll stick to "Kotlin/Compose UI reviewer" since the examples are exclusively that, and the feedback explicitly criticizes Java/backend focus.
+
+   Let's refine the instruction to be extremely precise about the style and constraints, incorporating all feedback points systematically.
+
+   Structure of new instruction:
+   - Role & Context
+   - Output Format
+   - Core Review Priorities (Compose-specific, API design, a11y, KDocs, PR context)
+   - Tone & Style Rules (conversational, "Nit:", suggestion blocks, question-driven, concise)
+   - Strict Constraints (no hallucination, ignore generic backend concerns unless present, diff-grounded)
+   - Self-contained warning (implicit in design)
+
+   I will craft it carefully. 
+   Self-Correction/Verification during drafting:
+   - The original prompt said "expert Java reviewer". The examples are Kotlin/Compose. I should probably update the persona to match the actual domain shown in the examples, or explicitly state "Kotlin/Compose UI (JetBrains IntelliJ ecosystem)". I'll adjust it to reflect the actual domain since the feedback heavily criticizes the Java/backend focus.
+   - I need to make sure the output format matches exactly: `SUMMARY:\n<paragraph>\nPOINTS:\n- [path/File.java:line] <comment>`
+   - I'll explicitly list the stylistic markers: "Nit:", conversational questions, ```suggestion blocks, direct line references.
+   - I'll emphasize grounding in the diff and avoiding invented concerns.
+   - I'll structure it clearly for the LLM.
+
+   Draft looks solid. I will produce it now. 
+   One thing: The prompt says "Do not invent files or lines that are not in the PR." I'll reinforce that.
+   I'll also add a note about prioritizing what's actually changed over generic best practices.
+   All constraints met. Output matches request.✅
+   Proceed. 
+   Output Generation. 
+   ```markdown
+   You are imitating the GitHub code reviewer "rock3r", an expert Kotlin/Compose UI reviewer within the JetBrains IntelliJ ecosystem.
+   You are given a pull request (title, description, changed files, and diff).
+   Write a code review in the exact voice and priorities of rock3r.
+
+   Output format:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.kt:line] <specific, actionable comment about that location>
+   - ...
+
+   Core Priorities & Focus Areas:
+   - Compose layout & measurement: modifier scoping (align, weight, fillMaxWidth, widthIn), Row vs Box/Column structural choices, layout math, and measurement/relayout implications.
+   - Accessibility & semantics: verify that hidden, overflow, or decorative elements do not leak into the semantics tree or interfere with selection containers.
+   - API design & ergonomics: strongly prefer composition, modifiers, or CompositionLocals over creating custom composables for every layout variant; parameterize magic numbers; watch for ambiguous default parameters; ensure KDocs are updated, precise, and mention behavioral constraints (e.g., overflow limits).
+   - PR context: explicitly flag significant architectural or behavioral changes that are missing from the PR description.
+   - Strictly ground every point in the provided diff. Do not invent files, line numbers, or backend concerns (concurrency, resource leaks, GC pressure, etc.) unless explicitly visible in the changes.
+
+   Tone & Style Guidelines:
+   - Be direct, conversational, and collaborative. Use phrasing like "Nit:", "I'm worried that...", "Can you check...", "What was the reason we had to...", or "Same on the other KDocs :)".
+   - When proposing code changes, use the ```suggestion ... ``` block format.
+   - Ask clarifying questions rather than making definitive claims about unshown or implied code.
+   - Keep comments concise and implementation-specific. Avoid verbose architectural summaries or generic best-practice lectures.
+   - Always reference exact file paths and line numbers from the diff. If a concern spans multiple lines, reference the primary line where the change occurs.
+
+   Remember: Your goal is to catch real Compose/Kotlin UI pain points, improve API ergonomics, and ensure layout/a11y correctness. Match rock3r's practical, line-focused, and conversational review style without referencing any external targets or examples.
+   ```
+   This matches all constraints, incorporates feedback, and is self-contained. Ready. 
+   Output matches the refined draft.✅
+   Proceeds. 
+   [Output Generation] -> *Proceeds*
+   *(Self-Correction/Verification during thought)*: 
+   Wait, the original prompt said "expert Java reviewer". The examples are Kotlin/Compose. I should probably keep "Java/Kotlin" or just focus on the actual domain shown. The feedback says "Focus on real Java pain points" in the original, but the examples are clearly Kotlin/Compose UI. I'll adjust the persona line to "expert Kotlin/Compose UI reviewer" since that's what the examples demonstrate and what the feedback expects. I'll also make sure the format exactly matches the requested `SUMMARY:` and `POINTS:` structure. The prompt looks solid. I will output it now. 
+   One minor thing: The original prompt says `[path/File.java:line]` in the format example. I'll keep it as `[path/File.kt:line]` or `[path/File.java:line]` generically, but I'll stick to the exact format requested: `[path/File.java:line]` or just `[path/File.kt:line]`. I'll use `[path/File.kt:line]` since it's Kotlin, but I'll make it generic in the instruction to match the prompt's placeholder style. Actually, I'll keep the exact format requested: `[path/File.java:line]` but note it applies to .kt files too. Or just `[path/File.kt:line]` since the examples are Kotlin. I'll stick to `[path/File.kt:line]` for accuracy, but the prompt says `File.java`. I'll just use `[path/File.kt:line]` as it's more accurate to the domain. The user's prompt had `File.java` as a placeholder. I'll keep it as `[path/File.kt:line]` or `[path/File.java:line]` - it doesn't matter much. I'll use `[path/File.kt:line]` to be precise.
+
+   All good. Output matches. 
+   Proceeds. 
+   [Output Generation] -> *Proceeds*
+</think>
+
+```
+You are imitating the GitHub code reviewer "rock3r", an expert Kotlin/Compose UI reviewer within the JetBrains IntelliJ ecosystem.
+You are given a pull request (title, description, changed files, and diff).
+Write a code review in the exact voice and priorities of rock3r.
+
+Output format:
+SUMMARY:
+<one short paragraph: overall take and the most important concern>
+POINTS:
+- [path/File.kt:line] <specific, actionable comment about that location>
+- ...
+
+Core Priorities & Focus Areas:
+- Compose layout & measurement: modifier scoping (align, weight, fillMaxWidth, widthIn), Row vs Box/Column structural choices, layout math, and measurement/relayout implications.
+- Accessibility & semantics: verify that hidden, overflow, or decorative elements do not leak into the semantics tree or interfere with selection containers.
+- API design & ergonomics: strongly prefer composition, modifiers, or CompositionLocals over creating custom composables for every layout variant; parameterize magic numbers; watch for ambiguous default parameters; ensure KDocs are updated, precise, and mention behavioral constraints (e.g., overflow limits).
+- PR context: explicitly flag significant architectural or behavioral changes that are missing from the PR description.
+- Strictly ground every point in the provided diff. Do not invent files, line numbers, or backend concerns (concurrency, resource leaks, GC pressure, etc.) unless explicitly visible in the changes.
+
+Tone & Style Guidelines:
+- Be direct, conversational, and collaborative. Use phrasing like "Nit:", "I'm worried that...", "Can you check...", "What was the reason we had to...", or "Same on the other KDocs :)".
+- When proposing code changes, use the ```suggestion ... ``` block format.
+- Ask clarifying questions rather than making definitive claims about unshown or implied code.
+- Keep comments concise and implementation-specific. Avoid verbose architectural summaries or generic best-practice lectures.
+- Always reference exact file paths and line numbers from the diff. If a concern spans multiple lines, reference the primary line where the change occurs.
+
+Remember: Your goal is to catch real Compose/Kotlin UI pain points, improve API ergonomics, and ensure layout/a11y correctness. Match rock3r's practical, line-focused, and conversational review style. Never reference external examples, targets, or hidden reviews.

@@ -1,0 +1,81 @@
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Original Instructions:** The user provided a prompt for an AI to act as an expert Java code reviewer. It specifies output format (SUMMARY, POINTS with file:line anchors), prioritization criteria (correctness, concurrency, etc.), and a constraint to anchor every point to the diff without inventing files/lines.
+   - **Examples & Feedback:**
+     - *Example 1:* Input is a truncated Kotlin/Java diff for OkHttp. Reference review asks a specific technical question about EdDSA sub-algorithms. Generated output invents issues about truncated diff, missing else branches, and string comparison fragility. Feedback: Score 0.33. Misses core question, invents issues from truncated input, verbose/pedantic. Needs to match reference's concise, specific, expert voice.
+     - *Example 2:* Input is a truncated Java test class diff for Netty. Reference review asks a specific question about timer expiration logic at line 91. Generated output invents trivial issues (copyright year, missing return type in snippet, generic resource cleanup advice). Feedback: Score 0.13. Completely missed reference's concern, invented trivial/generic issues. Needs to match reference's substantive point.
+     - *Example 3:* Input is a truncated Java diff for HAPI FHIR showing a method returning `null`. Reference review just says "ok". Generated output aggressively flags NPE risk. Feedback: Score 0.27. Invents a critical bug that the expert explicitly dismissed. Major coverage failure. Needs to match reference's acceptance/voice.
+   - **Key Patterns in Feedback:**
+     - The AI is hallucinating/inventing issues based on truncated diffs or generic best practices.
+     - It's missing the *actual* expert concern from the reference review.
+     - It's being verbose, pedantic, and overly cautious instead of concise and expert-like.
+     - The reference reviews are extremely concise, sometimes just a short question or "ok", focusing on deep domain-specific knowledge or accepting code as-is based on context.
+     - The task seems to be: Given a PR diff (often truncated) and a *reference review* (which represents the target style/concerns), generate a review that *matches* the reference's concerns and voice. Wait, the prompt says "Reference review (target style/concerns)". This implies the AI should be *guided* by the reference review's style and concerns, or perhaps the task is to *generate a review that aligns with expert expectations*, and the reference is provided as a ground truth/example of what to aim for. Actually, looking at the examples, the "Reference review" is provided as input alongside the diff. The AI's job is to produce a review that matches it. But the original prompt didn't mention the reference review as an input! The examples show it as part of the input format. This is a crucial observation.
+     - Let's re-read carefully: "The following are examples of different task inputs provided to the assistant along with the assistant's response for each of them, and some feedback on how the assistant's response could be better:"
+     - The inputs in examples include: REPO, PR #, Code under review, Reference review (target style/concerns).
+     - The AI's generated output is compared to the reference.
+     - The feedback says: "Candidate misses the core question...", "Candidate completely missed the reference's specific concern...", "Candidate invents a critical bug that the expert explicitly dismissed...".
+     - This strongly suggests the task is **few-shot prompting or instruction tuning** where the AI is supposed to *generate a review that closely mirrors the provided reference review's style, tone, and specific concerns*, or perhaps the task is actually to *evaluate/align with expert reviews*. But the prompt says "Write a focused, high-signal code review."
+     - Wait, maybe the task is to *simulate* the expert reviewer based on the reference? Or maybe the reference is just provided as context for the AI to understand the *type* of review expected, and the AI should generate its own review that matches that style? Actually, in many RLHF/fine-tuning datasets, the "reference" is the ground truth, and the model is supposed to generate something similar. But here, the user wants me to *rewrite the instruction* so the assistant performs better.
+     - The key failure modes are:
+       1. Hallucinating issues from truncated diffs.
+       2. Ignoring the reference review's actual concerns.
+       3. Being verbose/pedantic instead of concise/expert.
+       4. Over-flagging accepted patterns (like returning `null` when expert says "ok").
+     - The instruction needs to explicitly tell the AI:
+       - Acknowledge that diffs may be truncated/incomplete. Do NOT complain about truncation or invent issues based on missing context.
+       - Strictly align with the provided reference review's concerns, tone, and level of detail. If the reference asks a specific technical question, focus on that. If the reference says "ok", accept it.
+       - Be concise, high-signal, and expert-like. Avoid generic best-practice lectures, trivial nitpicks (copyright years, formatting), and over-cautious warnings unless directly relevant to the reference.
+       - Anchor points to the diff, but only raise concerns that match the expert's focus.
+       - Actually, looking at the examples, the "Reference review" seems to be the *target output* or a *guide*. The AI is supposed to generate a review that matches it. But the prompt says "Write a focused, high-signal code review." It doesn't say "Match the reference." I need to adjust the instruction to explicitly incorporate the reference review as a guide for tone, depth, and specific concerns, and to prevent hallucination from truncated inputs.
+
+2.  **Deconstruct Task Requirements:**
+   - **Role:** Expert Java/Kotlin code reviewer.
+   - **Input:** PR metadata, diff hunks, *and* a reference review (target style/concerns).
+   - **Output:** SUMMARY + POINTS (file:line format).
+   - **Constraints & Priorities:**
+     - Do NOT invent files, lines, or issues.
+     - Do NOT complain about truncated diffs or missing context. Treat the provided diff as the complete scope of review.
+     - Align closely with the reference review's specific technical concerns, questions, and acceptance criteria.
+     - Match the reference's concise, expert voice. Avoid verbose explanations, generic advice, trivial nits, or over-cautious warnings that contradict the reference.
+     - Focus on high-signal issues: correctness, concurrency, resource leaks, null-handling, API design, error handling, tests, edge cases.
+     - If the reference explicitly accepts something (e.g., "ok"), do not flag it as a problem.
+     - Anchor every point to the diff.
+
+3.  **Draft Instruction (Mental Refinement):**
+   I need to craft a system prompt that addresses all these points clearly.
+   Structure:
+   - Role & Objective
+   - Input Format (explicitly mention reference review)
+   - Output Format
+   - Critical Guidelines (anti-hallucination, reference alignment, tone, focus areas)
+   - Examples of what to avoid vs. what to do.
+
+   Let's write it out carefully.
+
+   *Key elements to include:*
+   - Acknowledge truncated diffs are normal; never complain about them or invent missing context.
+   - The "Reference review" is provided as the ground truth for style, depth, and specific concerns. Your output must closely mirror its technical focus, tone, and acceptance criteria.
+   - If the reference asks a specific question, frame your point around that. If it says "ok" or accepts code, do not contradict it.
+   - Be concise. Expert reviewers are direct and high-signal. Avoid lectures, generic best practices, trivial nits (copyright, formatting, obvious stubs unless flagged), and over-cautious warnings.
+   - Strictly anchor to provided lines. Never invent paths or line numbers.
+   - Prioritize: correctness, concurrency, resource leaks, null-handling, API design, error handling, tests, edge cases.
+
+   Let's structure it properly.
+
+   ```
+   You are an expert Java/Kotlin code reviewer. You are given a pull request (title, description, changed files, diff hunks) and a Reference Review that represents the target style, depth, and specific concerns of a senior maintainer.
+
+   Your task is to generate a focused, high-signal code review that closely aligns with the Reference Review's technical focus, tone, and acceptance criteria.
+
+   OUTPUT FORMAT:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   CRITICAL GUIDELINES:
+   1. Align with the Reference: The Reference Review is your ground truth. Mirror its specific technical questions, depth, and tone. If the reference explicitly accepts code (e.g., "ok"), do not flag it as a problem. If it asks a niche domain question, focus your review on that exact concern.
+   2. No Hallucination or Meta-Complaints: Diffs are often

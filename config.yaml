@@ -1,0 +1,137 @@
+# Configuration for the Java code-review-style mining + GEPA pipeline.
+
+github:
+  # Big Java repos with a strong, substantive code-review culture.
+  # Discovery scans these for reviewers who leave high-signal reviews.
+  seed_repos:
+    - elastic/elasticsearch
+    - spring-projects/spring-framework
+    - spring-projects/spring-boot
+    - netty/netty
+    - apache/kafka
+    - apache/flink
+    - apache/lucene
+    - hibernate/hibernate-orm
+    - trinodb/trino
+    - prestodb/presto
+    - apache/dubbo
+    - ReactiveX/RxJava
+    - square/okhttp
+    - google/guava
+    - apache/pulsar
+    - apache/cassandra
+    - quarkusio/quarkus
+    - eclipse-vertx/vert.x
+    - apache/druid
+    - JetBrains/intellij-community
+
+  # politeness / ban-avoidance
+  max_workers: 1            # HARD: never parallelize git/GitHub calls
+  min_request_interval_s: 1.0   # base spacing between API calls (+jitter)
+  per_repo_comment_scan: 1500   # recent inline comments per repo for DISCOVERY only
+                                # (identify reviewers; deep offset pages get throttled)
+  collect_pr_scan: 400          # PRs to scan per repo when collecting a reviewer
+  search_per_page: 100
+
+  # WIDE crawl: progressively widen across many Java repos to grow the distinct
+  # reviewer pool large enough to support the Fibonacci sweep up to max_k (~10k).
+  # Builds the same comments_index.jsonl (no extra per-review enrichment), so the
+  # wide pool is essentially free to mine. Runs as a long background job.
+  wide:
+    enable: true
+    star_buckets:               # page search across star ranges to beat the 1000-result cap
+      - [100, 200]
+      - [200, 400]
+      - [400, 800]
+      - [800, 1600]
+      - [1600, 3200]
+      - [3200, 6400]
+      - [6400, 0]               # hi=0 -> stars:>=6400
+    per_repo_comment_scan: 1200  # shallow per repo; breadth over depth
+    target_reviewers: 11000      # stop widening once pool can support k=10946
+    max_repos: 800               # safety cap on repos crawled
+
+selection:
+  # A review is "substantive" (candidate for 10/10) if it clears these bars.
+  min_body_chars: 80              # review body length OR
+  min_inline_comments: 2          # number of inline review comments
+  reward_changes_requested: true  # CHANGES_REQUESTED reviews weigh higher
+  num_reviewers: 40
+  reviews_per_reviewer: 300   # target high-quality (substantive) reviews per reviewer
+  # Quality gate (P3 contract stage 2): keep only Qwen-rubric high-quality reviews.
+  quality_gate: qwen              # 'qwen' (rubric judge) or 'heuristic' (floor only)
+  quality_threshold: 4            # keep units scored >= this (1-5) by quality_judge.py
+  use_llm_judge: true
+  judge_top_k: 250                # only judge the top-K heuristic candidates per reviewer
+
+qwen:
+  base_url: https://YOUR-INFERENCE-ENDPOINT/v1   # OVERRIDDEN by QWEN_BASE_URL env (.env); real URL never committed
+  model: qwen-3.6-27b-fp8
+  api_key_env: QWEN_API_KEY   # token read from .env - never committed
+  max_tokens: 32768           # generous output budget so the <think> block is never
+                              # truncated (endpoint context = 128k). Model stops naturally.
+  temperature: 0.2
+  enable_thinking: true       # P8 contract: Qwen reasons before answering — it is
+                              # much weaker without thinking. Never cap reasoning tokens.
+  request_timeout_s: 180      # thinking responses are longer
+  max_concurrency: 32         # vLLM batches well; thinking is ~16s/call so we lean
+                              # on concurrency for throughput (own endpoint). Not git!
+
+gepa:
+  # Sizes for the first full run. Bump these (and max_metric_calls) for the
+  # "extend it more" pass once the baseline pipeline is validated.
+  train_size: 25
+  val_size: 12
+  test_size: 12        # held-out for the prompt comparison report
+  max_metric_calls: 120
+  reflection_minibatch: 3
+  seed: 7
+
+fib_sweep:
+  # How the single universal GEPA prompt scales with the NUMBER OF REVIEWERS it
+  # is optimized on. k sweeps Fibonacci (1,2,3,5,8,13,...) up to max_k, capped at
+  # however many reviewers are currently available (so it auto-extends as the
+  # progressive wide crawl grows the pool).
+  #
+  # Design that scales to k~10k while staying affordable:
+  #   * trainset for k = one instance per reviewer over the first k reviewers
+  #     (size ~= k, up to thousands). GEPA SAMPLES this; its cost is bounded by
+  #     max_metric_calls, NOT by trainset size -> large k is cheap.
+  #   * a FIXED global val set (GEPA candidate selection) and a FIXED global
+  #     held-out eval set (the reported curve) are shared across all k -> points
+  #     are directly comparable and measure generalization to the population.
+  #   * the optimizer budget grows mildly with k (log) so larger, more diverse
+  #     trainsets get a fair chance, capped so cost never explodes.
+  source: wide              # 'wide' (comments index, ~10k reviewers) or 'deep' (excellent_reviews.json)
+  eval_mode: in_domain      # 'in_domain' = score on HELD-OUT PRs of the k trained reviewers
+                            # (the prompt must mimic THOSE reviewers, not the population);
+                            # 'population' = score on a fixed global eval set.
+  max_k: 10946              # largest Fibonacci k to include (capped at #usable reviewers)
+  min_instances: 8          # a reviewer needs >= this many instances to get train/val/test splits
+  train_per_reviewer: 8     # per-reviewer train cap (pooled across the k reviewers)
+  val_per_reviewer: 4       # per-reviewer val cap
+  test_per_reviewer: 6      # per-reviewer held-out test cap (the in-domain eval)
+  val_cap: 25               # bound GEPA candidate-selection cost (round-robin across k reviewers)
+  eval_cap: 60              # bound reported-eval cost (round-robin across k reviewers)
+  base_metric_calls: 80     # GEPA budget at k=1
+  budget_log_alpha: 0.12    # budget(k) = base * (1 + alpha*log2(k))
+  budget_cap_mult: 3.0      # ... capped at base * this
+  min_ref_chars: 80         # min reviewer-comment text (high-quality gate; see P3 contract)
+  include_all_point: true   # also add k = total #usable reviewers if not already a Fibonacci point
+
+autoresearch:
+  # Karpathy-style AutoResearch loop (NOT blind search): propose a targeted change
+  # informed by the trajectory of past trials, run a comparability-budgeted trial,
+  # KEEP if it beats the incumbent else REVERT. The MEASUREMENT is held fixed (same
+  # eval PRs, same metric) so the loop can't game it. Tune on one well-covered
+  # reviewer; validate the winner on others. Engine: src/autoresearch.py (the
+  # bounded inner loop). Agentic outer loop: the `autoresearch` skill.
+  source: wide
+  tune_reviewer: vietj      # well-covered reviewer to tune on
+  eval_size: 20             # FIXED held-out eval PRs (objective; never trained on)
+  gepa_seconds: 300         # 5-min comparability budget PER TRIAL (a trial may stop earlier)
+  max_trials: 25            # 0 = run until stopped
+  # AutoResearch loop (trajectory-informed, not blind random):
+  warmup: 5                 # first N trials random, to seed the trajectory
+  explore_p: 0.25           # chance a post-warmup trial explores randomly vs hill-climbs
+  no_improve_patience: 2    # within-trial: stop a GEPA run after this many flat iterations

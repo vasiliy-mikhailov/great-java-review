@@ -1,0 +1,284 @@
+[
+  {
+    "pr": "spring-boot#50273",
+    "cond": "mr_code_notools",
+    "net_score": -1,
+    "n_good": 3,
+    "n_wrong": 1,
+    "n_trivial": 3,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "recursive safeSerialize correctly handles nested AOP proxies",
+        "verdict": "good",
+        "severity": "none",
+        "score": 1,
+        "checked": "verified recursion pattern in diff handles nested Advised proxies"
+      },
+      {
+        "point": "finally block properly releases prototype targets",
+        "verdict": "good",
+        "severity": "none",
+        "score": 1,
+        "checked": "TargetSource.releaseTarget() called in finally block as shown in diff"
+      },
+      {
+        "point": "suggestion to check targetSource.isPrototype() for robustness",
+        "verdict": "wrong",
+        "severity": "none",
+        "score": -1,
+        "checked": "verified TargetSource interface has NO isPrototype() method - only isStatic() exists; this API is fabricated"
+      },
+      {
+        "point": "LinkedHashMap preserves insertion order from ConfigurationPropertiesBean.getAll()",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "verified getAll() returns LinkedHashMap at lines 130/141; this is praise about existing refactoring"
+      },
+      {
+        "point": "outer catch handles getTarget() failures gracefully",
+        "verdict": "good",
+        "severity": "none",
+        "score": 1,
+        "checked": "diff shows Advised check is inside try block, so exceptions are caught"
+      },
+      {
+        "point": "test should also assert foo.getInputs()",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "minor test coverage suggestion, not substantive"
+      },
+      {
+        "point": "imports are correctly placed and used",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "restating what the diff shows - praise"
+      }
+    ]
+  },
+  {
+    "pr": "pulsar#25883",
+    "cond": "mr_code_notools",
+    "net_score": 3,
+    "n_good": 5,
+    "n_wrong": 1,
+    "n_trivial": 5,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "Praise about correct implementation of GraalVM convention",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "PR adds 3 config files under META-INF/native-image/org.apache.pulsar/pulsar-client-original/ which follows convention"
+      },
+      {
+        "point": "--initialize-at-run-time list well-chosen",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "General praise about the choice of classes"
+      },
+      {
+        "point": "Verify Commands and Backoff require runtime init - Backoff has only simple static fields",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Backoff.java has static final Duration fields and static Random - no complex static blocks needing runtime init. Commands.java has FastThreadLocal fields which are more complex."
+      },
+      {
+        "point": "Ensure Unix line endings",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Generic advice, CI usually handles this"
+      },
+      {
+        "point": "Optimization: allDeclaredFields/Methods/Constructors overly broad for auth classes",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Auth classes like AuthenticationTls, AuthenticationToken only need constructors (used via Class.forName in AuthenticationUtil.java), not all fields/methods"
+      },
+      {
+        "point": "Inner class syntax correct",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "ProtobufNativeSchema$ProtoBufParsingInfo uses standard inner class syntax"
+      },
+      {
+        "point": "DataURLStreamHandler may need ServiceLoader/URL handler factory hints",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "DataURLStreamHandler extends URLStreamHandler and URL handlers sometimes need additional native-image config beyond reflection registration"
+      },
+      {
+        "point": "\\Q...\\E regex escaping is correct",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Standard GraalVM regex literal pattern"
+      },
+      {
+        "point": "Add comment explaining why AHC resources are embedded",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague documentation suggestion"
+      },
+      {
+        "point": "ServiceLoader heavily used for auth providers, schema codecs, interceptors",
+        "verdict": "wrong",
+        "severity": "none",
+        "score": -1,
+        "checked": "Searched pulsar-client and pulsar-common: NO ServiceLoader.load() calls found. AuthenticationUtil.create() uses Class.forName(), not ServiceLoader. Only ServiceLoader usage is in pulsar-client-api-v5 (unrelated module) and Jakarta WS-RS shaded deps."
+      },
+      {
+        "point": "Drift prevention: CI check validating JSON and class names",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Concrete actionable suggestion to prevent silent breakage when classes are refactored"
+      },
+      {
+        "point": "Test should validate JSON syntax, assert class names loadable, validate GraalVM args",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "NativeImageConfigTest.java doesn't exist on disk yet (new PR file); these are valid test expectations"
+      },
+      {
+        "point": "Gate native-image build tests behind profile",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Standard practice due to GraalVM SDK requirements and long build times"
+      }
+    ]
+  },
+  {
+    "pr": "agroal#188",
+    "cond": "mr_code_notools",
+    "net_score": 1,
+    "n_good": 2,
+    "n_wrong": 0,
+    "n_trivial": 4,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "@SuppressWarnings(\"resource\") is misplaced and suppresses nothing relevant",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Base code has no such annotation; this is added by PR. It's a common IntelliJ IDEA annotation for wrapper classes implementing AutoCloseable - harmless regardless"
+      },
+      {
+        "point": "Redundant cast (CallableStatement) in wrappedCallableStatement() - VarHandle is already typed correctly from findVarHandle",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "findVarHandle(CallableStatementWrapper.class, \"wrappedStatement\", CallableStatement.class) returns VarHandle<CallableStatementWrapper, CallableStatement>, so getAcquire returns CallableStatement directly - cast IS redundant"
+      },
+      {
+        "point": "Helper method adds unnecessary indirection; consider calling WRAPPED.getAcquire(this) directly",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Style preference - JVM C2 compiler aggressively inlines small methods; helper improves readability vs direct call on every line"
+      },
+      {
+        "point": "PR description claims acquire/release avoids \"overhead of full volatile semantics\" but they ARE semantically equivalent",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified: volatile read = getAcquire, volatile write = setRelease. If ALL accesses use acquire/release, semantics are identical to volatile. The PR's framing of \"avoiding volatile overhead\" IS misleading"
+      },
+      {
+        "point": "Consider MethodHandles.privateLookupIn() for module boundary safety, though current code is fine",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Defensive programming suggestion but candidate admits current MethodHandles.lookup() is fine for same-class access"
+      },
+      {
+        "point": "Ensure consistency across all 7 wrapper files",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague reminder, not an actionable finding - diff is truncated so no concrete inconsistency identified"
+      }
+    ]
+  },
+  {
+    "pr": "quarkus#53917",
+    "cond": "mr_code_notools",
+    "net_score": 2,
+    "n_good": 3,
+    "n_wrong": 0,
+    "n_trivial": 5,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "Breaking change: getManifestConfig() -> getCoreSbomConfig() in JarBuildItem & ArtifactResultBuildItem",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified JarBuildItem.java (line 65) and ArtifactResultBuildItem.java (line 43) have getManifestConfig() returning ApplicationManifestConfig in public io.quarkus.deployment.pkg.builditem package"
+      },
+      {
+        "point": "ComponentDescriptor metadata exposure (PURL, scope, pedigree)",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague design advice with no concrete issue identified"
+      },
+      {
+        "point": "Duplicate component handling in ApplicationManifestsBuildStep",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Speculative advice; current ApplicationManifestsBuildStep.java (lines 22-27) is simple iteration"
+      },
+      {
+        "point": "Renaming public ApplicationComponent & ApplicationManifestConfig affects io.quarkus.sbom API surface",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified both classes exist in public io.quarkus.sbom package (ApplicationComponent.java, ApplicationManifestConfig.java)"
+      },
+      {
+        "point": "SbomContributionBuildItem design: MultiBuildItem vs SimpleBuildItem",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "File does not exist yet; speculative design discussion"
+      },
+      {
+        "point": "DependencySbomMojo uses ApplicationManifestConfig.builder() - will break if renamed",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified DependencySbomMojo.java lines 107-110: ApplicationManifestConfig.builder().setApplicationModel(...).build()"
+      },
+      {
+        "point": "Documentation for cyclonedx.adoc: add section for extension contributions",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "File does not exist in current repo; generic documentation advice"
+      },
+      {
+        "point": "Test coverage for SbomContribution*Test: cover edge cases",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Test files do not exist yet; generic test advice"
+      }
+    ]
+  }
+]

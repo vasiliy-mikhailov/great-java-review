@@ -1,0 +1,461 @@
+[
+  {
+    "pr": "spring-boot#50273",
+    "cond": "diff_only",
+    "net_score": -4,
+    "n_good": 0,
+    "n_wrong": 1,
+    "n_trivial": 4,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "LinkedHashMap ordering change from Collectors.toMap()",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Verified PR changes describeBeans to use LinkedHashMap instead of Collectors.toMap(); factual but not a substantive issue"
+      },
+      {
+        "point": "Add logger.debug() trace when unwrapping fails",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague non-actionable suggestion; outer catch already handles exceptions gracefully"
+      },
+      {
+        "point": "null target causes IllegalArgumentException on mapper.convertValue()",
+        "verdict": "wrong",
+        "severity": "none",
+        "score": -1,
+        "checked": "Claimed convertValue(null, Map.class) throws IllegalArgumentException; this is fabricated/unverifiable - Jackson's convertValue handles null gracefully and the outer catch would handle it regardless"
+      },
+      {
+        "point": "releaseTarget is no-op for singleton targets",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Correct observation about Spring's TargetSource contract but not actionable"
+      },
+      {
+        "point": "Test assertions should verify Advised keys absent",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague test improvement suggestion, not substantive"
+      }
+    ]
+  },
+  {
+    "pr": "spring-boot#50273",
+    "cond": "mr_code",
+    "net_score": -1,
+    "n_good": 2,
+    "n_wrong": 0,
+    "n_trivial": 2,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "releaseTarget() called unconditionally on static targets throws - Spring Framework's own JdkDynamicAopProxy and CglibAopProxy both check !targetSource.isStatic() before calling releaseTarget()",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "JdkDynamicAopProxy.java:247-249 and CglibAopProxy.java:733-734 both guard releaseTarget with !targetSource.isStatic() check"
+      },
+      {
+        "point": "getTarget() on non-static sources may create new bean instances - SpringBootMockResolver explicitly guards with isStatic() to avoid this side effect",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "SpringBootMockResolver.java:51 only unwraps when targetSource.isStatic() returns true, avoiding prototype instantiation"
+      },
+      {
+        "point": "LinkedHashMap provides deterministic bean ordering",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "PR switches from Collectors.toMap to LinkedHashMap insertion"
+      },
+      {
+        "point": "Solid test coverage for CGLIB proxy case",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "PR test uses ProxyFactory to create CGLIB proxy and verifies Advised internals are excluded"
+      }
+    ]
+  },
+  {
+    "pr": "pulsar#25883",
+    "cond": "diff_only",
+    "net_score": 4,
+    "n_good": 6,
+    "n_wrong": 0,
+    "n_trivial": 5,
+    "n_missed": 2,
+    "detail": [
+      {
+        "point": "native-image.properties uses correct --initialize-at-run-time with proper backslash line continuation",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified diff format shows proper \\ continuation syntax for GraalVM properties file format"
+      },
+      {
+        "point": "Consider adding inline comments explaining why classes need runtime initialization",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague suggestion, not a concrete finding about the code"
+      },
+      {
+        "point": "reflect-config.json has valid JSON structure following GraalVM schema",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified JSON syntax is valid and follows GraalVM reflection config schema with name, allDeclaredFields, allDeclaredMethods, allDeclaredConstructors fields"
+      },
+      {
+        "point": "Using allDeclaredFields/allDeclaredMethods/allDeclaredConstructors=true is broad; increases native image size",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified all 20 class entries in reflect-config.json use the broad 'allDeclared...' flags - legitimate concern about image size and build time"
+      },
+      {
+        "point": "Add maintenance comments or CI step to catch drift",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague process suggestion, not a code issue"
+      },
+      {
+        "point": "resource-config.json correctly uses \\Q...\\E regex quoting for literal path matching",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified diff shows correct GraalVM resource pattern syntax with \\Qorg/asynchttpclient/config/ahc-default.properties\\E"
+      },
+      {
+        "point": "Includes AsyncHttpClient default/override properties required for native image",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified build.gradle.kts line 46: implementation(libs.asynchttpclient) confirms AHC dependency"
+      },
+      {
+        "point": "Diff is truncated, only license header visible for NativeImageConfigTest.java",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Observation about diff presentation, not an analysis of substance"
+      },
+      {
+        "point": "Suggestions for what test should validate (JSON syntax, classpath presence, RuntimeReflection)",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Speculative without seeing the actual test code; not actionable"
+      },
+      {
+        "point": "Directory naming META-INF/native-image/org.apache.pulsar/pulsar-client-original/ follows GraalVM convention",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified groupId/artifactId pattern: org.apache.pulsar/pulsar-client-original matches embedded config convention"
+      },
+      {
+        "point": "Recommend adding migration guide note about native-image config updates",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague documentation suggestion, not a code issue"
+      }
+    ]
+  },
+  {
+    "pr": "pulsar#25883",
+    "cond": "mr_code",
+    "net_score": 3,
+    "n_good": 2,
+    "n_wrong": 0,
+    "n_trivial": 2,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "CRITICAL: shade exclusion strips native-image configs from shaded artifacts (line 106 of pulsar.client-shade-conventions.gradle.kts)",
+        "verdict": "good",
+        "severity": "critical",
+        "score": 2,
+        "checked": "Verified line 106 has exclude(\"META-INF/native-image/**\"). Confirmed pulsar-client-shaded, pulsar-client-all, and pulsar-client-admin-shaded all apply pulsar.client-shade-conventions with no override to re-include native-image configs."
+      },
+      {
+        "point": "Cross-module classes (ProtobufNativeSchemaData, DataURLStreamHandler, KeyValue) registered in pulsar-client reflect-config.json",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified ProtobufNativeSchemaData in pulsar-common/src/main/java/org/apache/pulsar/common/protocol/schema/, DataURLStreamHandler in pulsar-common/src/main/java/org/apache/pulsar/client/api/url/, and KeyValue in pulsar-client-api/src/main/java/org/apache/pulsar/common/schema/."
+      },
+      {
+        "point": "Authentication classes use only allDeclaredConstructors - verify intentionality",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Checked AuthenticationUtil.java: uses Class.forName().getDeclaredConstructor().newInstance() for reflection-based instantiation, then calls configure() directly (not via reflection). The config with only allDeclaredConstructors is correct as-is."
+      },
+      {
+        "point": "Test covers reflect-config.json but not native-image.properties initialize-at-run-time classes",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Test file NativeImageConfigTest.java does not exist on disk (new code in PR). Cannot verify claim about test coverage. Plausible but unverifiable."
+      }
+    ]
+  },
+  {
+    "pr": "agroal#188",
+    "cond": "diff_only",
+    "net_score": -1,
+    "n_good": 1,
+    "n_wrong": 1,
+    "n_trivial": 6,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "@SuppressWarnings('resource') added at class level - verify it doesn't mask warnings",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "grep confirmed no existing @SuppressWarnings('resource') in wrapper package; this is just noting a diff addition and asking to verify"
+      },
+      {
+        "point": "Static initializer ExceptionInInitializerError - consider IllegalStateException",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "ExceptionInInitializerError is standard practice; suggestion is vague stylistic advice without concrete benefit"
+      },
+      {
+        "point": "VarHandle access adds overhead if field was non-volatile; clarify baseline",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "grep confirmed NO volatile keyword in any wrapper class; fields are plain (e.g., 'private CallableStatement wrappedStatement;') so this DOES add overhead from plain field access - valid observation"
+      },
+      {
+        "point": "@SuppressWarnings('unused') on wrappedStatement - add comment for readability",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Confirmed field is now accessed only via VarHandle; suggestion to add comment is minor stylistic advice"
+      },
+      {
+        "point": "setRelease in constructor/close() ensures happens-before guarantee",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Just describes what the code does correctly; not identifying an issue"
+      },
+      {
+        "point": "Pattern consistency excellent across 7 wrapper files; consider protected base method",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Primarily praise; base method suggestion is speculative"
+      },
+      {
+        "point": "VarHandle requires Java 9+; confirm Java 8 compatibility not broken",
+        "verdict": "wrong",
+        "severity": "none",
+        "score": -1,
+        "checked": "pom.xml shows maven.compiler.release=17, maven.compiler.source=17, maven.compiler.target=17 - Java 17 required, so Java 8 compatibility concern is fabricated"
+      },
+      {
+        "point": "Memory ordering: getAcquire/setRelease optimal; consider getOpaque/setOpaque for future multi-field atomicity",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "General advice about hypothetical future changes; no real issue identified"
+      }
+    ]
+  },
+  {
+    "pr": "agroal#188",
+    "cond": "mr_code",
+    "net_score": 3,
+    "n_good": 2,
+    "n_wrong": 0,
+    "n_trivial": 4,
+    "n_missed": 0,
+    "detail": [
+      {
+        "point": "Pre-existing bug in ConnectionWrapper.abort(): wrappedConnection = ClosedConnection.INSTANCE is assigned BEFORE calling wrappedConnection.abort(executor), so the sentinel's no-op abort() is invoked instead of the actual JDBC connection's abort.",
+        "verdict": "good",
+        "severity": "critical",
+        "score": 2,
+        "checked": "ConnectionWrapper.java lines 154-155: wrappedConnection=ClosedConnection.INSTANCE then wrappedConnection.abort(executor). ClosedConnection.java lines 292-294 confirm abort() is a no-op. The actual connection is lost."
+      },
+      {
+        "point": "Static initializer pattern for VarHandle creation is well-structured \u2014 wrapping NoSuchFieldException/IllegalAccessException in ExceptionInInitializerError ensures class loading fails loudly.",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "This is in the diff; pattern is standard and correct. This is praise."
+      },
+      {
+        "point": "Helper method wrappedCallableStatement() performing getAcquire + cast on every delegate operation introduces measurable overhead in tight loops.",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Diff shows (CallableStatement) WRAPPED.getAcquire(this) called via helper method on every operation. Valid performance observation."
+      },
+      {
+        "point": "StatementWrapper still holds plain field (not yet converted to VarHandle in this diff snippet) \u2014 verify parent class field is converted consistently.",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "StatementWrapper.java IS in the PR's changed files list, meaning it gets converted. This was just asking for confirmation."
+      },
+      {
+        "point": "XAConnectionWrapper/XAResourceWrapper listed in changed files \u2014 confirm they receive same VarHandle treatment.",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "These ARE in the PR's changed files. Just asking for confirmation."
+      },
+      {
+        "point": "Thread-safety context: wrappers are single-threaded by design (each checkout creates new wrapper), VarHandle change is defensive correctness hardening.",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Valid architectural observation. Each ConnectionWrapper is created per checkout. Defends PR design choice."
+      }
+    ]
+  },
+  {
+    "pr": "quarkus#53917",
+    "cond": "diff_only",
+    "net_score": 0,
+    "n_good": 1,
+    "n_wrong": 0,
+    "n_trivial": 6,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "Constructor parameter still named 'manifestConfig' while field is 'coreSbomConfig' in ArtifactResultBuildItem.java & JarBuildItem.java",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "Verified against diff: NEW code renames field/getter to coreSbomConfig/getCoreSbomConfig but constructor parameter remains 'manifestConfig'"
+      },
+      {
+        "point": "Ensure PURL generation handles missing optional metadata gracefully",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Refers to new Purl.java not on disk; generic @Nullable/fallback advice"
+      },
+      {
+        "point": "Verify SbomContributionBuildItem extends MultiBuildItem; consider lazy evaluation",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "New file not on disk; Supplier suggestion is generic optimization advice"
+      },
+      {
+        "point": "Explicit deduplication logic required in CycloneDxProcessor.java for SBOM merging",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Generic Map<String,ComponentDescriptor> suggestion; no specific bug identified"
+      },
+      {
+        "point": "Ensure Purl.java follows PURL spec; add unit tests for edge cases",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "New file not on disk; generic spec compliance advice"
+      },
+      {
+        "point": "Add test case for extension contributing component with missing optional fields",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Generic test suggestion without specific gap identification"
+      },
+      {
+        "point": "Update Extension Author Guide to document SbomContributionBuildItem usage",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Standard documentation improvement suggestion"
+      }
+    ]
+  },
+  {
+    "pr": "quarkus#53917",
+    "cond": "mr_code",
+    "net_score": 1,
+    "n_good": 2,
+    "n_wrong": 0,
+    "n_trivial": 6,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "BACKWARD COMPATIBILITY BREAK in JarBuildItem - getManifestConfig() renamed to getCoreSbomConfig() without deprecating old method",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "JarBuildItem.java:65 has getManifestConfig() returning ApplicationManifestConfig; OutputTargetBuildItem.java:32 shows @Deprecated(forRemoval=true) pattern used in codebase; renaming public method + changing return type breaks extension consumers"
+      },
+      {
+        "point": "BACKWARD COMPATIBILITY BREAK in ArtifactResultBuildItem - getManifestConfig() renamed to getCoreSbomConfig() without deprecation",
+        "verdict": "good",
+        "severity": "normal",
+        "score": 1,
+        "checked": "ArtifactResultBuildItem.java:43 has getManifestConfig(); same breaking change pattern as JarBuildItem for separate public class"
+      },
+      {
+        "point": "ApplicationManifestsBuildStep aggregation logic needs verification",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Verification request, not identifying a concrete issue"
+      },
+      {
+        "point": "New classes (CoreSbomContributionConfig, ComponentDescriptor, Purl, ComponentDependencies) need Javadoc documentation",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Vague non-actionable advice about documentation"
+      },
+      {
+        "point": "Builder pattern consistency - CoreSbomContributionConfig.builder() should return correct type",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Verification request, not identifying a real bug"
+      },
+      {
+        "point": "CycloneDxProcessor still references ApplicationManifestConfig - verify it's updated",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Routine maintenance note; CycloneDxProcessor.java:22,89 do import/use ApplicationManifestConfig"
+      },
+      {
+        "point": "PR is too large (+3483/-998) for a refactoring - consider splitting",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Subjective opinion about PR size, not a concrete code issue"
+      },
+      {
+        "point": "SbomContributionTestBase tests should cover extension contribution path",
+        "verdict": "trivial",
+        "severity": "none",
+        "score": 0,
+        "checked": "Speculative advice about test coverage"
+      }
+    ]
+  }
+]

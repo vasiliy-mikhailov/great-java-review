@@ -1,0 +1,237 @@
+[
+  {
+    "pr": "spring-boot#50273",
+    "cond": "diff_only",
+    "net_score": 3,
+    "n_good": 4,
+    "n_wrong": 0,
+    "n_trivial": 1,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "LinkedHashMap vs HashMap ordering change",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Diff shows Collectors.toMap() (returns HashMap) replaced with LinkedHashMap+forEach; candidate correctly identifies ordering impact"
+      },
+      {
+        "point": "getTarget() exceptions (BeanCurrentlyInCreationException/IllegalStateException)",
+        "verdict": "good",
+        "score": 1,
+        "checked": "TargetSource interface declares getTarget() throws Exception; JndiObjectTargetSource.getTarget() can throw JndiLookupFailureException wrapping NamingException"
+      },
+      {
+        "point": "getTarget() returning null causes IllegalArgumentException in convertValue",
+        "verdict": "good",
+        "score": 1,
+        "checked": "TargetSource.getTartget() is @Nullable; JacksonJmxOperationResponseMapper shows precedent for null-check before convertValue; Jackson convertValue(null) throws IllegalArgumentException"
+      },
+      {
+        "point": "releaseTarget() is no-op for singletons, correct for pooled",
+        "verdict": "good",
+        "score": 1,
+        "checked": "TargetSource interface shows releaseTarget() has empty default implementation - verified correct Spring contract usage"
+      },
+      {
+        "point": "Test assertion suggestions and nested proxy test",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Diff truncated; suggestions are reasonable improvements not identified issues"
+      }
+    ]
+  },
+  {
+    "pr": "spring-boot#50273",
+    "cond": "mr_code",
+    "net_score": -3,
+    "n_good": 1,
+    "n_wrong": 1,
+    "n_trivial": 2,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "releaseTarget() throws IllegalStateException on static target sources",
+        "verdict": "wrong",
+        "score": -1,
+        "checked": "Searched entire repo - exception message does not exist. TargetSource.releaseTarget() has empty default implementation. Spring's own code in JdkDynamicAopProxy.java:247 and CglibAopProxy.java:733 guard with !targetSource.isStatic() before calling releaseTarget()"
+      },
+      {
+        "point": "getTarget() on non-static target sources may create new bean instances",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified SpringBootMockResolver.java:51-56 guards with isStatic() and skips non-static sources, confirming this is a valid concern for prototype-scoped beans"
+      },
+      {
+        "point": "LinkedHashMap provides deterministic bean ordering",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Diff shows change from Collectors.toMap() to explicit LinkedHashMap - ordering improvement but not a bug fix"
+      },
+      {
+        "point": "Solid test coverage for CGLIB proxy case",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Generic positive comment about test quality, no actionable content"
+      }
+    ]
+  },
+  {
+    "pr": "pulsar#25883",
+    "cond": "diff_only",
+    "net_score": 2,
+    "n_good": 5,
+    "n_wrong": 0,
+    "n_trivial": 4,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "native-image.properties: correct use of --initialize-at-run-time with proper backslash continuation, no trailing whitespace",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified diff content shows proper \\ line continuations; confirmed all 9 classes (PulsarByteBufAllocator, Commands, Backoff, TokenClient, GenericProtobufNativeSchema, ConnectionPool, ControlledClusterFailover, HttpClient) exist in repo"
+      },
+      {
+        "point": "native-image.properties: consider adding inline comments explaining why specific classes require runtime initialization",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Suggestion is vague best-practice advice with no factual error; not actionable"
+      },
+      {
+        "point": "reflect-config.json: valid JSON structure, classes appropriately registered",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified all 20 classes exist: ClientConfigurationData, ProducerConfigurationData, ConsumerConfigurationData, KeyFile, Metadata, TokenResult, TokenError, ClientCredentialsExchangeRequest, ProtobufNativeSchema$ProtoBufParsingInfo, ProtobufSchema$ProtoBufParsingInfo, ProtobufNativeSchemaData, KeyValue (at org.apache.pulsar.common.schema), DataURLStreamHandler, SecretsSerializer, AuthenticationDisabled, AuthenticationTls, AuthenticationToken, AuthenticationBasic, AuthenticationKeyStoreTls, AuthenticationOAuth2"
+      },
+      {
+        "point": "reflect-config.json: broad allDeclaredFields/Methods/Constructors increases image size, consider narrowing",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Speculative suggestion; these config/auth classes are genuinely consumed by JSON deserialization frameworks, broad access is justified"
+      },
+      {
+        "point": "reflect-config.json: add @since/maintenance comment, consider CI step with --dry-run",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Vague maintainability suggestion, no factual content to verify"
+      },
+      {
+        "point": "resource-config.json: correct use of \\Q...\\E regex quoting for literal resource paths",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified diff shows \\Qorg/asynchttpclient/config/ahc-default.properties\\E and \\Qorg/asynchttpclient/config/ahc.properties\\E; confirmed pulsar-client uses org.asynchttpclient in HttpClient, TokenClient, etc."
+      },
+      {
+        "point": "resource-config.json: includes AsyncHttpClient default/override properties required for native image",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Confirmed AsyncHttpClient dependency is used by pulsar-client source code; properties would come from dependency jar at runtime"
+      },
+      {
+        "point": "NativeImageConfigTest.java: diff truncated, test should validate JSON syntax and classpath presence",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Diff shows only license header; suggestions are reasonable but speculative without seeing actual test code"
+      },
+      {
+        "point": "Directory naming META-INF/native-image/org.apache.pulsar/pulsar-client-original/ follows GraalVM convention",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified groupId=org.apache.pulsar and artifactId=pulsar-client-original match GraalVM embedded config spec"
+      }
+    ]
+  },
+  {
+    "pr": "pulsar#25883",
+    "cond": "mr_code",
+    "net_score": -2,
+    "n_good": 2,
+    "n_wrong": 1,
+    "n_trivial": 1,
+    "n_missed": 3,
+    "detail": [
+      {
+        "point": "exclude('META-INF/native-image/**') at line 106 strips native-image configs from shaded artifacts (pulsar-client-shaded, pulsar-client-all, pulsar-client-admin-shaded)",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified line 106 of pulsar.client-shade-conventions.gradle.kts has the exclude; convention applies to all three shaded modules per the file comment and include directives"
+      },
+      {
+        "point": "ProtobufNativeSchemaData (pulsar-common), DataURLStreamHandler (pulsar-common), KeyValue (pulsar-client-api) reside outside pulsar-client module",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified: ProtobufNativeSchemaData in pulsar-common/src/main/java/org/apache/pulsar/common/protocol/schema/; DataURLStreamHandler in pulsar-common/src/main/java/org/apache/pulsar/client/api/url/; KeyValue in pulsar-client-api/src/main/java/org/apache/pulsar/common/schema/"
+      },
+      {
+        "point": "Authentication classes loaded via ServiceLoader typically only need constructors",
+        "verdict": "wrong",
+        "score": -1,
+        "checked": "Verified in AuthenticationUtil.java: auth classes are loaded via Class.forName(authPluginClassName) + getDeclaredConstructor().newInstance(), NOT via ServiceLoader. No ServiceLoader usage for Authentication found in codebase."
+      },
+      {
+        "point": "NativeImageConfigTest.java only validates reflect-config.json classes, not native-image.properties --initialize-at-run-time classes",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Cannot verify - NativeImageConfigTest.java does not exist on disk (new file added by PR). Suggestion is reasonable but unverifiable."
+      }
+    ]
+  },
+  {
+    "pr": "agroal#188",
+    "cond": "diff_only",
+    "net_score": -1,
+    "n_good": 1,
+    "n_wrong": 1,
+    "n_trivial": 6,
+    "n_missed": 1,
+    "detail": [
+      {
+        "point": "@SuppressWarnings(\"resource\") added at class level - likely silences warnings about unclosed CallableStatement field",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Verified the class in the diff shows the annotation being added; claim about what warnings it silences is speculative and unverifiable without static analysis"
+      },
+      {
+        "point": "Static initializer ExceptionInInitializerError - consider wrapping in IllegalStateException",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Verified the diff uses ExceptionInInitializerError for static init failure; suggestion to use IllegalStateException is just a style preference, ExceptionInInitializerError is standard Java idiom"
+      },
+      {
+        "point": "getAcquire introduces method-call overhead vs direct field access - clarify baseline",
+        "verdict": "good",
+        "score": 1,
+        "checked": "Verified original field is plain (no volatile): 'private CallableStatement wrappedStatement;' at line 40 - adding VarHandle with memory barriers DOES add overhead"
+      },
+      {
+        "point": "@SuppressWarnings(\"unused\") on wrappedStatement - consider adding comment",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Verified the diff adds this annotation since field is now accessed via VarHandle; comment suggestion is minor style point"
+      },
+      {
+        "point": "setRelease in constructor and close() - correct happens-before guarantee",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Verified the diff uses setRelease in both places; the claim about happens-before is accurate but restates what the PR description already explains"
+      },
+      {
+        "point": "Pattern consistency across all 7 wrapper files",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "Verified all wrapper files (CallableStatement, Connection, PreparedStatement, ResultSet, Statement, XAConnection, XAResource) have plain wrapped fields with direct access pattern"
+      },
+      {
+        "point": "VarHandle requires Java 9+ - confirm project compatibility",
+        "verdict": "wrong",
+        "score": -1,
+        "checked": "Checked pom.xml: project targets Java 17 (maven.compiler.release=17) - the concern about Java 8 compatibility is irrelevant and misleading"
+      },
+      {
+        "point": "Memory ordering choice - getAcquire/setRelease is optimal; consider getOpaque/setOpaque for multi-field atomicity",
+        "verdict": "trivial",
+        "score": 0,
+        "checked": "General theoretical observation; the suggestion about getOpaque/setOpaque is vague and not actionable for this PR scope"
+      }
+    ]
+  }
+]

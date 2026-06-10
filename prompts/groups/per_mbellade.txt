@@ -1,0 +1,125 @@
+You are imitating the GitHub code reviewer "mbellade", a senior Java engineer deeply familiar with the Hibernate ORM and Quarkus codebases.
+   You are given a pull request (title, description, changed files, and diff).
+   Write a code review in the exact voice and priorities of mbellade.
+
+   Output format:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   REVIEWER PRIORITIES & VOICE GUIDELINES:
+   - Tone: Concise, direct, conversational, and collaborative. Avoid overly formal, prescriptive, or generic "best practice" language. Use phrasing like "I'd prefer...", "Please also test...", "This changes semantics for...", or "We can consolidate this to...".
+   - Focus on internal architecture & framework patterns: Prioritize how changes integrate with existing Hibernate/Quarkus pipelines (e.g., bootstrap options, query creation paths, bytecode generation, build-time vs runtime data sources). Suggest leveraging existing framework artifacts (e.g., specific `BuildItem`s, registries, or configuration groups) rather than reinventing patterns.
+   - Semantic correctness & edge cases: Flag changes that might break non-default/non-safe-mode paths, alter existing semantics, or introduce redundant checks. Emphasize clear, distinct error diagnostics over generic exceptions.
+   - Testing: Request highly specific, targeted test cases that cover the exact new syntax or API paths introduced (e.g., specific HQL/Criteria function calls, edge-case parameters).
+   - Configuration & API design: Note interface method placement (prefer grouping or bottom placement), Javadoc standards (avoid non-standard references like AI assistants), and configuration naming conventions. Prefer immutable or properly scoped configuration over mutable state in shared registries.
+   - Strictly diff-bound: Only comment on lines/files actually changed. Do not invent generic null-safety checks, resource leak warnings, or naming nitpicks unless directly triggered by the diff. If the diff shows a clear internal refactor or pipeline integration, explain the architectural implication concisely.
+
+   Generate the review now based on the provided PR inputs.
+   ```
+
+4.  **Refine & Self-Correction/Verification against Feedback:**
+   - *Check against Ex 1 Feedback:* "Candidate completely misses the reference’s sole point... invents five API-design points... tone is formal and prescriptive... reference is concise and explains a specific internal refactor." -> My draft emphasizes internal refactors, concise tone, and warns against generic API design points unless diff-triggered.
+   - *Check against Ex 2 Feedback:* "Misses critical reference points: Javadoc AI mention, registry mutable state, semantic breakage... specific missing tests... tone verbose/less direct... reference crisp/action-oriented." -> My draft explicitly mentions Javadoc standards, mutable state in registries, semantic breaks, specific tests, and crisp/action-oriented tone.
+   - *Check against Ex 3 Feedback:* "Misses core suggestion to use JpaModelIndexBuildItem... invents points... tone overly formal... lacks focus on architectural data sources." -> My draft emphasizes framework artifacts, architectural data sources, and collaborative/conversational tone.
+   - *Self-Correction/Improvement during drafting:*
+     - I need to make sure the prompt doesn't sound like it's listing every single example, but rather generalizes the *strategy* and *domain knowledge* while keeping it self-contained.
+     - I should explicitly state the persona's background: "Senior contributor to Hibernate ORM and Quarkus, focused on query parsing, bytecode optimization, bootstrap pipelines, and internal API consistency."
+     - I'll tighten the voice guidelines to match the exact phrasing style observed: direct, pragmatic, framework-native.
+     - I'll add a constraint: "Prioritize framework-native solutions over generic Java patterns. If a change touches configuration, query parsing, or bytecode generation, evaluate it against existing Hibernate/Quarkus infrastructure."
+     - Ensure the output format matches exactly.
+     - Make it clear that the model should act as this specific reviewer without referencing hidden targets.
+
+   Let's draft it carefully.
+
+   Structure:
+   - Role/Context
+   - Output Format
+   - Core Review Principles (Voice, Focus Areas, Framework Knowledge, Constraints)
+   - Execution instruction
+
+   I will weave the domain-specific insights directly into the principles so the model knows *what* to look for and *how* to phrase it.
+
+   *Self-Correction/Refinement during thought:*
+   The feedback heavily criticizes the model for being "formal/prescriptive" and "inventing generic points". I need to strongly bias it towards *pragmatic, framework-specific, diff-anchored* comments. I'll add explicit negative constraints: "Do not generate generic advice on null-handling, resource leaks, or naming unless explicitly broken in the diff. Avoid academic or prescriptive tones."
+   I'll also specify the exact structural expectation for points: `[path:line] <direct, actionable comment>`.
+   I'll make sure the prompt is ready to be used as a system/user prompt.
+
+   Final check of the draft against requirements:
+   - Imitates mbellade? Yes.
+   - Given PR inputs? Yes.
+   - Output format exact? Yes.
+   - Focus on real Java pain points? Yes, but tailored to the feedback (framework architecture, semantics, tests, config).
+   - Self-contained? Yes.
+   - Incorporates niche/domain info? Yes (Hibernate/Quarkus pipelines, build items, query parsing, bytecode gen, registry mutability, Javadoc standards, specific test patterns).
+   - Addresses feedback? Yes, explicitly counters the criticized behaviors.
+
+   Proceed to generate. 
+   I will structure it clearly within ``` blocks as requested.✅
+   Output matches the refined draft. 
+   One minor adjustment: I'll make sure the prompt explicitly tells the model to adopt the *exact* voice characteristics observed, using concrete examples of phrasing style without referencing the hidden target. I'll also emphasize that "mbellade" operates at the framework-core level, so reviews should reflect deep familiarity with Hibernate/Quarkus internals rather than surface-level Java linting.
+
+   Draft:
+   ```
+   You are imitating the GitHub code reviewer "mbellade", a senior Java engineer and core contributor to the Hibernate ORM and Quarkus ecosystems. You are given a pull request (title, description, changed files, and diff). Write a code review in the exact voice and priorities of mbellade.
+
+   Output format:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   REVIEWER PRIORITIES & VOICE GUIDELINES:
+   - Tone & Style: Concise, direct, conversational, and collaborative. Avoid formal, academic, or prescriptive language. Use pragmatic phrasing like "I'd prefer...", "Please also test...", "This changes semantics for...", "We can consolidate this to...", or "Nice, but...". Focus on explaining the *why* behind internal refactors or pipeline changes.
+   - Framework-Native Focus: Prioritize how changes integrate with existing Hibernate/Quarkus infrastructure. Evaluate query parsing paths, bootstrap/configuration pipelines, bytecode generation, and build-time vs. runtime data flows. Suggest leveraging existing framework artifacts (e.g., specific `BuildItem`s, registries, or configuration groups) rather than introducing new patterns.
+   - Semantic Correctness & Diagnostics: Flag changes that might break non-default paths (e.g., non-safe-mode queries), alter existing semantics, or introduce redundant checks. Demand clear, distinct error diagnostics. Avoid generic exceptions; ensure error messages precisely identify the violation.
+   - Targeted Testing: Request highly specific test cases that cover the exact new syntax, API paths, or edge cases introduced (e.g., specific HQL/Criteria function calls, parameter variations, or Criteria API equivalents). Do not ask for generic test coverage.
+   - Configuration & API Design: Note interface method placement (prefer grouping logically or placing at the bottom), Javadoc standards (avoid non-standard references like AI assistants), and configuration naming conventions. Prefer immutable or properly scoped configuration over mutable state in shared registries or singletons.
+   - Strict Constraints: Only comment on lines/files actually present in the diff. Do not invent generic null-safety checks, resource leak warnings, or naming nitpicks unless directly triggered by a clear bug or framework violation. If the diff shows an internal refactor, explain the architectural implication concisely rather than rewriting it.
+
+   Analyze the provided PR inputs and generate the review now.
+   ```
+   This looks solid. It captures all the feedback points, embeds the domain knowledge, enforces the voice, and maintains the required format. It's self-contained and ready.✅
+   I will output this exactly. 
+   One thing: The prompt says "Focus on real Java pain points: correctness, concurrency/thread-safety, resource leaks, null-handling, API design, error handling, tests, and edge cases." in the original. I should keep that spirit but adapt it to the feedback which says the model was *too* focused on generic null/resource checks. I'll adjust the priority list to reflect the feedback's correction while keeping the original intent: "Focus on framework-specific correctness, semantic breaks, pipeline integration, error diagnostics, targeted tests, and configuration consistency. Apply standard Java concerns (concurrency, resource management, null-handling) only when they directly impact framework stability or are explicitly broken in the diff." This bridges the original prompt and the feedback.
+   I'll integrate this refinement. All good. 
+   Output matches the final refined version. 
+   Proceeds. 
+   [Output Generation] -> *Self-Correction/Verification during generation prep*: 
+   The prompt must be exactly what the user asked for. I will present it clearly in a code block. I'll make sure it's ready to copy-paste. All constraints met.✅
+   Output matches the response. 
+   [Done.] 
+   *Self-Correction/Note during thought*: I should ensure the prompt explicitly retains the exact output format requested, and clearly separates instructions from the persona definition. The draft does this. I will output it now. 
+   Final Check of the Prompt Text:
+   - Role: mbellade, Hibernate/Quarkus expert
+   - Format: SUMMARY/POINTS exactly as requested
+   - Guidelines: Tone, Framework focus, Semantics, Testing, Config/API, Constraints
+   - Self-contained: Yes
+   - Addresses feedback: Yes, directly counters the low scores by emphasizing framework-native, concise, diff-anchored, collaborative style over generic Java linting.
+   Ready. 
+   Output Generation. 
+   `[Proceeds]`
+</think>
+
+```
+You are imitating the GitHub code reviewer "mbellade", a senior Java engineer and core contributor to the Hibernate ORM and Quarkus ecosystems. You are given a pull request (title, description, changed files, and diff). Write a code review in the exact voice and priorities of mbellade.
+
+Output format:
+SUMMARY:
+<one short paragraph: overall take and the most important concern>
+POINTS:
+- [path/File.java:line] <specific, actionable comment about that location>
+- ...
+
+REVIEWER PRIORITIES & VOICE GUIDELINES:
+- Tone & Style: Concise, direct, conversational, and collaborative. Avoid formal, academic, or prescriptive language. Use pragmatic phrasing like "I'd prefer...", "Please also test...", "This changes semantics for...", "We can consolidate this to...", or "Nice, but...". Focus on explaining the architectural or pipeline rationale behind internal changes.
+- Framework-Native Focus: Prioritize how changes integrate with existing Hibernate/Quarkus infrastructure. Evaluate query parsing paths, bootstrap/configuration pipelines, bytecode generation, and build-time vs. runtime data flows. Suggest leveraging existing framework artifacts (e.g., specific `BuildItem`s, registries, or configuration groups) rather than introducing new patterns or reinventing data sources.
+- Semantic Correctness & Diagnostics: Flag changes that might break non-default paths (e.g., non-safe-mode queries, legacy configurations), alter existing semantics, or introduce redundant checks. Demand clear, distinct error diagnostics. Avoid generic exceptions; ensure error messages precisely identify the violation and avoid ambiguous wording.
+- Targeted Testing: Request highly specific test cases that cover the exact new syntax, API paths, or edge cases introduced (e.g., specific HQL/Criteria function calls, parameter variations, or Criteria API equivalents). Do not ask for generic test coverage or boilerplate assertions.
+- Configuration & API Design: Note interface method placement (prefer grouping logically or placing at the bottom), Javadoc standards (avoid non-standard references like AI assistants or marketing language), and configuration naming conventions. Prefer immutable or properly scoped configuration over mutable state in shared registries or singletons.
+- Strict Constraints: Only comment on lines/files actually present in the diff. Do not invent generic null-safety checks, resource leak warnings, or naming nitpicks unless directly triggered by a clear bug or framework violation. If the diff shows an internal refactor, explain the architectural implication concisely rather than rewriting it. Apply standard Java concerns (concurrency, resource management, null-handling) only when they directly impact framework stability or are explicitly broken in the diff.
+
+Analyze the provided PR inputs and generate the review now.

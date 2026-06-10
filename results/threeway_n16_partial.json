@@ -1,0 +1,1227 @@
+[
+  {
+    "repo": "hibernate/hibernate-orm",
+    "pr": 12416,
+    "reviewer": "mbellade",
+    "pr_input": "REPO: hibernate/hibernate-orm\nPR #12416: HHH-20384 Collect enum and java.* types in DomainModelCategorizationCollector\nChanged files (2): hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java, hibernate-core/src/test/java/org/hibernate/orm/test/boot/models/categorization/EnumAndJavaTypeCategorizationTest.java\nDiff (+249/-0):\nPR DESCRIPTION:\n## Summary\n- Collect enum types used as field types on entities, mapped superclasses, and embeddables during categorization\n- Collect `java.*` types from class hierarchies (superclasses and interfaces) of managed types\n- Quarkus needs these for reflection registration in native image builds\n- Added `EnumAndJavaTypeCategorizationTest`\n\nNeeded for quarkusio/quarkus#48005\nPart of https://hibernate.atlassian.net/browse/HHH-20384\nThis targets 7.3 and will need a forward port to main.\n\n----------------------\nBy submitting this pull request, I confirm that my contribution is made under the terms of the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0.txt)\nand can be relicensed under the terms of the [LGPL v2.1 license](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt) in the future at the maintainers' discretion.\nFor more information on licensing, please check [here](https://github.com/hibernate/hibernate-orm/blob/main/CONTRIBUTING.md#legal).\n\n----------------------\n\n---\n<!-- Hibernate GitHub Bot task list start -->\nPlease make sure that the following tasks are completed:\nTasks specific to HHH-20384 (Improvement):\n- [ ] Add tests for feature/improvement\n- [ ] Update documentation as relevant: javadoc for changed API, `documentation/src/main/asciidoc/userguide` for all features, `documentation/src/main/asciidoc/introduction` for main features, links from existing documentation\n- [ ] Add entries as relevant to `migration-guide.adoc` (breaking changes) and `whats-\n\nDIFF:\n\n--- hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java (+55/-0) ---\n@@ -11,6 +11,7 @@\n import org.hibernate.boot.models.xml.spi.XmlDocumentContext;\n import org.hibernate.models.spi.ClassDetails;\n import org.hibernate.models.spi.ModelsContext;\n+import org.hibernate.models.spi.TypeDetails;\n \n import java.util.HashMap;\n import java.util.HashSet;\n@@ -33,6 +34,8 @@ public class DomainModelCategorizationCollector {\n \tprivate final Set<ClassDetails> rootEntities = new HashSet<>();\n \tprivate final Map<String,ClassDetails> mappedSuperclasses = new HashMap<>();\n \tprivate final Map<String,ClassDetails> embeddables = new HashMap<>();\n+\tprivate final Set<String> enumTypes = new HashSet<>();\n+\tprivate final Set<String> javaTypes = new HashSet<>();\n \n \tpublic DomainModelCategorizationCollector(\n \t\t\tGlobalRegistrations globalRegistrations,\n@@ -57,6 +60,14 @@ public Map<String, ClassDetails> getEmbeddables() {\n \t\treturn embeddables;\n \t}\n \n+\tpublic Set<String> getEnumTypes() {\n+\t\treturn enumTypes;\n+\t}\n+\n+\tpublic Set<String> getJavaTypes() {\n+\t\treturn javaTypes;\n+\t}\n+\n \tpublic void apply(JaxbEntityMappingsImpl jaxbRoot, XmlDocumentContext xmlDocumentContext) {\n \t\tglobalRegistrations.collectJavaTypeRegistrations( jaxbRoot.getJavaTypeRegistrations() );\n \t\tglobalRegistrations.collectJdbcTypeRegistrations( jaxbRoot.getJdbcTypeRegistrations() );\n@@ -109,16 +120,22 @@ public void apply(ClassDetails classDetails) {\n \t\t\tif ( classDetails.getClassName() != null ) {\n \t\t\t\tmappedSuperclasses.put( classDetails.getClassName(), classDetails );\n \t\t\t}\n+\t\t\tcollectFieldEnumTypes( classDetails );\n+\t\t\tcollectClassHierarchyJavaTypes( classDetails );\n \t\t}\n \t\telse if ( isEntity( classDetails ) ) {\n \t\t\tif ( isRootEntity( classDetails ) ) {\n \t\t\t\trootEntities.add( classDetails );\n \t\t\t}\n+\t\t\tcollectFieldEnumTypes( classDetails );\n+\t\t\tcollectClassHierarchyJavaTypes( classDetails );\n \t\t}\n \t\telse if ( isEmbeddable( classDetails ) ) {\n \t\t\tif ( classDetails.getClassName() != null ) {\n \t\t\t\tembeddables.put( classDetails.getClassName(), classDetails );\n \t\t\t}\n+\t\t\tcollectFieldEnumTypes( classDetails );\n+\t\t\tcollectClassHierarchyJavaTypes( classDetails );\n \t\t}\n \n \t\tif ( isConverter( classDetails ) ) {\n@@ -131,6 +148,44 @@ private static boolean isConverter(ClassDetails classDetails) {\n \t\t\t|| classDetails.getDirectAnnotationUsage( Converter.class ) != null;\n \t}\n \n+\tprivate void collectFieldEnumTypes(ClassDetails classDetails) {\n+\t\tclassDetails.forEachField( (index, fieldDetails) -> {\n+\t\t\tfinal TypeDetails type = fieldDetails.getType();\n+\t\t\tif ( type == null || type.getTypeKind() != TypeDetails.Kind.CLASS ) {\n+\t\t\t\treturn;\n+\t\t\t}\n+\t\t\tfinal ClassDetails fieldTypeClass = type.determineRawClass();\n+\t\t\tif ( fieldTypeClass != null && fieldTypeClass.isEnum() ) {\n+\t\t\t\tenumTypes.add( fieldTypeClass.getClassName() );\n+\t\t\t}\n+\t\t} );\n+\t}\n+\n+\tprivate void collectClassHierarchyJavaTypes(ClassDetails classDetails) {\n+\t\tcollectClassHierarchyJavaTypes( classDetails, new HashSet<>() );\n+\t}\n+\n+\tprivate void collectClassHierarchyJavaTypes(ClassDetails classDetails, Set<String> visited) {\n+\t\tif ( classDetails == null ) {\n+\t\t\treturn;\n+\t\t}\n+\t\tfinal String className = classDetails.getClassName();\n+\t\tif ( className == null || !visited.add( className ) ) {\n+\t\t\treturn;\n+\t\t}\n+\t\tif ( \"java.lang.Object\".equals( className ) ) {\n+\t\t\treturn;\n+\t\t}\n+\t\tif ( !isEntity( classDetails ) && !isEmbeddable( classDetails ) ) {\n+\t\t\tjavaTypes.add( className );\n+\t\t\treturn;\n+\t\t}\n+\t\tcollectClassHierarchyJavaTypes( classDetails.getSuperClass(), visited );\n+\t\tfor ( TypeDetails iface : classDetails.getImplementedInterfaces() ) {\n+\t\t\tcollectClassHierarchyJavaTypes( iface.determineRawClass(), visited );\n+\t\t}\n+\t}\n+\n \tpublic static boolean isRootEntity(ClassDetails classInfo) {\n \t\t// perform a series of opt-out checks against the super-type hierarchy\n \n--- hibernate-core/src/test/java/org/hibernate/orm/test/boot/models/categorization/EnumAndJavaTypeCategorizationTest.java (+194/-0) ---\n@@ -0,0 +1,194 @@\n+/*\n+ * SPDX-License-Identifier: Apache-2.0\n+ * Copyright Red Hat Inc. and Hibernate Authors\n+ */\n+package org.hibernate.orm.test.boot.models.categorization;\n+\n+import jakarta.persistence.Embeddable;\n+import jakarta.persistence.Embedded;\n+import jakarta.persistence.Entity;\n+import jakarta.persistence.Id;\n+import jakarta.persistence.MappedSuperclass;\n+import org.hibernate.boot.models.internal.DomainModelCategorizationCollector;\n+import org.hibernate.boot.models.internal.GlobalRegistrationsImpl;\n+import org.hibernate.models.spi.ModelsContext;\n+import org.hibernate.testing.boot.BootstrapContextImpl;\n+import org.junit.jupiter.api.Test;\n+\n+import java.io.Serializable;\n+\n+import static org.assertj.core.api.Assertions.assertThat;\n+import static org.hibernate.orm.test.boot.models.SourceModelTestHelper.createBuildingContext;\n+\n+/**\n+ * Tests that {@link DomainModelCategorizationCollector} correctly collects\n+ * enum types from entity fields and java.* types from class hierarchies.\n+ */\n+public class EnumAndJavaTypeCategorizationTest {\n+\n+\tenum MyStatus {\n+\t\tACTIVE,\n+\t\tINACTIVE\n+",
+    "human": "POINTS:\n- [hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java:179] Why not collect all non-managed java types, but just the ones from the JDK?\n\n```suggestion\n\t\tif ( !isEntity( classDetails ) && !isEmbeddable( classDetails ) ) {\n```",
+    "mr": {
+      "text": "SUMMARY:\nThis PR enhances `DomainModelCategorizationCollector` to gather enum types from entity/embeddable/mapped-superclass fields and collect non-Hibernate-managed Java types from their class hierarchies. The implementation is clean and addresses a valid Quarkus native-image reflection requirement. However, there is a logical gap in hierarchy traversal for mapped superclasses, a naming/description mismatch regarding `java.*` filtering, and minor defensive-coding opportunities.\n\nPOINTS:\n- `hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java` (L165-188 `collectClassHierarchyJavaTypes`): The condition `if ( !isEntity( classDetails ) && !isEmbeddable( classDetails ) ) { javaTypes.add( className ); return; }` causes an early exit for mapped superclasses. This prevents traversal of their superclasses and interfaces. If a `@MappedSuperclass` extends a regular Java class or implements an interface, those types will be silently skipped. Consider removing the `return` or restructuring the logic to ensure full hierarchy traversal for all managed types.\n- `hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java` (L165-188 `collectClassHierarchyJavaTypes`): The PR description states it collects `java.*` types, but the code collects *all* non-entity/embeddable types in the hierarchy. If the intent is strictly `java.*` (e.g., `java.util`, `java.time`), a prefix check is missing. If the intent is \"all standard Java types in the hierarchy\", consider renaming `javaTypes` to `hierarchyTypes` or `nonManagedTypes` to avoid confusion with the `java.*` package namespace.\n- `hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java` (L63-70 `getEnumTypes`/`getJavaTypes`): The getters return mutable `HashSet` instances. Since this collector is consumed during boot and may be referenced by external tooling (like Quarkus), consider returning `Collections.unmodifiableSet(...)` or `Set.copyOf(...)` to prevent accidental external mutation and align with defensive API design.\n- `hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java` (L151-160 `collectFieldEnumTypes`): The method iterates direct fields but does not recursively inspect `@Embedded` fields. If an embeddable contains an enum field, it won't be collected here (though it may be caught when the embeddable itself is processed). Clarify if recursive embedded inspection is required or if the current scope is intentionally limited to direct fields.\n- `hibernate-core/src/test/java/org/hibernate/orm/test/boot/models/categorization/EnumAndJavaTypeCategorizationTest.java` (Truncated diff): The test file is cut off in the provided diff. Ensure the final test suite covers: (1) an entity extending a non-Hibernate class, (2) an entity implementing an interface, (3) a mapped superclass extending a base class (to validate the hierarchy traversal fix), and (4) enums nested within `@Embedded` types. This will properly validate the recursive logic and edge cases.",
+      "sec": 128.9,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Hierarchy traversal bug: early return for mapped superclasses skips superclass/interface traversal",
+            "verdict": "good",
+            "severity": "critical",
+            "score": 2,
+            "checked": "Verified in PR diff lines 165-188: the condition (!isEntity && !isEmbeddable) matches mapped superclasses, causing return before recursive getSuperClass()/getImplementedInterfaces() calls"
+          },
+          {
+            "point": "Naming mismatch: PR claims java.* filtering but code collects all non-entity/embeddable types",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "PR description states 'Collect java.* types from class hierarchies' but code has no package prefix check"
+          },
+          {
+            "point": "Mutable HashSet returned from getters - defensive coding suggestion",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Existing getters in same file also return mutable collections; standard defensive coding advice"
+          },
+          {
+            "point": "collectFieldEnumTypes doesn't recursively inspect @Embedded fields",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Method iterates direct fields only; embeddables are processed via their own apply() call"
+          },
+          {
+            "point": "Test coverage suggestions (truncated diff)",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Speculative since diff is cut off at line 194"
+          }
+        ],
+        "missed_human": [
+          "Human questioned why code collects only non-entity/embeddable types instead of ALL non-managed java types - broader scope concern about collection fidelity"
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 3
+      },
+      "net": 3
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThe PR introduces two new collection mechanisms in `DomainModelCategorizationCollector` to support Quarkus native image reflection registration: gathering enum types from entity/embeddable/mapped-superclass fields, and walking class hierarchies to collect non-Hibernate-managed types. The implementation is clean, correctly handles cycle prevention with a `visited` set, and integrates smoothly into the existing `apply(ClassDetails)` flow. However, there's a notable discrepancy between the PR description/field naming (`java.*` types) and the actual implementation (collects all non-entity/embeddable hierarchy types), and generic enum fields are currently skipped.\n\nPOINTS:\n- **`DomainModelCategorizationCollector.java` (L36, L168)**: The field is named `javaTypes` and the PR description states it collects `java.*` types, but the implementation collects **all** non-entity/embeddable types in the hierarchy (including `@MappedSuperclass`, custom interfaces, and application classes). This mismatch will cause confusion for consumers. \n  *Suggestion*: Rename to `hierarchyTypes` or `nonManagedHierarchyTypes`, and add a Javadoc clarifying that it captures the unmanaged portion of the class hierarchy. If Quarkus truly only needs JDK types, add `className.startsWith(\"java.\")` filtering.\n\n- **`DomainModelCategorizationCollector.java` (L155)**: `type.determineRawClass()` on a generic field like `List<MyEnum>` or `Map<String, MyEnum>` returns the container type (`List`/`Map`), not the enum. Consequently, enum types used as generic type arguments will not be collected.\n  *Suggestion*: If Quarkus requires these, consider extracting type arguments via `TypeDetails.getTypeArguments()` (if available) or document this as a known limitation. For direct field types, the current approach is fine.\n\n- **`DomainModelCategorizationCollector.java` (L168)**: The condition `!isEntity(classDetails) && !isEmbeddable(classDetails)` will cause `@MappedSuperclass` types to be added to `javaTypes` and halt further hierarchy traversal. Since mapped superclasses are Hibernate-managed, including them in a set named `javaTypes` (or even `hierarchyTypes`) may be unintended.\n  *Suggestion*: Explicitly exclude mapped superclasses if they should remain in the managed domain: `if (!isEntity(...) && !isEmbeddable(...) && !isMappedSuperclass(...))`. Alternatively, adjust the traversal logic to continue walking past mapped superclasses if their superclasses/interfaces need registration.\n\n- **`DomainModelCategorizationCollector.java` (L160-L176)**: The recursive `visited` set correctly prevents infinite loops in diamond inheritance scenarios. Good practice. Minor optimization: the `visited` set could be instantiated in the public overload and passed down, which is already done. No changes needed.\n\n- **`EnumAndJavaTypeCategorizationTest.java`**: Ensure the test covers the edge cases highlighted above: diamond inheritance, generic enum fields, and classes extending `@MappedSuperclass`. Adding assertions for what *should not* be collected (e.g., `java.lang.Object`, duplicate hierarchy entries) will strengthen coverage.",
+      "sec": 127.0,
+      "judge": {
+        "candidate": [
+          {
+            "point": "javaTypes field naming mismatch: named javaTypes but collects ALL non-entity/embeddable types, not just java.*",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified in diff: collectClassHierarchyJavaTypes() uses !isEntity && !isEmbeddable condition with no java. prefix filtering, despite field name and PR description claiming java.* types"
+          },
+          {
+            "point": "Generic enum fields (List<MyEnum>) not collected since determineRawClass() returns container type, not type arguments",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified: determineRawClass() returns the raw class (e.g., List.class), not type arguments. Searched codebase for TypeDetails.getTypeArguments() - no such method exists on TypeDetails interface, so the specific suggestion is speculative but the observation is valid"
+          },
+          {
+            "point": "Mapped superclasses incorrectly added to javaTypes and traversal halts at return statement, preventing parent class hierarchy collection",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified in diff: condition !isEntity && !isEmbeddable passes for @MappedSuperclass types, javaTypes.add(className) executes, then return; halts further super/interface traversal - real bug where mapped superclasses are misclassified AND their ancestors are not collected"
+          },
+          {
+            "point": "Visited set correctly prevents infinite loops in diamond inheritance - good practice",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Confirmed visited.add(className) pattern prevents cycles, but this is praise not a finding"
+          },
+          {
+            "point": "Test should cover edge cases: diamond inheritance, generic enum fields, mapped superclasses, java.lang.Object exclusion",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague test improvement suggestions, not actionable findings"
+          }
+        ],
+        "missed_human": [],
+        "n_good": 3,
+        "n_wrong": 0,
+        "n_trivial": 2,
+        "n_missed": 0,
+        "net_score": 3
+      },
+      "net": 3
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nThis PR adds enum and java.* type collection to `DomainModelCategorizationCollector` for Quarkus native image reflection registration. The approach is sound, but `collectClassHierarchyJavaTypes` stops recursing at mapped superclasses instead of traversing their parent hierarchy, causing java.* base types of mapped superclasses to be missed.\n\nPOINTS:\n- [hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java:178-181] **Mapped superclasses terminate recursion prematurely.** The condition `!isEntity(classDetails) && !isEmbeddable(classDetails)` causes mapped superclasses (which are neither entities nor embeddables) to fall through to `javaTypes.add(className); return;` \u2014 the superclass chain is never traversed. Per the PR description, the goal is to \"Collect `java.*` types from class hierarchies of managed types\" including mapped superclasses. If a mapped superclass implements `Serializable`, only the mapped superclass name is collected, not `java.io.Serializable`. Fix: change the condition to `!isEntity(classDetails) && !isEmbeddable(classDetails) && !isMappedSuperclass(classDetails)` so mapped superclasses also recurse into their parent hierarchy. (Note: `isMappedSuperclass` is already imported via `import static org.hibernate.boot.model.internal.EntityBinder.isMappedSuperclass;`.)\n\n- [hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java:169-181] **Double-counting mapped superclasses across entity hierarchies.** Because mapped superclasses are added to `javaTypes` when processed (as the early return above adds them), AND because `apply(ClassDetails)` is called once per class, a mapped superclass used by multiple entities will have its own name added to `javaTypes` exactly once (good), but with the recursion bug above, its java.* interfaces are never collected. The fix for the first point resolves both issues.\n\n- [hibernate-core/src/test/java/org/hibernate/orm/test/boot/models/categorization/EnumAndJavaTypeCategorizationTest.java] **Test coverage gap for mapped superclass java.* inheritance.** The test imports `java.io.Serializable`, suggesting a mapped superclass may implement it. Ensure the test asserts that `java.io.Serializable` (or whichever java.* type is used) appears in `collector.getJavaTypes()` when a mapped superclass implements it. With the current implementation, this assertion would fail due to the recursion bug above. The test should cover at minimum: (1) enum field on entity, (2) enum field on mapped superclass, (3) enum field on embeddable, (4) java.* interface on entity, (5) java.* interface on mapped superclass, (6) java.* superclass on entity.\n\n- [hibernate-core/src/main/java/org/hibernate/boot/models/internal/DomainModelCategorizationCollector.java:164-172] **Minor: Defensive null-check on `determineRawClass()` result in `collectFieldEnumTypes`.** The method checks `fieldTypeClass != null` before calling `isEnum()`, which is correct. However, `TypeDetails.Kind.CLASS` does not guarantee `determineRawClass()` returns non-null (it may fail to resolve the class). The existing null guard is appropriate \u2014 no change needed, just confirming this is handled correctly.",
+      "sec": 551.8,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Mapped superclasses terminate recursion prematurely due to condition !isEntity && !isEmbeddable causing early return without traversing parent hierarchy",
+            "verdict": "good",
+            "severity": "critical",
+            "score": 2,
+            "checked": "Verified in diff: condition evaluates TRUE for mapped superclasses, triggers javaTypes.add+return without recursing into superclass chain. isMappedSuperclass is already imported via static import at line 22."
+          },
+          {
+            "point": "Double-counting mapped superclasses across entity hierarchies",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Claim is confused - visited Set prevents duplicates, apply() called once per class. Real issue is recursion bug from point 1. Redundant/confused analysis."
+          },
+          {
+            "point": "Test coverage gap for mapped superclass java.* inheritance",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Test improvement advice, not a bug finding. Not actionable as a code issue."
+          },
+          {
+            "point": "Minor defensive null-check on determineRawClass() in collectFieldEnumTypes",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "This is PRAISE stating null guard is appropriate - no change needed. Not a finding."
+          }
+        ],
+        "missed_human": [
+          "Why not collect only java.* types but instead collects all non-managed types? Code lacks className.startsWith('java.') filter, so non-JDK types incorrectly added to javaTypes set."
+        ],
+        "n_good": 1,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    }
+  },
+  {
+    "repo": "spring-projects/spring-boot",
+    "pr": 43086,
+    "reviewer": "wilkinsona",
+    "pr_input": "REPO: spring-projects/spring-boot\nPR #43086: Add the ability to trigger a Quartz job on-demand through an Actuator endpoint\nChanged files (8): spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc, spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java, spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpoint.java, spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebExtension.java, spring-boot-project/spring-boot-actuator/src/test/java/org/springframework/boot/actuate/quartz/QuartzEndpointTests.java, spring-boot-project/spring-boot-actuator/src/test/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebIntegrationTests.java, spring-boot-tests/spring-boot-smoke-tests/spring-boot-smoke-test-quartz/src/main/java/smoketest/quartz/SampleQuartzApplication.java, spring-boot-tests/spring-boot-smoke-tests/spring-boot-smoke-test-quartz/src/test/java/smoketest/quartz/SampleQuartzApplicationWebTests.java\nDiff (+288/-6):\nPR DESCRIPTION:\nBefore this commit, triggering a Quartz job on demand was not possible. This commit introduces a new `@WriteOperation` endpoint at `/actuator/quartz/jobs/{groupName}/{jobName}/trigger`, allowing a job to be triggered by specifying the `{jobName}`, `{groupName}`, and an optional `JobDataMap`.\r\n\r\nSee gh-42530\r\n\r\n```bash\r\n\r\n$ curl 'http://localhost:8080/actuator/quartz/jobs/samples/jobOne/trigger' -i -X POST \\\r\n    -H 'Content-Type: application/json' \\\r\n    -d '{\"jobData\":{\"key\":\"value\",\"keyN\":\"valueN\"}}'\r\n    \r\n```\r\n\r\n```http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/vnd.spring-boot.actuator.v3+json\r\nContent-Length: 166\r\n\r\n{\r\n  \"group\" : \"samples\",\r\n  \"name\" : \"jobOne\",\r\n  \"className\" : \"org.springframework.scheduling.quartz.DelegatingJob\",\r\n  \"triggerTime\" : \"2024-11-10T09:44:05.425233Z\"\r\n}\r\n\r\n```\n\nDIFF:\n\n--- spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc (+33/-0) ---\n@@ -156,6 +156,39 @@ The following table describes the structure of the response:\n include::partial$rest/actuator/quartz/job-details/response-fields.adoc[]\n \n \n+[[quartz.trigger-job]]\n+== Trigger Quartz Job On Demand\n+\n+To trigger a particular Quartz job, make a `POST` request to `/actuator/quartz/jobs/\\{groupName}/\\{jobName}`, as shown in the following curl-based example:\n+\n+include::partial$rest/actuator/quartz/trigger-job/curl-request.adoc[]\n+\n+The preceding example demonstrates how to trigger a job that belongs to the `samples` group and is named `jobOne`.\n+\n+The response will look similar to the following:\n+\n+include::partial$rest/actuator/quartz/trigger-job/http-response.adoc[]\n+\n+\n+[[quartz.trigger-job.request-structure]]\n+=== Request Structure\n+\n+The request specifies a desired `state` associated with a particular job.\n+Sending an HTTP Request with a  `\"state\": \"running\"` body indicates that the job should be run now.\n+The following table describes the structure of the request:\n+\n+[cols=\"2,1,3\"]\n+include::partial$rest/actuator/quartz/trigger-job/request-fields.adoc[]\n+\n+[[quartz.trigger-job.response-structure]]\n+=== Response Structure\n+\n+The response contains the details of a triggered job.\n+The following table describes the structure of the response:\n+\n+[cols=\"2,1,3\"]\n+include::partial$rest/actuator/quartz/trigger-job/response-fields.adoc[]\n+\n \n [[quartz.trigger]]\n == Retrieving Details of a Trigger\n--- spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java (+25/-1) ---\n@@ -1,5 +1,5 @@\n /*\n- * Copyright 2012-2024 the original author or authors.\n+ * Copyright 2012-2025 the original author or authors.\n  *\n  * Licensed under the Apache License, Version 2.0 (the \"License\");\n  * you may not use this file except in compliance with the License.\n@@ -24,6 +24,7 @@\n import java.util.Date;\n import java.util.LinkedHashSet;\n import java.util.List;\n+import java.util.Map;\n import java.util.Map.Entry;\n import java.util.TimeZone;\n \n@@ -54,9 +55,11 @@\n import org.springframework.boot.actuate.endpoint.Show;\n import org.springframework.boot.actuate.quartz.QuartzEndpoint;\n import org.springframework.boot.actuate.quartz.QuartzEndpointWebExtension;\n+import org.springframework.boot.json.JsonWriter;\n import org.springframework.context.annotation.Bean;\n import org.springframework.context.annotation.Configuration;\n import org.springframework.context.annotation.Import;\n+import org.springframework.http.MediaType;\n import org.springframework.restdocs.payload.FieldDescriptor;\n import org.springframework.restdocs.payload.JsonFieldType;\n import org.springframework.scheduling.quartz.DelegatingJob;\n@@ -68,8 +71,12 @@\n import static org.mockito.BDDMockito.given;\n import static org.mockito.Mockito.mock;\n import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;\n+import static org.springframework.restdocs.operation.preprocess.Preprocessors.preprocessRequest;\n+import static org.springframework.restdocs.operation.preprocess.Preprocessors.preprocessResponse;\n+import static org.springframework.restdocs.operation.preprocess.Preprocessors.prettyPrint;\n import static org.springframework.restdocs.payload.PayloadDocumentation.fieldWithPath;\n import static org.springframework.restdocs.payload.PayloadDocumentation.relaxedResponseFields;\n+import static org.springframework.restdocs.payload.PayloadDocumentation.requestFields;\n import static org.springframework.restdocs.payload.PayloadDocumentation.responseFields;\n import static org.springframework.restdocs.payload.PayloadDocumentation.subsectionWithPath;\n \n@@ -385,6 +392,23 @@ void quartzTriggerCustom() throws Exception {\n \t\t\t\t\t\t.andWithPrefix(\"custom.\", customTriggerSummary)));\n \t}\n \n+\t@Test\n+\tvoid quartzTriggerJob() throws Exception {\n+\t\tmockJobs(jobOne);\n+\t\tString json = JsonWriter.standard().writeToString(Map.of(\"state\", \"running\"));\n+\t\tassertThat(this.mvc.post()\n+\t\t\t.content(json)\n+\t\t\t.contentType(MediaType.APPLICATION_JSON)\n+\t\t\t.uri(\"/actuator/quartz/jobs/samples/jobOne\"))\n+\t\t\t.hasStatusOk()\n+\t\t\t.apply(document(\"quartz/trigger-job\", preprocessRequest(), preprocessResponse(prettyPrint()),\n+\t\t\t\t\trequestFields(fieldWithPath(\"state\").description(\"The desired state of the job.\")),\n+\t\t\t\t\tresponseFields(fieldWithPath(\"group\").description(\"Name of the group.\"),\n+\t\t\t\t\t\t\tfieldWithPath(\"name\").description(\"Name of the job.\"),\n+\t\t\t\t\t\t\tfieldWithPath(\"className\").description(\"Fully qualified name of the job implementation.\"),\n+\t\t\t\t\t\t\tfieldWithPath(\"triggerTime\").description(\"Time the job is triggered.\"))));\n+\t}\n+\n \tprivate <T extends Trigger> void setupTriggerDetails(TriggerBuilder<T> builder, TriggerState state)\n \t\t\tthrows SchedulerException {\n \t\tT trigger = bu",
+    "human": "POINTS:\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebExtension.java:84] Thanks. I'd missed the API for pausing and resuming a job. It's an alias for pausing/resuming all of a job's triggers and doesn't affect the state of the job itself, just its associated triggers. I'm not sure how we might add similar functionality to the Quartz endpoint. Posting something like `state: paused` to a job doesn't feel right to me given that it's actually the triggers' state that would change. It's also not clear to me what a job's state would be if some of its triggers were paused and others were running as normal.\r\n\r\n> just to clarify one more time\u2026\r\n\r\nYes, that's the preferred direction right now. I'm not totally sure about `\"running\": \"true\"` vs something like `\"state\": \"running\"`. The latter feels like it would provide more scope for changes in the future but it should be relatively easy to change the exact payload once the general structure's in place.",
+    "mr": {
+      "text": "SUMMARY:\nThis PR introduces a new Actuator `@WriteOperation` to trigger Quartz jobs on-demand. The implementation adds documentation, a documentation test, and updates related test/smoke files. While the feature aligns with Spring Boot's actuator extensibility model, there are significant inconsistencies between the PR description, the documentation, and the test code regarding the endpoint path and request payload schema. These discrepancies need to be resolved before merging to ensure API contract clarity and accurate documentation.\n\nPOINTS:\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc` (lines ~160-165)** & **`QuartzEndpointDocumentationTests.java` (line ~400)**: **Endpoint Path Mismatch**  \n  The PR description specifies the path as `/actuator/quartz/jobs/{groupName}/{jobName}/trigger`, but both the documentation and the test use `/actuator/quartz/jobs/{groupName}/{jobName}`. Please align the path across the description, docs, and implementation. If the `/trigger` suffix is intentional, update the docs/tests. If not, update the PR description.\n\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc` (lines ~178-180)** & **`QuartzEndpointDocumentationTests.java` (lines ~398-402)**: **Request Payload Schema Inconsistency**  \n  The PR description shows a request body of `{\"jobData\":{\"key\":\"value\"}}`, while the documentation and test use `{\"state\": \"running\"}`. This is a critical contract mismatch. If the endpoint is designed to change job states, the naming and description should reflect a generic state-management operation. If it's strictly for on-demand triggering, the `state` field is redundant and the endpoint should accept an optional `jobData` payload as described.\n\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc` (lines ~178-180)**: **Documentation Wording vs. Endpoint Purpose**  \n  The text states: *\"The request specifies a desired `state` associated with a particular job. Sending an HTTP Request with a `\"state\": \"running\"` body indicates that the job should be run now.\"* This implies a broader state-change endpoint rather than a dedicated trigger endpoint. Clarify whether this endpoint supports other states (e.g., `paused`, `normal`) or simplify the contract to accept an optional `JobDataMap` directly without a `state` wrapper.\n\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java` (lines ~395-414)**: **Mock Coverage for Trigger Operation**  \n  The test calls `mockJobs(jobOne)` but the diff doesn't show how the scheduler's `triggerJob` method is mocked. Ensure the mock correctly simulates the trigger behavior and handles the payload (whether `state` or `jobData`) to prevent the documentation test from passing without actually exercising the new `@WriteOperation` logic.\n\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java` (line ~2)**: **Copyright Year Update**  \n  Updated to `2025`. This is acceptable if aligned with your release cycle, but verify it matches the project's automated copyright policy to avoid premature year bumps in other files.\n\n- **General**: Only 2 of the 8 changed files are provided in the diff. Please ensure the actual `QuartzEndpoint.java` and `QuartzEndpointWebExtension.java` implementations correctly map the POST request to the new operation, handle path collisions with existing GET endpoints, and properly deserialize the chosen request payload schema.",
+      "sec": 98.9,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Endpoint Path Mismatch - PR description says `/trigger` suffix but docs/tests don't",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified PR description shows `/actuator/quartz/jobs/{groupName}/{jobName}/trigger` but diff shows docs/test use `/actuator/quartz/jobs/{groupName}/{jobName}` without `/trigger` suffix"
+          },
+          {
+            "point": "Request Payload Schema Inconsistency - PR shows `jobData` but implementation uses `state`",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified PR description shows `{\"jobData\":{\"key\":\"value\"}}` but diff test sends `{\"state\":\"running\"}` and docs describe state field"
+          },
+          {
+            "point": "Documentation wording implies broader state-change endpoint",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Human reviewer confirms 'state' approach is intentional design for future extensibility; not a bug"
+          },
+          {
+            "point": "Mock coverage - scheduler.triggerJob not mocked in test",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "mockJobs() only mocks getJobDetail/getJobGroupNames/getJobKeys; triggerJob() is void so test passes without mocking, minor testing gap"
+          },
+          {
+            "point": "Copyright year updated to 2025",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Standard housekeeping practice, not actionable"
+          },
+          {
+            "point": "General advice about checking remaining files",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague non-actionable advice without seeing full diff"
+          }
+        ],
+        "missed_human": [
+          "Human reviewer identified that Quartz's pauseJob/resumeJob operates on TRIGGERS not jobs, so posting `state: paused` to a job endpoint has semantic issues and unclear behavior when some triggers are paused and others running"
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 4,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThe PR introduces a new write operation to trigger Quartz jobs on-demand via the Actuator. While the feature addresses a valid use case, there are significant inconsistencies between the PR description, the documentation, and the documentation tests regarding the endpoint path and request payload. The visible changes also contain conceptual mismatches with Quartz's API that should be resolved before merging.\n\nPOINTS:\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc`**\n  - **Path Mismatch**: The documentation states `POST /actuator/quartz/jobs/{groupName}/{jobName}`, which directly overlaps with the existing `GET` endpoint for retrieving job details. The PR description correctly suggests a `/trigger` suffix (`/actuator/quartz/jobs/{groupName}/{jobName}/trigger`). Align the documentation with the `/trigger` suffix to maintain clear separation between read and write operations.\n  - **Incorrect Request Payload Description**: The docs claim `The request specifies a desired state associated with a particular job. Sending an HTTP Request with a \"state\": \"running\" body indicates that the job should be run now.` Quartz jobs do not have a `state` field that triggers execution. This appears to be copied from trigger management endpoints. The request should instead accept an optional `jobData` map (or be empty), matching Quartz's `Scheduler.triggerJob(JobKey, JobDataMap)` API.\n\n- **`spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java`**\n  - **Test URI & Payload Inconsistency**: The test uses `.uri(\"/actuator/quartz/jobs/samples/jobOne\")` and sends `{\"state\": \"running\"}`. This contradicts both the PR description and standard Quartz semantics. Update the URI to include the `/trigger` suffix and change the request body to `{\"jobData\": {\"key\": \"value\"}}` (or an empty object `{}`) to accurately reflect the intended API contract.\n  - **Response Field Validation**: The test documents `triggerTime` as `\"Time the job is triggered.\"`. Ensure the implementation returns the `Date` provided by `Scheduler.triggerJob()` (which represents the scheduled fire time) and that it's serialized consistently with other timestamp fields in the Actuator.\n\n- **General / Implementation (Missing from Diff)**\n  - **Write Operation Routing**: Since the diff for `QuartzEndpointWebExtension.java` is not included, verify that the new `@WriteOperation` is correctly mapped. Using a distinct path suffix (`/trigger`) will simplify routing and avoid conflicts with the existing `@ReadOperation` that uses `@Selector` parameters.\n  - **Exception Handling & Security**: Ensure the new method properly catches and translates `SchedulerException` (e.g., if the job doesn't exist or the scheduler is paused). As a write operation, confirm that appropriate security constraints are applied and that sensitive `JobDataMap` values are sanitized if echoed back in the response.",
+      "sec": 118.7,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Path Mismatch: docs use /actuator/quartz/jobs/{groupName}/{jobName} without /trigger suffix, conflicting with existing GET endpoint",
+            "verdict": "wrong",
+            "severity": "none",
+            "score": -1,
+            "checked": "Verified QuartzEndpointWebExtension.java (lines 75-80) uses @Selector for path routing. Verified LoggersEndpoint.java (lines 90-109) demonstrates Spring Boot convention: same path for @ReadOperation and @WriteOperation, differentiated by HTTP method. Path overlap is NOT an issue in Spring Boot."
+          },
+          {
+            "point": "Incorrect Request Payload: claims 'state: running' is copied from trigger endpoints and should be jobData instead",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "Human reviewer explicitly ENDORSES 'state: running' as preferred direction: \"I'm not totally sure about 'running: true' vs something like 'state: running'. The latter feels like it would provide more scope for changes in the future\". Candidate contradicts the agreed-upon API design."
+          },
+          {
+            "point": "Test URI & Payload Inconsistency: test uses wrong URI without /trigger and wrong payload with state:running",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "Test is internally consistent with the PR's chosen API design (state: running on /jobs/{group}/{name}). Human reviewer endorsed this design. Candidate's suggestion to use jobData contradicts the direction."
+          },
+          {
+            "point": "Response Field Validation: ensure triggerTime is serialized consistently",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic best-practice advice with no specific violation identified in the code."
+          },
+          {
+            "point": "Write Operation Routing: using /trigger suffix will avoid conflicts with @ReadOperation",
+            "verdict": "wrong",
+            "severity": "none",
+            "score": -1,
+            "checked": "LoggersEndpoint.java proves Spring Boot supports same-path read/write operations. No conflict exists."
+          },
+          {
+            "point": "Exception Handling & Security: catch SchedulerException, apply security constraints, sanitize JobDataMap",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic advice without specific actionable findings. Existing code already handles SchedulerException via method signatures."
+          }
+        ],
+        "missed_human": [
+          "Human reviewer identified critical semantic issue: Quartz 'pauseJob' actually pauses all of a job's TRIGGERS, not the job itself. This raises the question of what a job's state should be when some triggers are paused and others are running - the candidate did not address this design concern.",
+          "Human reviewer endorsed 'state: running' as the preferred API direction; candidate failed to recognize this and instead advocated for the opposite approach (jobData)."
+        ],
+        "n_good": 0,
+        "n_wrong": 4,
+        "n_trivial": 2,
+        "n_missed": 2,
+        "net_score": -6
+      },
+      "net": -6
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nThis PR introduces a new `@WriteOperation` endpoint to trigger Quartz jobs on-demand via POST to `/actuator/quartz/jobs/{groupName}/{jobName}`, with optional `JobDataMap` in the request body. However, the diff claims +288 lines but shows only ~58 lines\u2014the core implementation methods are absent from the diff. There are also critical inconsistencies between the PR description, documentation prose, and test code regarding the request body schema and endpoint path.\n\nPOINTS:\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpoint.java] **Missing implementation**: The diff claims +288/-6 lines but displays only ~58 lines (documentation + tests). No `triggerJob()` method is visible. Verify the actual implementation was included in the PR.\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebExtension.java] **Missing @WriteOperation method**: No write operation exists to handle the POST request. Following the pattern in `LoggersEndpoint.java:100-109`, add a `@WriteOperation` method that validates path segments, delegates to `QuartzEndpoint.triggerJob()`, and returns `WebEndpointResponse` with appropriate status codes.\n- [spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java:395-396] **Request body inconsistency**: The test sends `{\"state\": \"running\"}` but the PR description shows `{\"jobData\":{\"key\":\"value\"}}`. These are entirely different schemas\u2014clarify which is the actual API contract.\n- [spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java:395-396] **Semantic confusion with \"state\"**: In Quartz, \"state\" refers to trigger states (NORMAL, PAUSED, ERROR, COMPLETE, etc.), not actions to perform. Using `\"state\": \"running\"` to trigger a job is misleading. If the intent is to pass job data, use `{\"jobData\": {...}}` instead.\n- [spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc] **Endpoint path inconsistency**: The PR description specifies `/actuator/quartz/jobs/{groupName}/{jobName}/trigger` (with /trigger suffix), the documentation curl references `/actuator/quartz/jobs/{groupName}/{jobName}`, and the test uses `/actuator/quartz/jobs/samples/jobOne` (no /trigger). Align the path across all artifacts.\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpoint.java] **Error handling for non-existent jobs**: Quartz's `scheduler.triggerJob(JobKey)` throws `ObjectNotFoundException` when the job doesn't exist. The implementation must catch this and return 404 (consistent with existing `handleNull()` pattern). Consider pre-checking with `scheduler.getJobDetail(jobKey)` first.\n- [spring-boot-project/spring-boot-actuator-autoconfigure/src/test/java/org/springframework/boot/actuate/autoconfigure/endpoint/web/documentation/QuartzEndpointDocumentationTests.java:400-403] **Test mocking incomplete**: The test mocks `jobOne` but does not mock `scheduler.triggerJob(JobKey, JobDataMap)`. Add: `given(this.scheduler.triggerJob(jobOne.getKey(), any())).willReturn(new Date())` so the test exercises the actual scheduler call and the returned `triggerTime` response field.\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebExtension.java] **Security consideration**: Existing read operations use `SecurityContext` and `Show` enum. Since triggering jobs is a side-effecting write operation, enforce authorization\u2014consider requiring authentication or specific roles before allowing job triggers.\n- [spring-boot-project/spring-boot-actuator-autoconfigure/src/docs/antora/modules/api/pages/rest/actuator/quartz.adoc:171] **Documentation accuracy**: The prose says \"Sending an HTTP Request with a `\"state\": \"running\"` body indicates that the job should be run now.\" This incorrectly implies setting a state rather than performing an action. Rewrite to clarify this triggers execution immediately.\n- [spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/quartz/QuartzEndpointWebExtension.java] **Path segment validation**: Following the existing `handle()` pattern (lines 85-92), validate that selector segments equal expected fixed values (e.g., \"jobs\") and return `WebEndpointResponse.STATUS_BAD_REQUEST` for invalid input, rather than letting downstream code fail.",
+      "sec": 1001.8,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Missing implementation - claims diff shows only ~58 lines but +288/-6 total",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "The diff provided only shows changes to quartz.adoc and QuartzEndpointDocumentationTests.java; other files are listed as changed but diffs are truncated. This is a diff presentation issue, not a code issue."
+          },
+          {
+            "point": "Missing @WriteOperation method - references LoggersEndpoint.java:100-109 as pattern",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified LoggersEndpoint.java lines 100-109 contain @WriteOperation for configureLogLevel. But this is what the PR should add (we're at BASE commit), so this is restating what the PR does."
+          },
+          {
+            "point": "Request body inconsistency - test sends {\"state\":\"running\"} but PR description shows {\"jobData\":{...}}",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Diff shows test at line 395-396 sends Map.of(\"state\", \"running\"). PR description curl shows jobData in body. These are different schemas that need alignment."
+          },
+          {
+            "point": "Semantic confusion with 'state' - in Quartz state refers to trigger states not actions",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Human reviewer explicitly discussed this preferring 'state: running' for future flexibility. Candidate raises valid concern but human already addressed and made a decision."
+          },
+          {
+            "point": "Endpoint path inconsistency - PR description has /trigger suffix, test doesn't",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "PR description shows '/actuator/quartz/jobs/{groupName}/{jobName}/trigger' but test at line 400 uses '/actuator/quartz/jobs/samples/jobOne' without /trigger suffix. Real inconsistency."
+          },
+          {
+            "point": "Error handling for non-existent jobs - scheduler.triggerJob throws ObjectNotFoundException",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Quartz API throws ObjectNotFoundException for non-existent jobs. Implementation must handle this and return 404 to match existing handleNull() pattern in QuartzEndpointWebExtension.java lines 93-98."
+          },
+          {
+            "point": "Test mocking incomplete - doesn't mock scheduler.triggerJob()",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Test's mockJobs() only mocks getJobDetail/getJobGroupNames/getJobKeys. Does not mock scheduler.triggerJob() so test wouldn't exercise the actual scheduler call or validate triggerTime response."
+          },
+          {
+            "point": "Security consideration - write operations should require authorization",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic advice. Existing read operations use SecurityContext/Show enum. The PR should handle security but this is vague non-actionable advice."
+          },
+          {
+            "point": "Documentation accuracy - prose incorrectly implies setting state rather than performing action",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Overlaps with human reviewer's discussion about 'state' semantics. Already addressed in human review."
+          },
+          {
+            "point": "Path segment validation - should follow existing handle() pattern for validation",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic advice about following existing patterns in QuartzEndpointWebExtension.java lines 82-91. The new implementation should do this but this is vague guidance."
+          }
+        ],
+        "missed_human": [
+          "Pausing/resuming a job is actually an alias for pausing/resuming ALL of a job's triggers - doesn't affect job state itself. Human reviewer raised concern about how to add similar functionality and what ambiguous states mean when some triggers paused and others running."
+        ],
+        "n_good": 4,
+        "n_wrong": 0,
+        "n_trivial": 6,
+        "n_missed": 1,
+        "net_score": 3
+      },
+      "net": 3
+    }
+  },
+  {
+    "repo": "agroal/agroal",
+    "pr": 168,
+    "reviewer": "franz1981",
+    "pr_input": "REPO: agroal/agroal\nPR #168: AG-294 - Update stamped array to use VarHandle\nChanged files (1): agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java\nDiff (+69/-71):\nPR DESCRIPTION:\nThis PR modernizes the collection to use Java 9+ `VarHandle` memory semantics (`getAcquire` and `setRelease`) that eliminate possible JMM vulnerabilities while maintaining the read performance.\n\nDIFF:\n\n--- agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java (+69/-71) ---\n@@ -3,6 +3,8 @@\n \n package io.agroal.pool.util;\n \n+import java.lang.invoke.MethodHandles;\n+import java.lang.invoke.VarHandle;\n import java.util.Arrays;\n import java.util.Collection;\n import java.util.Comparator;\n@@ -36,33 +38,31 @@ public T next() {\n             throw new NoSuchElementException();\n         }\n     };\n-    \n-    private final StampedLock lock;\n-    private long optimisticStamp;\n+\n+    private static final VarHandle DATA_HANDLE;\n+\n+    static {\n+        try {\n+            DATA_HANDLE = MethodHandles.lookup().findVarHandle( StampedCopyOnWriteArrayList.class, \"data\", Object[].class );\n+        } catch ( ReflectiveOperationException e ) {\n+            throw new ExceptionInInitializerError( e );\n+        }\n+    }\n+\n     private T[] data;\n \n+    private final StampedLock lock = new StampedLock();\n+\n     // -- //\n \n-    @SuppressWarnings( \"unchecked\" )\n+    @SuppressWarnings( \"ThisEscapedInObjectConstruction\" )\n     public StampedCopyOnWriteArrayList(Class<? extends T> clazz) {\n-        data = (T[]) newInstance( clazz, 0 );\n-        lock = new StampedLock();\n-        optimisticStamp = lock.tryOptimisticRead();\n+        DATA_HANDLE.setRelease( this, newInstance( clazz, 0 ) );\n     }\n \n+    @SuppressWarnings( \"unchecked\" )\n     private T[] getUnderlyingArray() {\n-        T[] array = data;\n-        if ( lock.validate( optimisticStamp ) ) {\n-            return array;\n-        }\n-\n-        // Acquiring a read lock does not increment the optimistic stamp\n-        long stamp = lock.readLock();\n-        try {\n-            return data;\n-        } finally {\n-            lock.unlockRead( stamp );\n-        }\n+        return (T[]) DATA_HANDLE.getAcquire( this );\n     }\n \n     @Override\n@@ -82,38 +82,32 @@ public boolean isEmpty() {\n         return size() == 0;\n     }\n \n-    @Override\n-    public T set(int index, T element) {\n-        long stamp = lock.writeLock();\n-        try {\n-            T old = data[index];\n-            data[index] = element;\n-            return old;\n-        } finally {\n-            optimisticStamp = lock.tryConvertToOptimisticRead( stamp );\n-        }\n-    }\n-\n     @Override\n     public boolean add(T element) {\n         long stamp = lock.writeLock();\n         try {\n-            data = Arrays.copyOf( data, data.length + 1 );\n-            data[data.length - 1] = element;\n+            T[] current = getUnderlyingArray();\n+            T[] array = Arrays.copyOf( current, current.length + 1 );\n+            array[array.length - 1] = element;\n+            DATA_HANDLE.setRelease( this, array );\n             return true;\n         } finally {\n-            optimisticStamp = lock.tryConvertToOptimisticRead( stamp );\n+            lock.unlockWrite( stamp );\n         }\n     }\n \n     public T removeLast() {\n         long stamp = lock.writeLock();\n         try {\n-            T element = data[data.length - 1];\n-            data = Arrays.copyOf( data, data.length - 1 );\n+            T[] current = getUnderlyingArray();\n+            if ( current.length == 0 ) {\n+                throw new NoSuchElementException();\n+            }\n+            T element = current[current.length - 1];\n+            DATA_HANDLE.setRelease( this, Arrays.copyOf( current, current.length - 1 ) );\n             return element;\n         } finally {\n-            optimisticStamp = lock.tryConvertToOptimisticRead( stamp );\n+            lock.unlockWrite( stamp );\n         }\n     }\n \n@@ -125,52 +119,55 @@ public boolean remove(Object element) {\n         }\n         long stamp = lock.writeLock();\n         try {\n-            if ( index >= data.length || element != data[index] ) {\n+            T[] current = getUnderlyingArray();\n+            if ( index >= current.length || element != current[index] ) {\n                 // contents changed, need to recheck the position of the element in the array\n-                int length = data.length;\n+                int length = current.length;\n                 for ( index = 0; index < length; index++ ) {\n-                    if ( element == data[index] ) {\n+                    if ( element == current[index] ) {\n                         break;\n                     }\n                 }\n-                if ( index == data.length ) {  // not found!\n+                if ( index == current.length ) {  // not found!\n                     return false;\n                 }\n             }\n-            T[] newData = Arrays.copyOf( data, data.length - 1 );\n-            if ( data.length - index - 1 != 0 ) {\n-                arraycopy( data, index + 1, newData, index, data.length - index - 1 );\n+            T[] newData = Arrays.copyOf( current, current.length - 1 );\n+            if ( current.length - index - 1 != 0 ) {\n+                arraycopy( current, index + 1, newData, index, current.length - index - 1 );\n             }\n-            data = newData;\n+            DATA_HANDLE.setRelease( this, newData );\n             return true;\n         } finally {\n-            optimisticStamp = lock.tryConvertToOptimisticRead( stamp );\n+            lock.unlockWrite( stamp );\n         }\n     }\n \n     @Override\n     public T remove(int index) {\n         long stamp = lock.writeLock();\n         try {\n-            T old = data[index];\n-            T[] array = Arrays.copyOf( data, data.length - 1 );\n-            if ( data.length - index - 1 != 0 ) {\n-                arraycopy( data, index + 1, array, index, data.length - index - 1 );\n+            T[] current = getUnderlyingArray();\n+            T old = current[index];\n+            T[] array = Arrays.copyOf( current, current.length - 1 );\n+            if ( current.length - index - 1 != 0 ) {\n+                arraycopy( current, index + 1, array, index, current.length - index - 1 );\n             }\n-            data = array;\n+            DATA_HANDLE.setRelease( this, array );\n             return old;\n         } finally {\n-            optimisticStamp = lock.tryConvertToOptimisticRe\n[... diff truncated ...]",
+    "human": "POINTS:\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:335] data[--index] is not ok. you have setRelease for elements to make sure they are correctly \"published\". So in theory you should have a `getAcquire` from the data[index] as well to have correct \"synchronized-with\" or \"acquire-release\" or \"happens-before\" rel",
+    "mr": {
+      "text": "SUMMARY:\nThis PR successfully modernizes `StampedCopyOnWriteArrayList` by replacing `StampedLock` optimistic reads with `VarHandle` (`getAcquire`/`setRelease`). The change simplifies the concurrency model, removes the complexity and validation overhead of `StampedLock`, and provides explicit, standards-compliant JMM guarantees for the copy-on-write publication pattern. The code is cleaner and aligns with modern Java 9+ concurrency practices. However, there is a critical API regression (removal of `List.set()`), and a few minor architectural notes should be addressed before merging.\n\nPOINTS:\n- `agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java`\n  - **Line ~70 (Removed `set(int, T)` method)**: The `@Override public T set(int index, T element)` method is completely deleted. If this class implements `java.util.List`, this breaks the interface contract and will cause compilation failures or `NoSuchMethodError` at runtime. Please restore it using the new `VarHandle` publication pattern, or explicitly document why the `List` contract is being intentionally violated.\n  - **Line ~45 (`DATA_HANDLE` static block)**: `MethodHandles.lookup().findVarHandle(...)` is correctly implemented. Wrapping `ReflectiveOperationException` in `ExceptionInInitializerError` is appropriate. Note: If this project uses strong module encapsulation (`module-info.java`), ensure the package is opened reflectively or that `VarHandle` lookup is permitted, though this is typically fine for internal utility classes.\n  - **Line ~58 (`getUnderlyingArray`)**: Replacing the `StampedLock` optimistic validation with `DATA_HANDLE.getAcquire(this)` is excellent. It guarantees visibility of the most recently published array without the CPU/cache overhead of stamp validation. The unchecked cast is acceptable given the generic array creation pattern used in the constructor.\n  - **Line ~88-95 (`add` / `finally` block)**: The `finally` block now uses `lock.unlockWrite(stamp)` instead of `lock.tryConvertToOptimisticRead(stamp)`. This is correct and simplifies the flow. While it means subsequent reads won't benefit from optimistic stamp conversion, `VarHandle.getAcquire` is sufficiently lightweight that this trade-off is justified. Also, calling `getUnderlyingArray()` inside the write lock is safe; the `getAcquire` semantics are consistent even if a plain read would suffice under exclusive lock.\n  - **Line ~52 (Constructor & `@SuppressWarnings`)**: `DATA_HANDLE.setRelease(this, ...)` passes `this` to a static method. The `@SuppressWarnings(\"ThisEscapedInObjectConstruction\")` is correctly applied here. `setRelease` only writes to the instance field and does not publish the reference to other threads before construction completes, so the suppression is safe.\n  - **Line ~120 (`remove(Object)` logic)**: The switch to `current` array references prevents stale reads during the copy operation, which is correct. Ensure the `index` variable used in `if ( index >= current.length || element != current[index] )` is properly initialized before lock acquisition (likely handled outside the visible diff). The logic correctly handles the CoW re-check pattern.\n  - **General Concurrency Semantics**: The combination of `StampedLock.writeLock()` for mutual exclusion during the copy phase, and `VarHandle.setRelease()` for publication, correctly implements the CoW pattern. `getAcquire`/`setRelease` establishes a proper happens-before relationship, eliminating the subtle JMM pitfalls that can occur with `StampedLock` optimistic reads when validation is missed or misused.",
+      "sec": 123.7,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Removed set(int, T) method breaks List interface contract",
+            "verdict": "good",
+            "severity": "critical",
+            "score": 2,
+            "checked": "BASE file line 26: class implements List<T>; lines 86-95: set() method exists and is removed in diff. List interface requires this method."
+          },
+          {
+            "point": "DATA_HANDLE static block implementation is correct",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Praising correct implementation; no issue identified"
+          },
+          {
+            "point": "getUnderlyingArray getAcquire replacement is excellent",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Praise for the change; no issue identified"
+          },
+          {
+            "point": "add/finally block unlockWrite is correct",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Validation of correct pattern; no issue identified"
+          },
+          {
+            "point": "Constructor @SuppressWarnings is safe",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Praise for suppression; no issue identified"
+          },
+          {
+            "point": "remove(Object) switch to current array is correct",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Praise for preventing stale reads; no issue identified"
+          },
+          {
+            "point": "General concurrency semantics are correct",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "High-level praise; no actionable finding"
+          }
+        ],
+        "missed_human": [
+          "data[--index] should use getAcquire for correct happens-before semantics (human line 335)"
+        ],
+        "n_good": 1,
+        "n_wrong": 0,
+        "n_trivial": 6,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThe PR successfully modernizes the concurrent collection by replacing the `StampedLock` optimistic read pattern with `VarHandle` (`getAcquire`/`setRelease`). This simplifies the read path, correctly establishes JMM happens-before relationships for the array reference swap, and removes unnecessary lock contention on reads. However, there is a critical compilation/interface contract issue, a few behavioral changes worth noting, and minor architectural observations.\n\nPOINTS:\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Lines ~75-85 in base)**: **Critical: `set(int, T)` method removed without replacement.** The class implements `java.util.List<T>`, which mandates a `set` implementation. Removing it entirely will cause a compilation error. Since this is a Copy-On-Write list, in-place mutation violates the CoW contract. Align with `java.util.concurrent.CopyOnWriteArrayList` by providing an implementation that throws `UnsupportedOperationException`.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Method `removeLast`)**: **Behavioral change: Empty list handling.** The base code threw `ArrayIndexOutOfBoundsException` on an empty list. The PR correctly adds an explicit length check and throws `NoSuchElementException`. This is an improvement and aligns with standard collection semantics, but note it as a breaking change for any code relying on the previous exception type.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Lines ~44-50)**: **`VarHandle` initialization.** Using `MethodHandles.lookup().findVarHandle(...)` is correct and functional. For stricter security/module boundaries, consider `MethodHandles.privateLookupIn(StampedCopyOnWriteArrayList.class, MethodHandles.lookup()).findVarHandle(...)`, though the current approach works fine for intra-class access.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Method `getUnderlyingArray`)**: **Read path simplification.** Replacing the `StampedLock` validation/fallback logic with a single `DATA_HANDLE.getAcquire(this)` is excellent. It correctly provides volatile-like read semantics without lock overhead, which is exactly what a CoW list needs for reference publication.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Write methods: `add`, `remove`, `removeLast`, etc.)**: **`StampedLock` retention for writes.** The PR keeps `StampedLock` solely for write mutual exclusion. Since optimistic reads are gone, `ReentrantLock` or `synchronized` would be simpler and more idiomatic. `StampedLock` isn't wrong, but it adds unnecessary complexity if only used for exclusive locking. Consider switching to `ReentrantLock` or `synchronized` blocks for clarity.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Constructor)**: **`@SuppressWarnings(\"ThisEscapedInObjectConstruction\")`**. The suppression is safe here because `VarHandle.setRelease` performs a direct store and does not publish `this` to other threads. However, note that `VarHandle` stores in constructors are generally safe as long as the reference isn't leaked, which it isn't.\n- **`agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java` (Truncated diff: `clear()`, `addAll()`)**: The diff cuts off before showing these methods. Please verify they follow the same pattern: acquire write lock, call `getUnderlyingArray()`, compute new array, call `DATA_HANDLE.setRelease()`, and unlock. Ensure `addAll` correctly handles the `Collection` iteration without holding the lock longer than necessary (current pattern looks correct).\n\nOverall, the `VarHandle` migration is well-executed and improves both correctness and performance. Address the missing `set` method and consider simplifying the write lock mechanism before merging.",
+      "sec": 124.5,
+      "judge": {
+        "candidate": [
+          {
+            "point": "set(int, T) method removed without replacement - class implements List<T> which mandates this method, causing compilation error",
+            "verdict": "good",
+            "severity": "critical",
+            "score": 2,
+            "checked": "Base code line 86-95 shows set(int, T) exists; diff shows it removed; class implements List<T> at line 26; List interface requires set(int, E)"
+          },
+          {
+            "point": "removeLast empty list behavior change from AIOOBE to NoSuchElementException",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Base code line 112: data[data.length-1] throws AIOOBE when empty; diff adds explicit check throwing NoSuchElementException"
+          },
+          {
+            "point": "VarHandle privateLookupIn suggestion for stricter security",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Current MethodHandles.lookup() works for intra-class access; suggestion is best practice, not required"
+          },
+          {
+            "point": "Read path simplification with getAcquire praised",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "This is praise, not a finding of an issue"
+          },
+          {
+            "point": "StampedLock retention for writes suggests using ReentrantLock or synchronized instead",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Architectural suggestion, not a bug or correctness issue"
+          },
+          {
+            "point": "@SuppressWarnings suppression confirmed safe",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Confirming code is fine, not a finding"
+          },
+          {
+            "point": "Truncated diff warning to verify clear(), addAll() patterns",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "General observation about incomplete diff, not a concrete code issue"
+          }
+        ],
+        "missed_human": [],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 5,
+        "n_missed": 0,
+        "net_score": 3
+      },
+      "net": 3
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nPR modernizes StampedCopyOnWriteArrayList to use VarHandle memory semantics, replacing optimistic StampedLock reads with getAcquire/setRelease. While the VarHandle approach is sound for publication safety, the PR removes the `set(int,T)` method causing a compilation failure since it's required by the List interface. Additionally, write methods mix two independent synchronization mechanisms (VarHandle + StampedLock) in a confusing way.\n\nPOINTS:\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:78] **CRITICAL - Compilation failure**: The `set(int index, T element)` method is removed but is an abstract method of `java.util.List<T>`. The class will fail to compile. Even though the subagent confirmed no internal callers use `set()`, the interface contract must be satisfied. Two options: (1) Re-implement with proper copy-on-write semantics: `T[] current = getUnderlyingArray(); T[] newArray = current.clone(); newArray[index] = element; DATA_HANDLE.setRelease(this, newArray); return current[index];` \u2014 or (2) Throw `UnsupportedOperationException` if the class intends to be append-only. The original `set()` also had a COW violation (it mutated `data[index]` in-place), so fixing this properly would be an improvement over the original.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:93] **Architectural concern**: All write methods (`add`, `remove`, `removeLast`, `clear`, `addAll`) call `getUnderlyingArray()` while holding the StampedLock write lock, but `getUnderlyingArray()` uses `DATA_HANDLE.getAcquire(this)` which operates independently of the StampedLock. While this technically works (write lock serializes writers, VarHandle ensures visibility), it mixes two unrelated synchronization mechanisms. Consider extracting `getUnderlyingArray()` only for read-only paths, and have write methods directly access `data` (or use a private accessor) inside the write lock. This would make the code's intent clearer: VarHandle for safe publication/reads, StampedLock for write mutual exclusion.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:56] **Minor constructor race**: The `setRelease()` call publishes `data` before `lock = new StampedLock()` completes. The `@SuppressWarnings(\"ThisEscapedInObjectConstruction\")` acknowledges this. While `StampedLock` is stateless at construction (it creates its own internal state), a concurrent reader could theoretically see a non-null `data` before `lock` is initialized. Consider reordering: construct `lock` first, then call `setRelease()` on `data` \u2014 or use `setPlaintest()` for the constructor-only initialization since only one thread accesses the object during construction.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:106-111] **Behavioral change in `removeLast()`**: Now throws `NoSuchElementException` on empty list instead of `ArrayIndexOutOfBoundsException`. This is a safer API, but it's a behavioral change worth noting. The subagent confirmed no internal callers use `removeLast()`, so this is low risk, but if external users depend on `removeLast()`, they may see a different exception type.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:66] **Performance claim verification**: The PR description states the change \"maintains the read performance.\" The old code used `StampedLock.tryOptimisticRead()` which could fail and fall back to a read lock. The new code uses `VarHandle.getAcquire()` which is a single memory barrier load with no retry logic \u2014 actually simpler and more predictable for reads. This is correct and well-motivated.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/StampedCopyOnWriteArrayList.java:38-44] **Good practice**: The static initializer for `DATA_HANDLE` uses proper exception handling with `ExceptionInInitializerError`, which is the recommended pattern for VarHandle initialization failures.",
+      "sec": 293.3,
+      "judge": {
+        "candidate": [
+          {
+            "point": "set(int,T) removal causes compilation failure (List interface)",
+            "verdict": "good",
+            "severity": "critical",
+            "score": 2,
+            "checked": "base code lines 86-95 show set() exists; class implements List<T> at line 26; diff removes it"
+          },
+          {
+            "point": "Mixing VarHandle + StampedLock in write methods",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "diff shows write methods call getUnderlyingArray() with getAcquire while holding write lock"
+          },
+          {
+            "point": "Constructor race - setRelease before lock initialized",
+            "verdict": "wrong",
+            "severity": "none",
+            "score": -1,
+            "checked": "diff shows lock has inline initializer which runs before constructor body; no race exists"
+          },
+          {
+            "point": "removeLast() throws NoSuchElementException instead of ArrayIndexOutOfBoundsException",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "base code line 112 throws AIOOBE implicitly; diff adds explicit check with NSEE"
+          },
+          {
+            "point": "Performance claim verification - getAcquire simpler than optimistic read",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "confirms PR motivation but doesn't identify issues"
+          },
+          {
+            "point": "VarHandle static initializer pattern is good practice",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "pure praise of existing code pattern"
+          }
+        ],
+        "missed_human": [
+          "data[--index] should use getAcquire for JMM semantics (line 335) - candidate did not address JMM element access concerns"
+        ],
+        "n_good": 3,
+        "n_wrong": 1,
+        "n_trivial": 2,
+        "n_missed": 1,
+        "net_score": 3
+      },
+      "net": 3
+    }
+  },
+  {
+    "repo": "eclipse-vertx/vert.x",
+    "pr": 3462,
+    "reviewer": "franz1981",
+    "pr_input": "REPO: eclipse-vertx/vert.x\nPR #3462: Reduced wrappers and copies on BufferImpl to reduce allocations and CPU usage\nChanged files (4): src/main/java/io/vertx/core/buffer/ByteBufUtils.java, src/main/java/io/vertx/core/buffer/impl/BufferImpl.java, src/main/java/io/vertx/core/http/impl/HttpServerResponseImpl.java, src/test/benchmarks/io/vertx/benchmarks/BufferCreationBenchmark.java\nDiff (+216/-22):\nPR DESCRIPTION:\nBuffer creation is creating unecessary Netty ByteBuf wrappers and performing avoidable copies while encoding into US_ASCII/UTF 8 and other charsets.\n\nDIFF:\n\n--- src/main/java/io/vertx/core/buffer/ByteBufUtils.java (+136/-0) ---\n@@ -0,0 +1,136 @@\n+/*\n+ * Copyright (c) 2011-2017 Contributors to the Eclipse Foundation\n+ *\n+ * This program and the accompanying materials are made available under the\n+ * terms of the Eclipse Public License 2.0 which is available at\n+ * http://www.eclipse.org/legal/epl-2.0, or the Apache License, Version 2.0\n+ * which is available at https://www.apache.org/licenses/LICENSE-2.0.\n+ *\n+ * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0\n+ */\n+\n+package io.vertx.core.buffer;\n+\n+import io.netty.buffer.*;\n+import io.netty.util.AsciiString;\n+import io.netty.util.CharsetUtil;\n+import io.netty.util.internal.PlatformDependent;\n+\n+import java.nio.charset.Charset;\n+import java.util.Objects;\n+\n+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;\n+import static io.netty.util.internal.StringUtil.isSurrogate;\n+\n+public final class ByteBufUtils {\n+  private ByteBufUtils() {\n+\n+  }\n+\n+  // this wrapper is used to save copying byte[]\n+  private static final class UnpooledWrappedByteBuf extends UnpooledHeapByteBuf {\n+\n+    protected UnpooledWrappedByteBuf(ByteBufAllocator alloc, byte[] initialArray, int maxCapacity) {\n+      super(alloc, initialArray, maxCapacity);\n+    }\n+  }\n+\n+  public static UnpooledHeapByteBuf unpooledNotInstrumentedHeapByteBuf(int initialCapacity, int maxCapacity) {\n+    checkPositiveOrZero(initialCapacity, \"initialCapacity\");\n+    // this save instrumented heap ByteBuf allocation that would save statistics collection\n+    return PlatformDependent.hasUnsafe() ?\n+      new UnpooledUnsafeHeapByteBuf(UnpooledByteBufAllocator.DEFAULT, initialCapacity, maxCapacity) :\n+      new UnpooledHeapByteBuf(UnpooledByteBufAllocator.DEFAULT, initialCapacity, maxCapacity);\n+  }\n+\n+  public static ByteBuf unpooledBufferOf(String str, String enc) {\n+    final Charset charset = Charset.forName(Objects.requireNonNull(enc));\n+    final byte[] bytes;\n+    if (charset.equals(CharsetUtil.UTF_8)) {\n+      bytes = new byte[ByteBufUtil.utf8Bytes(str)];\n+      writeUtf8(bytes, 0, str, 0, str.length());\n+    } else if (charset.equals(CharsetUtil.US_ASCII) || charset.equals(CharsetUtil.ISO_8859_1)) {\n+      bytes = new byte[str.length()];\n+      writeAscii(bytes, 0, str, str.length());\n+    } else {\n+      bytes = str.getBytes(charset);\n+    }\n+    return new UnpooledWrappedByteBuf(UnpooledByteBufAllocator.DEFAULT, bytes, Integer.MAX_VALUE);\n+  }\n+\n+  public static ByteBuf unpooledBufferOf(String str, Charset charset) {\n+    final byte[] bytes;\n+    if (charset.equals(CharsetUtil.UTF_8)) {\n+      bytes = new byte[ByteBufUtil.utf8Bytes(str)];\n+      writeUtf8(bytes, 0, str, 0, str.length());\n+    } else if (charset.equals(CharsetUtil.US_ASCII) || charset.equals(CharsetUtil.ISO_8859_1)) {\n+      bytes = new byte[str.length()];\n+      writeAscii(bytes, 0, str, str.length());\n+    } else {\n+      bytes = str.getBytes(charset);\n+    }\n+    return new UnpooledWrappedByteBuf(UnpooledByteBufAllocator.DEFAULT, bytes, Integer.MAX_VALUE);\n+  }\n+\n+  public static ByteBuf utf8UnpooledBufferOf(String str) {\n+    byte[] bytes = new byte[ByteBufUtil.utf8Bytes(str)];\n+    writeUtf8(bytes, 0, str, 0, str.length());\n+    return new UnpooledWrappedByteBuf(UnpooledByteBufAllocator.DEFAULT, bytes, Integer.MAX_VALUE);\n+  }\n+\n+  private static final byte WRITE_UTF_UNKNOWN = (byte) '?';\n+\n+  static int writeAscii(byte[] buffer, int writerIndex, CharSequence seq, int len) {\n+    for (int i = 0; i < len; i++) {\n+      buffer[writerIndex++] = AsciiString.c2b(seq.charAt(i));\n+    }\n+    return len;\n+  }\n+\n+  // Fast-Path implementation\n+  private static int writeUtf8(byte[] buffer, int writerIndex, CharSequence seq, int start, int end) {\n+    int oldWriterIndex = writerIndex;\n+    for (int i = start; i < end; i++) {\n+      char c = seq.charAt(i);\n+      if (c < 0x80) {\n+        buffer[writerIndex++] = (byte) c;\n+      } else if (c < 0x800) {\n+        buffer[writerIndex++] = (byte) (0xc0 | (c >> 6));\n+        buffer[writerIndex++] = (byte) (0x80 | (c & 0x3f));\n+      } else if (isSurrogate(c)) {\n+        if (!Character.isHighSurrogate(c)) {\n+          buffer[writerIndex++] = WRITE_UTF_UNKNOWN;\n+          continue;\n+        }\n+        // Surrogate Pair consumes 2 characters.\n+        if (++i == end) {\n+          buffer[writerIndex++] = WRITE_UTF_UNKNOWN;\n+          break;\n+        }\n+        // Extra method to allow inlining the rest of writeUtf8 which is the most likely code path.\n+        writerIndex = writeUtf8Surrogate(buffer, writerIndex, c, seq.charAt(i));\n+      } else {\n+        buffer[writerIndex++] = (byte) (0xe0 | (c >> 12));\n+        buffer[writerIndex++] = (byte) (0x80 | ((c >> 6) & 0x3f));\n+        buffer[writerIndex++] = (byte) (0x80 | (c & 0x3f));\n+      }\n+    }\n+    return writerIndex - oldWriterIndex;\n+  }\n+\n+  private static int writeUtf8Surrogate(byte[] buffer, int writerIndex, char c, char c2) {\n+    if (!Character.isLowSurrogate(c2)) {\n+      buffer[writerIndex++] = WRITE_UTF_UNKNOWN;\n+      buffer[writerIndex++] = (byte) (Character.isHighSurrogate(c2) ? WRITE_UTF_UNKNOWN : c2);\n+      return writerIndex;\n+    }\n+    int codePoint = Character.toCodePoint(c, c2);\n+    // See http://www.unicode.org/versions/Unicode7.0.0/ch03.pdf#G2630.\n+    buffer[writerIndex++] = (byte) (0xf0 | (codePoint >> 18));\n+    buffer[writerIndex++] = (byte) (0x80 | ((codePoint >> 12) & 0x3f));\n+    buffer[writerIndex++] = (byte) (0x80 | ((codePoint >> 6) & 0x3f));\n+    buffer[writerIndex++] = (byte) (0x80 | (codePoint & 0x3f));\n+    return writerIndex;\n+  }\n+\n+}\n--- src/main/java/io/vertx/core/buffer/impl/BufferImpl.java (+10/-10) ---\n@@ -16,13 +16,13 @@\n import io.netty.buffer.Unpooled;\n import io.netty.util.CharsetUtil;\n import io.vertx.core.buffer.Buffer;\n+import io.vertx.core.buffer.ByteBufUtils;\n import io.vertx.core.impl.Arguments;\n import io.vertx.core.json.JsonArray;\n import io.vertx.core.json.JsonObject;\n \n import java.nio.ByteBuffer;\n import java.nio\n[... diff truncated ...]",
+    "human": "POINTS:\n- [src/main/java/io/vertx/core/buffer/ByteBufUtils.java:25] I can see a lot of interesting algorithms here, it would be better if we could reuse them from Netty directly",
+    "mr": {
+      "text": "SUMMARY:\nThe PR introduces `ByteBufUtils`, a performance-focused utility that bypasses Netty's default `CharsetEncoder` pipeline and avoids intermediate allocations when converting strings to `ByteBuf`. It implements fast-path UTF-8 and ASCII/ISO-8859-1 encoding directly into a pre-sized `byte[]`, then wraps it in a non-instrumented heap `ByteBuf`. The approach aligns well with Netty's internal optimization patterns and directly addresses the stated goal of reducing allocations and CPU overhead in hot paths. The implementation is largely sound, with only minor visibility, defensive programming, and documentation improvements recommended.\n\nPOINTS:\n- `src/main/java/io/vertx/core/buffer/ByteBufUtils.java`\n  - **L48-52 & L68-72 (`unpooledBufferOf` / `utf8UnpooledBufferOf`)**: Missing explicit null check for `str`. While `ByteBufUtil.utf8Bytes(str)` will throw `NullPointerException`, adding `Objects.requireNonNull(str, \"str\")` upfront improves API contract clarity and matches Vert.x's argument validation conventions.\n  - **L14-19 (`UnpooledWrappedByteBuf`)**: Subclassing `UnpooledHeapByteBuf` is necessary due to its protected constructor. However, passing `Integer.MAX_VALUE` as `maxCapacity` is overly permissive. Since the buffer is backed by a fixed `byte[]`, consider passing `initialArray.length` as `maxCapacity` to enforce strict bounds and align with Netty's defensive design.\n  - **L80-118 (`writeUtf8`)**: The two-pass approach (length calculation + manual encoding) is standard and optimal for avoiding reallocations. However, the method is package-private; consider making it `private` since it's only used internally. Also, verify that the surrogate handling logic exactly matches Netty's `ByteBufUtil.writeUtf8` to guarantee identical replacement character behavior (`?`) for malformed sequences.\n  - **L120-125 (`writeAscii`)**: Similarly, make this `private`. Note that `AsciiString.c2b()` replaces non-ASCII characters with `?`, which matches Netty's default behavior. This is correct for performance, but document this replacement behavior explicitly.\n  - **L28-32 (`unpooledNotInstrumentedHeapByteBuf`)**: Good optimization to skip instrumentation. `PlatformDependent.hasUnsafe()` is fast, but if this method is called in tight loops, consider caching the result in a `static final boolean HAS_UNSAFE` to eliminate the method call overhead entirely.\n  - **Class/Method Documentation**: The class and public methods lack JavaDoc. Add concise documentation explaining the performance trade-offs, expected use cases, and behavior for invalid characters/surrogates. This is critical for a public utility class in a core module.\n\n- `src/main/java/io/vertx/core/buffer/impl/BufferImpl.java`\n  - **Diff truncated**: The visible diff only shows the import addition. Assuming the rest replaces `Unpooled.copiedBuffer(str, charset)` or similar with `ByteBufUtils` calls, verify that reference counting and retention semantics remain identical. `Unpooled.copiedBuffer` returns a buffer with `refCnt=1`, and `UnpooledHeapByteBuf` also initializes with `refCnt=1`, so this should be safe. Ensure no implicit `retain()`/`release()` mismatches are introduced in the updated code paths.\n\n- `src/test/benchmarks/io/vertx/benchmarks/BufferCreationBenchmark.java`\n  - **Benchmark Design**: Ensure the benchmark uses JMH's `@BenchmarkMode(Mode.Throughput)` or `Mode.AverageTime` appropriately, and measures realistic string lengths and charset distributions. Also, verify that the benchmark properly handles Netty's reference counting (e.g., calling `buf.release()` in `@TearDown` or using `@OutputTimeUnit` correctly) to avoid memory leaks during benchmark runs. Consider adding a baseline benchmark using the original `Unpooled.copiedBuffer` path for direct comparison.",
+      "sec": 166.2,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Missing null check for str in unpooledBufferOf/utf8UnpooledBufferOf",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified existing BufferImpl constructors (lines 47-52) also don't explicitly null-check str - they just call str.getBytes() which throws NPE naturally. PR is consistent with existing patterns."
+          },
+          {
+            "point": "Integer.MAX_VALUE as maxCapacity is overly permissive",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified BufferImpl line 40: Unpooled.buffer(initialSizeHint, Integer.MAX_VALUE). PR follows existing codebase pattern, not deviating from it."
+          },
+          {
+            "point": "writeUtf8 should be private (currently package-private)",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Diff shows 'static int writeUtf8' which is package-private. Making it private is a minor style preference, not an issue."
+          },
+          {
+            "point": "writeAscii should be private and document c2b() behavior",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Diff shows 'static int writeAscii' is package-private. AsciiString.c2b() is Netty standard method. Documentation suggestion is minor."
+          },
+          {
+            "point": "Cache PlatformDependent.hasUnsafe() result",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Speculative micro-optimization. Netty's PlatformDependent likely handles this efficiently. No evidence this is needed."
+          },
+          {
+            "point": "Missing JavaDoc on class and public methods",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "True that the new ByteBufUtils class lacks JavaDoc, but this is a documentation/style issue."
+          },
+          {
+            "point": "Verify ref counting semantics in BufferImpl changes",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "BufferImpl wraps all buffers with Unpooled.unreleasableBuffer(), making ref counting irrelevant for internal buffers."
+          },
+          {
+            "point": "Benchmark design: JMH best practices, @TearDown for release",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Existing benchmarks (JsonEncodeBenchmark) don't use explicit release handling either. General JMH advice, not specific to this PR."
+          }
+        ],
+        "missed_human": [
+          "Human reviewer noted that Netty likely already provides optimized UTF-8/ASCII encoding algorithms (utf8Bytes, writeUtf8, writeAscii) that should be reused instead of reimplemented in ByteBufUtils. The PR imports ByteBufUtil but duplicates its encoding logic - this is the key architectural concern that the candidate completely missed."
+        ],
+        "n_good": 0,
+        "n_wrong": 0,
+        "n_trivial": 8,
+        "n_missed": 1,
+        "net_score": -1
+      },
+      "net": -1
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThis PR introduces a targeted performance optimization to reduce object allocations and memory copies during `Buffer` creation from strings. By bypassing standard `Charset.encode()` and Netty's `ByteBuf` allocation paths for common charsets (UTF-8, US-ASCII, ISO-8859-1), it directly writes to a pre-sized `byte[]` and wraps it in a lightweight `UnpooledHeapByteBuf`. The approach is sound and aligns with Vert.x's low-allocation goals. A few maintainability, visibility, and behavioral consistency points should be addressed before merging.\n\nPOINTS:\n- `src/main/java/io/vertx/core/buffer/ByteBufUtils.java`\n  - **L1 (Package Visibility)**: The class is placed in `io.vertx.core.buffer`, which is a public API package. Since this utility is purely an internal optimization, consider moving it to `io.vertx.core.buffer.impl` or making it `package-private` to avoid exposing low-level `ByteBuf` construction details to end users.\n  - **L24-28 (`UnpooledWrappedByteBuf`)**: Extending `UnpooledHeapByteBuf` directly is a good way to avoid `SwappedByteBuf` overhead. Ensure all callers (especially in `HttpServerResponseImpl`) either wrap the result in `Unpooled.unreleasableBuffer()` or explicitly manage the reference count, as `UnpooledHeapByteBuf` initializes with `refCnt = 1`. Accidental `release()` calls could cause `ReferenceCountException`.\n  - **L37-52 & L54-66 (`unpooledBufferOf`)**: The fast-path for UTF-8/ASCII/ISO-8859-1 is well-implemented. Note that `Charset.forName(enc)` is called on every invocation. While fast, consider caching or using `CharsetUtil` constants if this becomes a hot path in benchmarks. Not critical, but worth noting.\n  - **L85-118 (`writeUtf8`)**: This is a direct port of Netty's `ByteBufUtil.writeUtf8`. While effective, maintaining a duplicate of Netty's encoding logic creates a maintenance burden and risks divergence if Netty optimizes it further (e.g., with intrinsics/SIMD). Add a prominent comment referencing Netty's `ByteBufUtil.writeUtf8` implementation. Also, note that this implementation replaces invalid surrogate pairs with `?`, whereas standard Java `CharsetEncoder` may throw `MalformedInputException` or use a configurable replacement. Document this behavioral difference if it impacts existing tests.\n  - **L78-82 (`writeAscii`)**: The loop is correct, but `AsciiString.encodeAscii(seq)` already exists in Netty and returns a `byte[]`. Using it directly would reduce code duplication, though the current loop avoids an extra method call. Either approach is fine; just ensure consistency with the UTF-8 path.\n\n- `src/main/java/io/vertx/core/buffer/impl/BufferImpl.java`\n  - **Constructors (`BufferImpl(String, String/Charset)`)**: The diff is truncated, but assuming these now delegate to `ByteBufUtils.unpooledBufferOf()`, verify that the returned `ByteBuf` is still wrapped with `Unpooled.unreleasableBuffer()` to preserve `BufferImpl`'s existing lifecycle semantics. Failing to do so could leak references or cause unexpected `release()` behavior downstream.\n  - **`append(String, Charset)` & `setBytes(int, String, Charset)`**: If these are also updated to use `ByteBufUtils`, ensure they handle the `ByteBuf` correctly without creating intermediate `Buffer` wrappers.\n\n- `src/main/java/io/vertx/core/http/impl/HttpServerResponseImpl.java`\n  - **`write(String, String)` & `end(String, String)`**: Replacing `Buffer.buffer(chunk, enc).getByteBuf()` with direct `ByteBufUtils` calls is exactly the right optimization. Double-check that the `ByteBuf` returned is not modified after being passed to `conn.writeToChannel()`, and that `readableBytes()` matches expectations. Since `UnpooledWrappedByteBuf` uses the full array capacity, ensure `writerIndex` is correctly set (which `writeUtf8`/`writeAscii` return, but the wrapper should initialize it properly).\n\n- `src/test/benchmarks/io/vertx/benchmarks/BufferCreationBenchmark.java`\n  - **Benchmark Design**: Good addition. Ensure the benchmark warms up properly and measures both allocation rate (`-XX:+PrintGCApplicationStoppedTime`) and CPU time. Consider adding a baseline benchmark using the old `Buffer.buffer(str, enc)` path to quantify the improvement in the PR description.\n\n- **General**\n  - The optimization correctly targets the hot path of string-to-buffer conversion. The trade-off of slightly divergent error handling for malformed UTF-8 surrogates is acceptable for a performance-focused PR, but should be explicitly noted in commit messages or tests.\n  - Consider adding a unit test for `ByteBufUtils` covering edge cases: empty strings, pure ASCII, mixed UTF-8, invalid surrogates, and high-surrogate-only strings to guarantee the custom encoder matches expected output.",
+      "sec": 130.9,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Package visibility - ByteBufUtils in io.vertx.core.buffer instead of impl",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified Buffer.java is public API in io.vertx.core.buffer, while BufferImpl is in io.vertx.core.buffer.impl - valid concern about exposing utility class in public package"
+          },
+          {
+            "point": "UnpooledWrappedByteBuf refCnt warning about release()",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified BufferImpl(ByteBuf) constructor already wraps with Unpooled.unreleasableBuffer(buffer) at line 60 of BufferImpl.java - code already handles this correctly"
+          },
+          {
+            "point": "Charset.forName caching suggestion",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic micro-optimization suggestion, Charset.forName is already fast for common charsets"
+          },
+          {
+            "point": "writeUtf8 duplication from Netty's ByteBufUtil.writeUtf8",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified diff shows writeUtf8 imports isSurrogate from Netty and implements identical algorithm - real maintenance burden concern about divergence risk"
+          },
+          {
+            "point": "AsciiString.encodeAscii exists in Netty",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Candidate mentions Netty alternative but says 'either approach is fine' - weakens the point instead of advocating reuse"
+          },
+          {
+            "point": "BufferImpl(ByteBuf) unreleasableBuffer wrapping",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified at line 60: this.buffer = Unpooled.unreleasableBuffer(buffer) - already correct, just restating existing behavior"
+          },
+          {
+            "point": "append/setBytes intermediate Buffer wrappers",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Just restating what the code does - no new actionable insight"
+          },
+          {
+            "point": "HttpServerResponseImpl ByteBufUtils optimization",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "General observation, diff shows correct usage of ByteBufUtils.unpooledBufferOf"
+          },
+          {
+            "point": "Benchmark design suggestions",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic benchmarking advice, not specific to the PR"
+          },
+          {
+            "point": "Unit tests for ByteBufUtils edge cases",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic test suggestion, not a substantive finding"
+          }
+        ],
+        "missed_human": [
+          "Strongly recommend reusing Netty's encoding algorithms (ByteBufUtil.writeUtf8, AsciiString.encodeAscii) directly instead of reimplementing them - candidate identifies this but doesn't emphasize it as the PRIMARY concern, and hedges on writeAscii by saying 'either approach is fine'"
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 8,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nThis PR optimizes buffer creation by introducing fast-path UTF-8/ASCII encoding via `ByteBufUtils` and reduces intermediate allocations in `BufferImpl` and `HttpServerResponseImpl`. However, several new wrappers are introduced that contradict the PR's stated goal of \"Reduced wrappers\", and some methods still create unnecessary intermediate objects.\n\nPOINTS:\n- [src/main/java/io/vertx/core/buffer/ByteBufUtils.java:25] **Unnecessary subclass `UnpooledWrappedByteBuf`** \u2014 The PR's goal is \"Reduced wrappers\" but this adds a new subclass extending `UnpooledHeapByteBuf` with no customization (constructor just calls `super(...)`). Netty already provides `Unpooled.wrappedBuffer(byte[])` for wrapping arrays without copying, or `Unpooled.copiedBuffer(byte[])` which is simpler. Consider removing this subclass and using Netty's existing utilities.\n\n- [src/main/java/io/vertx/core/buffer/impl/BufferImpl.java] **Double wrapping in String constructors** \u2014 The new constructors (e.g., `BufferImpl(String str, String enc)`) call `ByteBufUtils.unpooledBufferOf()` which returns `UnpooledWrappedByteBuf`, then chain to `BufferImpl(ByteBuf)` which wraps it again with `Unpooled.unreleasableBuffer()`. This creates `Unpooled.unreleasableBuffer(UnpooledWrappedByteBuf(...))` \u2014 **two wrappers** \u2014 contradicting the PR's goal. Either skip the custom subclass entirely or make `BufferImpl(ByteBuf)` detect already-unreleasable buffers.\n\n- [src/main/java/io/vertx/core/buffer/impl/BufferImpl.java:475-486] **`append(String,Charset)` and `setBytes(int,String,Charset)` still create intermediate ByteBuf** \u2014 These methods now call `ByteBufUtils.unpooledBufferOf()` which allocates a full `UnpooledWrappedByteBuf` wrapper just to extract bytes. Since `ByteBufUtils.writeAscii(byte[], ...)` and `writeUtf8(byte[], ...)` already write directly to `byte[]`, use those methods directly instead: allocate a temporary `byte[]`, encode into it, then `buffer.writeBytes(byte[])`. This would avoid the intermediate ByteBuf allocation entirely, aligning with the PR's stated goal.\n\n- [src/main/java/io/vertx/core/buffer/ByteBufUtils.java:34-40] **`unpooledNotInstrumentedHeapByteBuf` is dead code** \u2014 This method is defined but never called within the PR's changes. Either remove it or add a comment/TODO explaining its intended use case.\n\n- [src/main/java/io/vertx/core/buffer/ByteBufUtils.java:87-127] **`writeUtf8`/`writeAscii` reimplementations are justified** \u2014 Netty's public `ByteBufUtil` API does not expose byte array-based encoding (`writeUtf8(ByteBuf, CharSequence)` writes to ByteBuf only, not `byte[]`). The custom implementation avoids creating intermediate ByteBuf allocations and is a valid performance optimization.\n\n- [src/main/java/io/vertx/core/http/impl/HttpServerResponseImpl.java] **Reference counting is correct** \u2014 When `write(String chunk)` calls `ByteBufUtils.utf8UnpooledBufferOf(chunk)`, the returned reference-counted ByteBuf flows through `write(ByteBuf)` into the Netty pipeline where Netty takes ownership and releases after encoding. This is correct behavior and avoids the previous intermediate `Buffer` allocation. No issue here.\n\n- [src/main/java/io/vertx/core/buffer/ByteBufUtils.java:47] **`Objects.requireNonNull(enc)` is correct but `Charset.forName(null)` would also throw NPE** \u2014 The explicit null check is good for clarity, but note that `Charset.forName(null)` would throw `NullPointerException` anyway. The explicit check is fine to keep for clear error messaging.",
+      "sec": 1265.2,
+      "judge": {
+        "candidate": [
+          {
+            "point": "UnpooledWrappedByteBuf unnecessary - Netty's Unpooled.wrappedBuffer exists",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified Netty provides Unpooled.wrappedBuffer as alternative to custom subclass"
+          },
+          {
+            "point": "Double wrapping in String constructors - UnpooledWrappedByteBuf wrapped by Unpooled.unreleasableBuffer",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified BufferImpl(ByteBuf) wraps with Unpooled.unreleasableBuffer at line 59-61"
+          },
+          {
+            "point": "append/setBytes still create intermediate ByteBuf instead of using writeUtf8/writeAscii directly",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Base code at lines 475-486 uses str.getBytes(charset); PR's new methods write directly to byte[]"
+          },
+          {
+            "point": "unpooledNotInstrumentedHeapByteBuf is dead code",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "Method IS used - PR replaces Unpooled.buffer() with ByteBufUtils.unpooledNotInstrumentedHeapByteBuf() in BufferImpl constructor"
+          },
+          {
+            "point": "writeUtf8/writeAscii reimplementations are justified",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "This is praise/justification, not identifying an issue"
+          },
+          {
+            "point": "Reference counting is correct when write(String) flows through Netty pipeline",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified AssembledHttpResponse delegates release() to content ByteBuf - this is praise"
+          },
+          {
+            "point": "Objects.requireNonNull(enc) is redundant since Charset.forName(null) throws NPE",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Minor observation about defensive coding style"
+          }
+        ],
+        "missed_human": [
+          "Human reviewer noted algorithms should be reused from Netty directly; candidate defended reimplementations instead"
+        ],
+        "n_good": 3,
+        "n_wrong": 1,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    }
+  },
+  {
+    "repo": "apache/kafka",
+    "pr": 17565,
+    "reviewer": "muralibasani",
+    "pr_input": "REPO: apache/kafka\nPR #17565: KAFKA-17798 : Adding forbiddenApi check\nChanged files (1): build.gradle\nDiff (+10/-2):\nPR DESCRIPTION:\nJira : https://issues.apache.org/jira/browse/KAFKA-17798\r\n\r\n- Check to verify if any forbidden apis are used in sources\r\n- ignoring failures for now\r\n- Part of signatures, only added jdk-unsafe, which looks for Locale, Charset, Timezone kind of classes\r\n\r\n### Committer Checklist (excluded from commit message)\r\n- [ ] Verify design and implementation \r\n- [ ] Verify test coverage and CI build status\r\n- [ ] Verify documentation (including upgrade notes)\r\n\n\nDIFF:\n\n--- build.gradle (+10/-2) ---\n@@ -43,6 +43,7 @@ plugins {\n   id 'org.scoverage' version '8.0.3' apply false\n   id 'io.github.goooler.shadow' version '8.1.3' apply false\n   id 'com.diffplug.spotless' version \"6.25.0\"\n+  id 'de.thetaphi.forbiddenapis' version '3.8'\n }\n \n ext {\n@@ -794,7 +795,14 @@ subprojects {\n     description = 'Run checkstyle on all test Java sources'\n   }\n \n-  test.dependsOn('checkstyleMain', 'checkstyleTest')\n+  // All available signatures https://github.com/policeman-tools/forbidden-apis/wiki/BundledSignatures\n+  apply plugin: 'de.thetaphi.forbiddenapis'\n+  forbiddenApis {\n+    bundledSignatures = ['jdk-unsafe']\n+    ignoreFailures = true\n+  }\n+\n+  test.dependsOn('checkstyleMain', 'checkstyleTest', 'forbiddenApisMain')\n \n   spotbugs {\n     toolVersion = versions.spotbugs\n@@ -3848,4 +3856,4 @@ task aggregatedJavadoc(type: Javadoc, dependsOn: compileJava) {\n   classpath = files(projectsWithJavadoc.collect { it.sourceSets.main.compileClasspath })\n   includes = projectsWithJavadoc.collectMany { it.javadoc.getIncludes() }\n   excludes = projectsWithJavadoc.collectMany { it.javadoc.getExcludes() }\n-}\n+}\n\\ No newline at end of file",
+    "human": "POINTS:\n- [build.gradle:802] @gharris1727  without this ignoreFailures extension, check fails for almost any module I see.",
+    "mr": {
+      "text": "SUMMARY:\nThe PR successfully integrates the `de.thetaphi.forbiddenapis` Gradle plugin to enforce safe JDK API usage across the Kafka codebase. Starting with the `jdk-unsafe` signature is a pragmatic and highly relevant choice for Kafka's strict locale/timezone handling. The decision to initially ignore failures is appropriate for a large, mature codebase to avoid immediate CI breakage. However, there are a few Gradle lifecycle and configuration best-practices to address before merging.\n\nPOINTS:\n- **build.gradle:806**: `test.dependsOn('forbiddenApisMain')` is likely redundant and may cause unintended behavior. The `forbiddenapis` plugin automatically registers `forbiddenApisMain` and `forbiddenApisTest` and adds them to the standard `check` task. Tying it to `test` forces the check to run during every test execution and could lead to double execution if `check` is invoked. Consider removing this line and relying on the default `check` lifecycle, or explicitly use `check.dependsOn('forbiddenApisMain')` if custom task ordering is required.\n- **build.gradle:802**: `ignoreFailures = true` is appropriate for the initial rollout. Add a `// TODO: Flip to false after KAFKA-XXXX resolves existing violations` comment or link to a tracking JIRA to ensure this is revisited and not forgotten.\n- **build.gradle:801**: Starting with `jdk-unsafe` is a solid foundation. Consider planning for project-specific signature files (e.g., `signatures.txt` or `test-signatures.txt`) in a follow-up to enforce Kafka-specific rules (e.g., banning `System.out`, deprecated internal APIs, or unsafe reflection patterns).\n- **build.gradle:806**: Only `forbiddenApisMain` is added to the dependency chain. If test code should also be subject to these safety checks, add `forbiddenApisTest`. If intentionally excluded, add a brief comment explaining the rationale (e.g., \"Test code allowed to use unsafe APIs for mocking/benchmarking\").\n- **build.gradle:859**: Missing newline at the end of the file. While minor, most linters, IDEs, and Git configurations expect a trailing newline. Add an empty line at the end to satisfy standard formatting rules.",
+      "sec": 88.1,
+      "judge": {
+        "candidate": [
+          {
+            "point": "test.dependsOn('forbiddenApisMain') is redundant because plugin adds to check task",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "Plugin does add to check, but project already has test.dependsOn('spotbugsMain') at line 805 and test.dependsOn('checkstyleMain','checkstyleTest') at line 798 - convention to tie verification to test, not just check. Claiming redundancy ignores this precedent."
+          },
+          {
+            "point": "Add TODO comment for ignoreFailures = true",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic best-practice advice, not actionable or specific to the code"
+          },
+          {
+            "point": "jdk-unsafe is solid, consider project-specific signatures later",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Mostly praise with vague future suggestion"
+          },
+          {
+            "point": "Only forbiddenApisMain added; forbiddenApisTest excluded without comment",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified: diff adds only 'forbiddenApisMain' to test.dependsOn. The plugin generates both forbiddenApisMain and forbiddenApisTest tasks. Test code exclusion is a deliberate or oversight choice worth questioning."
+          },
+          {
+            "point": "Missing newline at end of file",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Diff confirms '\\ No newline at end of file' on the closing brace"
+          }
+        ],
+        "missed_human": [
+          "Human noted: 'without ignoreFailures, check fails for almost any module' - this provides critical practical justification for why ignoreFailures is needed (existing violations across codebase). Candidate acknowledged ignoreFailures but missed this key context about WHY the flag is necessary."
+        ],
+        "n_good": 1,
+        "n_wrong": 1,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": -1
+      },
+      "net": -1
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThis PR introduces the `forbidden-apis` Gradle plugin to detect usage of discouraged JDK APIs across all subprojects. It starts with the `jdk-unsafe` signature bundle (targeting implicit `Locale`, `Charset`, and `TimeZone` usage) and temporarily sets `ignoreFailures = true` to collect violations without breaking CI. The change aligns with Kafka's existing static analysis workflow and includes a minor file formatting fix.\n\nPOINTS:\n- `build.gradle` (line ~46): Plugin declaration `id 'de.thetaphi.forbiddenapis' version '3.8'` is correctly placed in the root `plugins` block. Version 3.8 is stable and compatible with the project's Gradle version.\n- `build.gradle` (lines ~798-801): The `forbiddenApis` extension configuration is correctly scoped to `subprojects`. `ignoreFailures = true` is a sensible temporary measure for an initial rollout. Recommend tracking the reported violations and planning a follow-up PR to set this to `false` once the codebase is cleaned up.\n- `build.gradle` (line ~803): Adding `'forbiddenApisMain'` to `test.dependsOn` follows the existing pattern used for `checkstyleMain`, `checkstyleTest`, and `spotbugsMain`. This ensures the check runs early in the local test workflow. Consider adding `'forbiddenApisTest'` in a future iteration if enforcing API constraints in test code is also desired.\n- `build.gradle` (line ~3859): Fixes the missing newline at the end of the file (`\\ No newline at end of file`). Good housekeeping.\n- General: Applying the plugin inside `subprojects { }` is safe since all subprojects apply the `java-library` plugin. Subprojects without main sources will simply have an empty/disabled `forbiddenApisMain` task, so no conditional application is strictly necessary.",
+      "sec": 93.1,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Plugin declaration correctly placed in root plugins block with version 3.8",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified line 45 has spotless plugin; PR adds forbiddenapis plugin after it in plugins block (lines 43-46)"
+          },
+          {
+            "point": "forbiddenApis extension correctly scoped to subprojects; ignoreFailures=true is sensible temporary measure",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified subprojects block starts at line 269; forbiddenApis config would be added inside this block near line 798-801"
+          },
+          {
+            "point": "Adding forbiddenApisMain to test.dependsOn follows existing pattern for checkstyle and spotbugs",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified line 798: test.dependsOn('checkstyleMain', 'checkstyleTest') and line 805: test.dependsOn('spotbugsMain') - same pattern used"
+          },
+          {
+            "point": "Fixes missing newline at end of file",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "File ends at line 3852 with } and no trailing newline; diff confirms this formatting fix"
+          },
+          {
+            "point": "Applying plugin inside subprojects is safe since all subprojects apply java-library",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified line 278: apply plugin: 'java-library' is inside subprojects block (line 269) - ALL subprojects apply it"
+          }
+        ],
+        "missed_human": [
+          "ignoreFailures is NECESSARY (not just temporary) because without it the check fails for almost any module - the human reviewer provides crucial context that the codebase has widespread violations that would block CI"
+        ],
+        "n_good": 4,
+        "n_wrong": 0,
+        "n_trivial": 1,
+        "n_missed": 1,
+        "net_score": 3
+      },
+      "net": 3
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nThis PR adds the forbiddenapis Gradle plugin (v3.8) to detect usage of unsafe JDK APIs. It's a reasonable incremental security hardening step with `ignoreFailures = true` for initial adoption.\n\nPOINTS:\n- [build.gradle:46] Plugin declared without `apply false`, but `spotbugs` (line 43) uses `id \"com.github.spotbugs\" version '6.0.25' apply false`. Since this plugin is only meant for subprojects (configured inside `subprojects {}`), it should follow the same pattern: `id 'de.thetaphi.forbiddenapis' version '3.8' apply false`. Without `apply false`, the plugin may be inadvertently applied to the root project.\n- [build.gradle:802] Only `forbiddenApisMain` is wired as a dependency of `test`. `forbiddenApisTest` is not included. This is consistent with the existing `spotbugsMain`-only pattern (line 805 in base), but deviates from checkstyle which checks both main and test sources. Document the rationale (e.g., test code may legitimately use unsafe APIs for mocking) so future reviewers understand this was intentional.\n- [build.gradle:802] `ignoreFailures = true` is set, which means violations will be reported but won't block the build. This is reasonable for initial adoption per the PR description (\"ignoring failures for now\"), but consider adding a follow-up JIRA item to eventually flip this to `false` after auditing and fixing violations.\n- [build.gradle:3856] File ends without a trailing newline (`\\ No newline at end of file`). Add a newline at the end of `build.gradle` to satisfy common linting tools.",
+      "sec": 279.8,
+      "judge": {
+        "candidate": [
+          {
+            "point": "Plugin declared without `apply false`, but `spotbugs` uses `apply false`. Should follow same pattern.",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified line 42 has `id \"com.github.spotbugs\" version '6.0.25' apply false` and line 280 applies it in subprojects. PR adds forbiddenapis without `apply false`, inconsistent with pattern."
+          },
+          {
+            "point": "Only `forbiddenApisMain` wired, not `forbiddenApisTest`. Suggests documenting rationale.",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified line 805 shows `test.dependsOn('spotbugsMain')` - consistent with existing spotbugs pattern. Candidate acknowledges this is intentional and just suggests documentation."
+          },
+          {
+            "point": "`ignoreFailures = true` is reasonable for initial adoption, consider follow-up JIRA to flip to false.",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "PR description states 'ignoring failures for now'. Candidate's suggestion is vague, non-actionable advice."
+          },
+          {
+            "point": "File ends without trailing newline (`\\ No newline at end of file`).",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Diff shows `\\ No newline at end of file` at end of build.gradle. PR removes trailing newline, which is a concrete formatting issue."
+          }
+        ],
+        "missed_human": [
+          "Human noted that `ignoreFailures = true` is NECESSARY (not optional) because checks fail for almost any module without it. Candidate's Point 3 misses this critical context."
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 2,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    }
+  },
+  {
+    "repo": "apache/flink",
+    "pr": 28105,
+    "reviewer": "snuyanzin",
+    "pr_input": "REPO: apache/flink\nPR #28105: [hotfix][ci] Ignore GHA build on non-code changes\nChanged files (1): .github/workflows/ci.yml\nDiff (+5/-0):\nPR DESCRIPTION:\n## What is the purpose of the change\r\n\r\nDo not start GHA bulid on non code changes\r\n\r\n## Brief change log\r\nci.yaml\r\n## Verifying this change\r\n\r\nGHA\r\n## Does this pull request potentially affect one of the following parts:\r\n\r\n  - Dependencies (does it add or upgrade a dependency): ( no)\r\n  - The public API, i.e., is any changed class annotated with `@Public(Evolving)`: (no)\r\n  - The serializers: (no )\r\n  - The runtime per-record code paths (performance sensitive): (no )\r\n  - Anything that affects deployment or recovery: JobManager (and its components), Checkpointing, Kubernetes/Yarn, ZooKeeper: (no )\r\n  - The S3 file system connector: (no)\r\n\r\n## Documentation\r\n\r\n  - Does this pull request introduce a new feature? ( no)\r\n  - If yes, how is the feature documented? (not applicable)\r\n\r\n---\r\n\r\n##### Was generative AI tooling used to co-author this PR?\r\n\r\n<!--\r\nIf generative AI tooling has been used in the process of authoring this PR, please\r\nchange the checkbox below to `[X]` followed by the name of the tool, and uncomment the\r\n\"Generated-by\" line. See the ASF Generative Tooling Guidance for details:\r\nhttps://www.apache.org/legal/generative-tooling.html\r\n\r\nYou are responsible for the quality and correctness of every change in this PR\r\nregardless of the tooling used. Low-effort AI-generated PRs will be closed. See\r\nAGENTS.md for the full guidance.\r\n-->\r\n\r\n- [ ] Yes (please specify the tool below)\r\n\r\n<!--\r\nGenerated-by: [Tool Name and Version]\r\n-->\r\n\n\nDIFF:\n\n--- .github/workflows/ci.yml (+5/-0) ---\n@@ -20,6 +20,11 @@ name: \"Flink CI (beta)\"\n \n on:\n   push:\n+    paths-ignore:\n+      - 'docs/**'\n+      - '**.md'\n+      - '.gitignore'\n+      - '.gitattributes'\n   workflow_dispatch:\n \n permissions: read-all",
+    "human": "POINTS:\n- [.github/workflows/ci.yml:27] I was thinking about it however the answer is no\r\n\r\nthe reason is that  RAT license check in `compile.sh` parses them\r\n\r\nand changes in LICENSE/NOTICE might lead to failure",
+    "mr": {
+      "text": "SUMMARY: This PR adds a `paths-ignore` filter to the `push` trigger in the GitHub Actions CI workflow to prevent builds from executing on documentation and repository metadata changes. The change is syntactically correct, low-risk, and follows standard CI optimization practices. It correctly isolates the filter to the `push` trigger, leaving manual `workflow_dispatch` runs unaffected.\n\nPOINTS:\n- `.github/workflows/ci.yml` (L23-L27): The `paths-ignore` syntax and YAML indentation are correct. However, consider if additional non-code patterns (e.g., `LICENSE`, `NOTICE`, `*.txt`, `*.html`) should be included to fully align with the \"non-code changes\" intent.\n- `.github/workflows/ci.yml` (L23): Verify that this workflow does not contain documentation build, linting, or deployment steps that are expected to run on doc-only commits. If documentation validation lives in a separate workflow, this change is safe. If not, doc-only PRs will now bypass validation entirely.\n- `.github/workflows/ci.yml` (L28): `workflow_dispatch` is correctly placed as a sibling trigger outside the `paths-ignore` scope. This preserves the ability to manually trigger CI for debugging or override purposes, which is a best practice.\n- `.github/workflows/ci.yml` (General): As a CI configuration change, this introduces zero impact on Java source code, runtime behavior, or public APIs. The `[hotfix][ci]` label is appropriate, and the change is ready for merge pending standard CI validation.",
+      "sec": 61.4,
+      "tok": {
+        "prompt": 568,
+        "completion": 2239,
+        "total": 2807
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "Suggests adding LICENSE, NOTICE, *.txt, *.html to paths-ignore",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "pom.xml RAT plugin config (line 1635-1786) does NOT exclude root LICENSE/NOTICE; template.pre-compile-checks.yml runs apache-rat-plugin:check; NoticeFileChecker.java parses NOTICE files. Human reviewer correctly identified these should NOT be ignored because RAT validates them."
+          },
+          {
+            "point": "Verify doc build/linting not affected by ignoring docs/**",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "ci.yml only calls template.pre-compile-checks.yml and template.flink-ci.yml; no separate doc validation workflow found. Vague suggestion without actionable insight."
+          },
+          {
+            "point": "workflow_dispatch correctly outside paths-ignore scope",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "ci.yml lines 21-23 show push and workflow_dispatch as sibling triggers; paths-ignore only applies to push."
+          },
+          {
+            "point": "CI change ready for merge, zero impact on source code",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Generic praise statement with no actionable content."
+          }
+        ],
+        "missed_human": [
+          "LICENSE/NOTICE files should NOT be added to paths-ignore because RAT license check in compile.sh (and template.pre-compile-checks.yml via apache-rat-plugin:check) parses them; changes to these files might cause CI failures that need to be caught"
+        ]
+      },
+      "net": null
+    },
+    "mr_code": {
+      "text": "SUMMARY: The PR adds a `paths-ignore` filter to the `push` trigger in the CI workflow to skip builds for documentation and metadata-only changes. This is a standard, low-risk CI optimization that effectively conserves runner resources and reduces queue congestion. The YAML syntax, indentation, and trigger placement are correct.\n\nPOINTS:\n- `.github/workflows/ci.yml` (L23-L27): The `paths-ignore` block is correctly nested under the `push` trigger. The patterns appropriately target the main documentation directory and common repository metadata files.\n- `.github/workflows/ci.yml` (L25): Consider using `**/*.md` instead of `**.md`. While GitHub Actions' minimatch implementation usually handles `**.md`, `**/*.md` is the more explicit and widely documented pattern for matching markdown files at any depth.\n- `.github/workflows/ci.yml` (L23-L27): The current scope is sufficient for a hotfix, but you may want to evaluate adding other common non-code files to `paths-ignore` in a follow-up (e.g., `LICENSE`, `NOTICE`, `CONTRIBUTING.md`, `.editorconfig`, `SECURITY.md`) to prevent accidental CI runs on legal/contributor updates.\n- No blocking issues. The change is clean, well-scoped, and aligns with GitHub Actions best practices. Ready to merge.",
+      "sec": 63.7,
+      "tok": {
+        "prompt": 1005,
+        "completion": 2258,
+        "total": 3263
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "paths-ignore block is correctly nested under push trigger with appropriate patterns",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Verified ci.yml structure - confirms YAML syntax is correct but just restating what the diff shows"
+          },
+          {
+            "point": "Consider using **/*.md instead of **.md for matching markdown files",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Both patterns work in GitHub Actions minimatch; this is a minor style preference, not a real issue"
+          },
+          {
+            "point": "Suggests adding LICENSE, NOTICE, CONTRIBUTING.md, .editorconfig, SECURITY.md to paths-ignore",
+            "verdict": "wrong",
+            "severity": "normal",
+            "score": -1,
+            "checked": "compile.sh lines 72-77 show RAT license check parses target/rat.txt; LICENSE/NOTICE changes MUST trigger CI because RAT checks license compliance - ignoring them would miss license header failures. Human reviewer explicitly warned against this."
+          },
+          {
+            "point": "No blocking issues. Change is clean, well-scoped, ready to merge",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "This is pure praise, not actionable feedback"
+          }
+        ],
+        "missed_human": [
+          "LICENSE/NOTICE should NOT be added to paths-ignore because RAT license check in compile.sh parses them, and changes to these files might lead to CI failure that needs to be detected"
+        ],
+        "n_good": 0,
+        "n_wrong": 1,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": -2
+      },
+      "net": -2
+    },
+    "mr_code_tools": {
+      "text": "**SUMMARY:**\nPR adds `paths-ignore` to skip CI on non-code changes. The intent is sound, but the `**.md` pattern is incorrect and will silently fail to ignore most markdown files, undermining the PR's purpose.\n\n**POINTS:**\n- [.github/workflows/ci.yml:24] The pattern `'**/md'` will NOT match markdown files as intended. In GitHub Actions' `paths-ignore`, `**` matches zero or more directories, so `**.md` matches files literally named `.md` (e.g., `docs/.md`), not files with a `.md` extension (e.g., `README.md`). The correct pattern is `'**/*.md'` (with `*` before `.md`) to match any file ending in `.md` at any depth. Without this fix, CI will still run on markdown-only changes, defeating the PR's purpose.\n- [.github/workflows/ci.yml:23] The pattern `'docs/**'` is correct and will match all files under the `docs/` directory.\n- [.github/workflows/ci.yml:25-26] The patterns `'.gitignore'` and `'.gitattributes'` correctly target root-level metadata files.\n- [General] This is the first introduction of `paths-ignore` in the repository's workflows. Consider whether other workflows (e.g., `nightly.yml`) might also benefit from similar filtering, though `ci.yml` is the primary concern.",
+      "sec": 129.8,
+      "tok": {
+        "prompt": 47548,
+        "completion": 3976,
+        "total": 51524
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "The pattern '**.md' (written as '**/md' in header) will NOT match markdown files correctly; should be '**/*.md'",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "In minimatch/glob semantics, '**.md' without '*' before '.md' only matches files literally named '.md', not files with .md extension like README.md. The correct pattern is '**/*.md'"
+          },
+          {
+            "point": "The pattern 'docs/**' is correct and will match all files under docs/",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Standard glob pattern - just confirming correct code"
+          },
+          {
+            "point": "Patterns '.gitignore' and '.gitattributes' correctly target root-level metadata files",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Simple filename matches - just confirming correct code"
+          },
+          {
+            "point": "Consider whether other workflows might benefit from similar filtering",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague non-actionable suggestion"
+          }
+        ],
+        "missed_human": [
+          "LICENSE and NOTICE files should be added to paths-ignore because RAT license check in compile.sh parses them and changes might lead to build failure"
+        ],
+        "n_good": 1,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 0
+      },
+      "net": 0
+    }
+  },
+  {
+    "repo": "wildfly/wildfly-core",
+    "pr": 6445,
+    "reviewer": "yersan",
+    "pr_input": "REPO: wildfly/wildfly-core\nPR #6445: [WFCORE-7281] Work with JDK versions with differing CompositeData structures for GarbageCollectorMXBean lastGcInfo\nChanged files (2): platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java, testsuite/standalone/src/test/java/org/wildfly/core/test/standalone/mgmt/ReadResourceTestCase.java\nDiff (+109/-28):\nPR DESCRIPTION:\nhttps://issues.redhat.com/browse/WFCORE-7281\n\nDIFF:\n\n--- platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java (+71/-28) ---\n@@ -9,8 +9,11 @@\n import java.util.HashMap;\n import java.util.Map;\n import javax.management.openmbean.CompositeData;\n+import javax.management.openmbean.InvalidKeyException;\n import javax.management.openmbean.TabularData;\n \n+import org.jboss.as.platform.mbean.logging.PlatformMBeanLogger;\n+\n /**\n  * Implements the access to the com.sun.management.GarbageCollectorMXBean\n  *\n@@ -69,47 +72,87 @@ long getStartTime() {\n     private static final String DURATION = \"duration\";\n     private static final String END_TIME = \"endTime\";\n     private static final String ID = \"id\";\n+    private static final String INDEX = \"index\";\n     private static final String MEMORY_USAGE_BEFORE_GC = \"memoryUsageBeforeGc\";\n     private static final String MEMORY_USAGE_AFTER_GC = \"memoryUsageAfterGc\";\n+    private static final String USAGE_BEFORE_GC = \"usageBeforeGc\";\n+    private static final String USAGE_AFTER_GC = \"usageAfterGc\";\n     private static final String START_TIME = \"startTime\";\n \n     ExtendedGarbageCollectorMBean(String gcName) {\n         super(PlatformMBeanUtil.getObjectNameStringWithNameKey(ManagementFactory.GARBAGE_COLLECTOR_MXBEAN_DOMAIN_TYPE, gcName));\n     }\n \n+    /**\n+     * Gets information about the last garbage collection\n+     * @return the info. May return {@code null} if there wasn't one or if there was a problem translating\n+     *         from the underlying JMX data to our GcInfo type\n+     */\n     GcInfo getLastGcInfo() {\n         GcInfo gcInfo = null;\n         CompositeData cd = (CompositeData) getAttribute(LAST_GC_INFO_ATTRIBUTE);\n         if (cd != null) {\n-            long duration = (long) cd.get(DURATION);\n-            long endTime = (long) cd.get(END_TIME);\n-            long id = (long) cd.get(ID);\n-            TabularData beforeGc = (TabularData) cd.get(MEMORY_USAGE_BEFORE_GC);\n-            Map<String, MemoryUsage> beforeGcMap = new HashMap<>();\n-            for (Object value : beforeGc.values()) {\n-                CompositeData cdValue = (CompositeData) value;\n-                String key = (String)cdValue.get(\"key\");\n-                CompositeData usageCd = (CompositeData)cdValue.get(\"value\");\n-                MemoryUsage usage = MemoryUsage.from(usageCd);\n-                beforeGcMap.put(key, usage);\n-            }\n-            TabularData afterGc = (TabularData) cd.get(MEMORY_USAGE_AFTER_GC);\n-            Map<String, MemoryUsage> afterGcMap = new HashMap<>();\n-            for (Object value : afterGc.values()) {\n-                CompositeData cdValue = (CompositeData) value;\n-                String key = (String)cdValue.get(\"key\");\n-                CompositeData usageCd = (CompositeData)cdValue.get(\"value\");\n-                MemoryUsage usage = MemoryUsage.from(usageCd);\n-                afterGcMap.put(key, usage);\n-            }\n+            // Create our GcInfo object from the CompositeData.\n+            // If any expected key is missing, debug log and then return null.\n+            // Semeru and Temurin have different CompositeData structures\n+            // Where we know they differ, check for Semeru first and then\n+            // assume Temurin, so if neither exist the debug message will reference the\n+            // presumably more common Temurin key.\n+            try {\n+                long id;\n+                if (cd.containsKey(INDEX)) { // Semeru 17 key\n+                    id = (long) cd.get(INDEX);\n+                } else {\n+                    id = (long) cd.get(ID);\n+                }\n+                long endTime = (long) cd.get(END_TIME);\n+                long startTime = (long) cd.get(START_TIME);\n+                long duration;\n+                if (cd.containsKey(DURATION)) { // This key exists in Temurin 17+\n+                    duration = (long) cd.get(DURATION);\n+                } else {\n+                    // Semeru 17 has no duration key; just calculate the duration\n+                    duration = endTime - startTime;\n+                }\n+                TabularData beforeGc;\n+                if (cd.containsKey(USAGE_BEFORE_GC)) {  // Semeru 17 key\n+                    beforeGc = (TabularData) cd.get(USAGE_BEFORE_GC);\n+                } else {\n+                    beforeGc = (TabularData) cd.get(MEMORY_USAGE_BEFORE_GC);\n+                }\n+                Map<String, MemoryUsage> beforeGcMap = new HashMap<>();\n+                for (Object value : beforeGc.values()) {\n+                    CompositeData cdValue = (CompositeData) value;\n+                    String key = (String) cdValue.get(\"key\");\n+                    CompositeData usageCd = (CompositeData) cdValue.get(\"value\");\n+                    MemoryUsage usage = MemoryUsage.from(usageCd);\n+                    beforeGcMap.put(key, usage);\n+                }\n+                TabularData afterGc;\n+                if (cd.containsKey(USAGE_AFTER_GC)) {  // Semeru 17 key\n+                    afterGc = (TabularData) cd.get(USAGE_AFTER_GC);\n+                } else {\n+                    afterGc = (TabularData) cd.get(MEMORY_USAGE_AFTER_GC);\n+                }\n+                Map<String, MemoryUsage> afterGcMap = new HashMap<>();\n+                for (Object value : afterGc.values()) {\n+                    CompositeData cdValue = (CompositeData) value;\n+                    String key = (String) cdValue.get(\"key\");\n+                    CompositeData usageCd = (CompositeData) cdValue.get(\"value\");\n+                    MemoryUsage usage = MemoryUsage.from(usageCd);\n+                    afterGcMap.put(key, usage);\n+                }\n \n-            long startTime = (long) cd.get(START_TIME);\n-            gcInfo = new GcInfo(duration,\n-                    endTime,\n-                    id,\n-                    afterGcMap,\n-                    beforeGcMap,\n-                    startTime);\n+                gcInfo = new GcInfo(duration,\n+                        endTime,\n+                        id,\n+         \n[... diff truncated ...]",
+    "human": "POINTS:\n- [testsuite/standalone/src/test/java/org/wildfly/core/test/standalone/mgmt/ReadResourceTestCase.java:5] It misses a license header, I'll add it after merging it. Maybe we can have a GitHub action to check this",
+    "mr": {
+      "text": "SUMMARY:\nThe PR addresses JDK distribution differences (Semeru vs. Temurin) in the `CompositeData` structure for `GarbageCollectorMXBean.lastGcInfo`. The strategy of using key-presence detection (`containsKey`) rather than JDK version string parsing is architecturally sound, future-proof, and avoids fragile version checks. The changes are well-documented, maintain backward compatibility, and gracefully degrade when unexpected structures are encountered. A few minor improvements around exception handling, code duplication, and defensive casting would further harden the implementation.\n\nPOINTS:\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:85** (`try {` block): The `try` block is introduced but the `catch` clause is truncated in the diff. Ensure it explicitly catches `InvalidKeyException` (and optionally `RuntimeException`/`ClassCastException` for defensive safety) and logs at `DEBUG` level as documented, returning `null`. If `InvalidKeyException` is imported but not actually caught, remove the unused import.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:112-117 & 125-130** (TabularData iteration loops): The parsing logic for `beforeGc` and `afterGc` is identical. Extract this into a private helper method (e.g., `private Map<String, MemoryUsage> parseMemoryUsageMap(TabularData data)`) to eliminate duplication, reduce cognitive load, and simplify future maintenance.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:105-110 & 118-123** (`cd.get()` casting): `CompositeData.get()` returns `Object`. While JMX specs typically guarantee non-null values for declared keys, direct casting to `TabularData` will throw `NullPointerException` or `ClassCastException` if the value is unexpectedly null or mismatched. Since you're already wrapping this in a `try` block, ensure the `catch` handles these cases gracefully so the method returns `null` instead of bubbling up an unchecked exception.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:98-103** (Duration fallback): Calculating `duration = endTime - startTime` is a sensible fallback for Semeru 17. Note that if system clocks are adjusted between GC start/end, this could theoretically yield a negative value. Verify that the `GcInfo` constructor and downstream consumers handle or document negative durations gracefully.\n- **testsuite/standalone/src/test/java/org/wildfly/core/test/standalone/mgmt/ReadResourceTestCase.java**: (Changed file, diff not provided) Ensure the test suite validates both the standard Temurin structure and the Semeru structure. Consider adding a unit test that mocks `CompositeData` with missing/alternate keys to explicitly verify the fallback logic triggers and returns `null` without throwing exceptions.",
+      "sec": 87.9,
+      "tok": {
+        "prompt": 1666,
+        "completion": 3231,
+        "total": 4897
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "InvalidKeyException catch verification (truncated diff)",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "diff is truncated with [... diff truncated ...], cannot verify catch clause; candidate only asks for verification"
+          },
+          {
+            "point": "Duplicate TabularData iteration loops - extract helper method",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "diff shows identical loops for beforeGcMap and afterGcMap parsing; valid refactoring suggestion"
+          },
+          {
+            "point": "Unchecked exceptions from CompositeData.get() casting",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "CompositeData.get() returns Object; cast to TabularData can throw ClassCastException (unchecked); even with try/catch for InvalidKeyException, unchecked exceptions would escape, contradicting javadoc that returns null on problems"
+          },
+          {
+            "point": "Negative duration from clock adjustment",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "theoretical edge case; system clock changes during GC extremely rare; not actionable"
+          },
+          {
+            "point": "Test coverage for Semeru structure",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "general testing suggestion; no concrete issue identified"
+          }
+        ],
+        "missed_human": [
+          "ReadResourceTestCase.java is missing a license header (identified by human reviewer)"
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    },
+    "mr_code": {
+      "text": "SUMMARY: The PR introduces a pragmatic fallback strategy to handle differing `CompositeData` key names between JDK distributions (Semeru vs. Temurin) for `GarbageCollectorMXBean.LastGcInfo`. The approach of checking for alternative keys and falling back to standard ones is appropriate for this compatibility issue. The change maintains backward compatibility, documents the expected behavior, and safely handles parsing failures by returning `null`.\n\nPOINTS:\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:85-100** - The fallback logic for `INDEX`/`ID` and `DURATION` is sound. Calculating duration as `endTime - startTime` when the `DURATION` key is absent is a correct and safe workaround. `startTime` and `endTime` are standard JMX attributes, so this fallback is low-risk.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:101-130** - The `TabularData` parsing loops for `beforeGc` and `afterGc` are structurally identical. Consider extracting this into a private helper method (e.g., `private Map<String, MemoryUsage> parseMemoryUsageMap(TabularData tabularData)`) to eliminate duplication and simplify future maintenance.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:~135 (catch block)** - The diff truncates before the `catch` clause. Ensure it catches `InvalidKeyException` (or `RuntimeException` if broader safety is preferred) and logs at `DEBUG` level as commented. Returning `null` on parsing failure aligns with the method's Javadoc, but verify the logger invocation matches the `PlatformMBeanLogger` API.\n- **platform-mbean/src/main/java/org/jboss/as/platform/mbean/ExtendedGarbageCollectorMBean.java:10** - Importing `InvalidKeyException` is correct. While `cd.containsKey()` guards against missing keys, some JDK implementations may still throw `InvalidKeyException` on `cd.get()` if the key isn't registered in the underlying `CompositeType`. The surrounding `try-catch` appropriately covers this edge case.\n- **testsuite/standalone/src/test/java/org/wildfly/core/test/standalone/mgmt/ReadResourceTestCase.java** - The new test should validate that `LastGcInfo` attributes are read successfully without throwing exceptions. If feasible, add a comment or assertion confirming that the MBean gracefully handles the alternative key structure to prevent regressions when JDK implementations evolve.",
+      "sec": 95.4,
+      "tok": {
+        "prompt": 2736,
+        "completion": 3575,
+        "total": 6311
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "Fallback logic for INDEX/ID and DURATION is sound; calculating duration as endTime - startTime is correct and safe",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "This is praise confirming the code works, not identifying an issue"
+          },
+          {
+            "point": "TabularData parsing loops for beforeGc and afterGc are structurally identical; suggest extracting helper method",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified in diff - two nearly identical loops exist for parsing TabularData; extracting helper would reduce duplication"
+          },
+          {
+            "point": "Catch block should catch InvalidKeyException and log at DEBUG; verify logger invocation matches PlatformMBeanLogger API",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified PlatformMBeanLogger.java - it has ONLY @Message exception methods, NO debug logging methods; the PR imports the logger but cannot use it for debug logging as intended"
+          },
+          {
+            "point": "Importing InvalidKeyException is correct; containsKey guards against missing keys but try-catch covers edge cases",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Confirmed InvalidKeyException import exists; candidate is confirming code is fine rather than identifying an issue"
+          },
+          {
+            "point": "New test should validate LastGcInfo attributes are read successfully; add comment or assertion",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague, non-actionable advice with no concrete suggestion"
+          }
+        ],
+        "missed_human": [
+          "ReadResourceTestCase.java is missing a license header (verified all other Java files have WildFly Apache-2.0 header)"
+        ],
+        "n_good": 2,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": 1
+      },
+      "net": 1
+    }
+  }
+]

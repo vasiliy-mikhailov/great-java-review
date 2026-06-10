@@ -1,0 +1,29 @@
+{
+  "repo": "smallrye/smallrye-config",
+  "pr": 1270,
+  "reviewer": "radcortez",
+  "human": "SUMMARY:\nThank you for the PR. I've left a few comments.\n\nPOINTS:\n- [documentation/src/main/docs/config/getting-started.md:58] I think we don't need an extra configuration to warn / fail. A simple warning should be enough.\n- [implementation/src/main/java/io/smallrye/config/ConfigValueConfigSource.java:409] `.put` returns the previous object associated with the key. It can easily be used to check and warn about the old and new values.\n- [implementation/src/main/java/io/smallrye/config/ConfigValuePropertiesUtils.java:21] If we don't use a configuration to warm / fail and use `.put` semantics, this shouldn't be required.",
+  "diff_only": {
+    "review": "SUMMARY:\nThe PR successfully introduces a warning log for duplicate keys within the same properties-based config source. The implementation correctly leverages `HashMap.put()`'s return value to detect overwrites and integrates cleanly with JBoss Logging. The approach is lightweight and aligns with the PR description. However, the log message lacks critical debugging context (line numbers), the logger field misses `final`, and the test doesn't verify the logging behavior despite its name.\n\nPOINTS:\n- **`implementation/src/main/java/io/smallrye/config/ConfigValueConfigSource.java`** (line ~346)\n  The `log` field should be declared `final`. Static logger instances are immutable by convention and should be `private static final ConfigLogging log = ...` to prevent accidental reassignment and align with Java best practices.\n\n- **`implementation/src/main/java/io/smallrye/config/_private/ConfigLogging.java`** & **`ConfigValueConfigSource.java`** (lines ~45 & ~412)\n  The warning message omits line numbers. Since `ConfigValue` already tracks `lineNumber`, including both the old and new line numbers is highly recommended. This drastically improves developer experience when locating duplicates in large properties files. Consider updating the message signature and template to: \n  `void duplicateValue(String key, String sourceName, int oldLine, int newLine);`\n  `@Message(id = 1007, value = \"Duplicate key '%s' found in config source '%s' at line %d (overwriting value at line %d)\")`\n\n- **`implementation/src/main/java/io/smallrye/config/_private/ConfigLogging.java`** (line ~45)\n  Minor formatting nit: remove spaces before colons in the message template (`name : %s` \u2192 `name: %s`) for consistency with standard logging conventions and readability.\n\n- **`implementation/src/test/java/io/smallrye/config/ConfigValuePropertiesTest.java`** (line ~83)\n  The test method `logDuplicateValue()` does not actually assert that a warning was logged. It only verifies that the last value wins. Either rename it to `duplicateKeyRetainsLastValue()` to match its actual behavior, or integrate a log capture/assertion mechanism (e.g., JUnit 5 `@TestInfo` with a custom listener, or a library like `log-captor`) to verify the warning is emitted.\n\n- **`implementation/src/main/java/io/smallrye/config/ConfigValueConfigSource.java`** (line ~412)\n  The current log only outputs the old value. For complete context, consider logging the new value as well, or at least the new line number (as suggested above). This helps developers quickly see what the key is being overwritten with.",
+    "score": 0.2292
+  },
+  "agent_repo": {
+    "review": "SUMMARY:\nThe PR introduces duplicate key detection for properties-based config sources, logging a warning when a key is redefined within the same file. The core logic using `HashMap.put()` return value is correct and efficient. However, there's an unused logger field and its associated imports that should be removed, and the log message could be improved with line number context for easier debugging.\n\nPOINTS:\n- [implementation/src/main/java/io/smallrye/config/ConfigValueConfigSource.java:345] The `private static ConfigLogging log` field is declared but never used. The code correctly references `ConfigLogging.log`, which is already defined as a public static field in the `ConfigLogging` interface. Remove this unused field, along with the newly added `java.lang.invoke.MethodHandles` and `org.jboss.logging.Logger` imports.\n- [implementation/src/main/java/io/smallrye/config/_private/ConfigLogging.java:44] Consider including the line number of the duplicate key in the warning message (e.g., `oldConfigValue.getLineNumber()`). Since `ConfigValue` already tracks line numbers, adding this context will significantly help users locate and fix duplicates in their properties files.\n- [implementation/src/test/java/io/smallrye/config/ConfigValuePropertiesTest.java:83] The test verifies that the last value wins, but does not assert that the warning was actually logged. While not strictly required, capturing the log output (e.g., via a test logger or `LogCaptor` if available in the project) would make the test more robust and prevent silent regressions in logging behavior.",
+    "score": 0.3612,
+    "n_tool_calls": 3,
+    "trace": [
+      [
+        "read_file implementation/src/main/java/io/smallrye/config/ConfigValueConfigSource.java",
+        "package io.smallrye.config;  import java.io.IOException; import java.io.InputStream; import java.io.Reader; import java.util.AbstractCollection; import java.uti"
+      ],
+      [
+        "read_file implementation/src/main/java/io/smallrye/config/_private/ConfigLogging.java",
+        "package io.smallrye.config._private;  import java.lang.invoke.MethodHandles;  import org.jboss.logging.BasicLogger; import org.jboss.logging.Logger; import org."
+      ],
+      [
+        "review",
+        ""
+      ]
+    ]
+  }
+}

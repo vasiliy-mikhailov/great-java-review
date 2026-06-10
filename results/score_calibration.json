@@ -1,0 +1,23 @@
+{
+  "metric": "0.85*LLM-judge(coverage+style) + 0.15*lexical, Qwen think=on, final-answer extraction",
+  "anchors": {
+    "floor_unrelated_human_vs_ref": 0.038,
+    "floor_same_reviewer_other_PR_vs_ref": 0.047,
+    "qwen_per_reviewer_full_MR_HQ": 0.305,
+    "qwen_typical": 0.29,
+    "ceiling_two_humans_SAME_PR_mean": 0.485,
+    "ceiling_two_humans_SAME_PR_range": [
+      0.221,
+      0.909
+    ]
+  },
+  "normalized_qwen_floor_to_ceiling": 0.564,
+  "buckets": {
+    "0.00-0.05": "floor \u2014 not reviewing THIS PR (random/off-topic/cross-PR)",
+    "0.05-0.15": "weak \u2014 barely engages the PR",
+    "0.15-0.30": "solid same-PR engagement (Qwen ~0.29 here)",
+    "0.30-0.48": "good \u2014 approaching human-level agreement",
+    "0.48+": "EXCELLENT \u2014 at typical two-human same-PR agreement (the ceiling)"
+  },
+  "note": "Two human experts on the SAME PR agree only ~0.485 (range 0.22-0.91). Qwen ~0.29 = ~56% of the way floor->ceiling. Excellent target = ~0.48."
+}

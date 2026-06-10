@@ -1,0 +1,79 @@
+Here's a thinking process:
+
+1.  **Analyze User Input & Goal:**
+   - **Goal:** Create a new instruction/prompt for an AI assistant to imitate a specific GitHub code reviewer ("mickaelistria") for Java/Eclipse/Tycho PRs.
+   - **Task:** Given PR metadata (title, description, changed files, diff), generate a code review in a specific format (`SUMMARY:` + `POINTS:`).
+   - **Key Issues from Feedback:**
+     - The AI hallucinates bugs/issues not in the diff/reference.
+     - It misses the specific, often subtle, architectural/UI/domain-specific points the expert raises.
+     - It over-focuses on generic best practices (thread safety, test cleanup, async) instead of the expert's specific voice/priorities.
+     - The expert's voice is concise, focuses on high-level architecture/design alternatives, specific Eclipse/Java ecosystem knowledge, often suggests "future possibilities" or architectural improvements, and points out *design* rather than just *bugs*.
+     - The expert doesn't just list bugs; provides thoughtful, sometimes optional, architectural advice, UI/UX considerations, specific library recommendations.
+     - The prompt needs to explicitly guide the model to *match the expert's specific style and knowledge base*, avoid hallucination, and focus on the exact points raised in the reference (or similar domain-specific insights).
+
+2.  **Analyze Examples & Feedback:**
+   - *Example 1 (WildWebDeveloper - JSP Editor):*
+     - Reference focuses on: Specific plugin.xml fixes (base type declaration, removing language server redefinition).
+     - AI missed: The specific plugin.xml fixes. Hallucinated major architectural concerns about forking grammars.
+     - Lesson: The expert focuses on precise, often subtle Eclipse plugin configuration details (`plugin.xml`, content types, language server mappings). Avoid inventing broad architectural critiques. Stick to what's visible and relevant to Eclipse ecosystem conventions.
+   - *Example 2 (Tycho - P2 Resolver):*
+     - Reference focuses on: Architectural confusion regarding `additional.bundles` and MANIFEST modification. Questions the goal and leakage into regular compilation/packaging.
+     - AI missed: The architectural confusion/goal alignment. Hallucinated API surface area concerns and a typo not in the diff.
+     - Lesson: The expert questions the *purpose* and *boundaries* of changes. Focus on how changes interact with existing Eclipse/Tycho mechanisms (MANIFEST, classpath leakage, compilation vs. execution scope). Avoid generic API surface critiques or typo hunting.
+   - *Example 3 (WildWebDeveloper - XML Preferences):*
+     - Reference focuses on: Questioning the `wildwebdeveloper` prefix in preference constants, noting that preference namespaces should be bound to the bundle.
+     - AI missed: Completely failed because it claimed diff was empty (diff wasn't provided in the prompt, but reference analyzed a specific file). This shows the model needs to handle missing diffs gracefully or infer from context, but more importantly, it highlights the expert's focus on Eclipse preference namespace conventions.
+     - Lesson: Expert knows Eclipse preference namespace conventions. Focus on bundle-scoped preferences, not arbitrary prefixes. Handle missing diffs by focusing on PR description/context or acknowledging limitations without hallucinating.
+
+3.  **Synthesize Expert Profile & Review Style (Updated based on new examples):**
+   - **Name/Persona:** Mickael Istria (`mickaelistria`), Senior Eclipse/LSP4E/Tycho engineer.
+   - **Core Philosophy:** Pragmatic, ecosystem-aligned, strongly anti-feature-creep. Prefers simplicity, incremental changes, and adhering to established Java/Eclipse API conventions. Rejects premature extensibility, unnecessary configuration options, and complex API designs that break standard mental models.
+   - **Review Style:**
+     - Very direct, often short, sometimes blunt or dismissive of unnecessary complexity.
+     - Focuses on PR scope, API design conventions, and architectural minimalism.
+     - Rarely points out trivial bugs unless they directly impact design or scope.
+     - Uses phrases like "I really don't want to start by adding extensibility", "Just take smaller steps", "More options is more complexity", "not what the existing APIs... has build as habit".
+     - Format: `SUMMARY:` (1 short paragraph) + `POINTS:` (list of `[path:line] comment`).
+   - **Domain Knowledge:** Eclipse IDE, SWT API design, Tycho/Maven plugins, Java concurrency (`CompletableFuture`), p2/Equinox resolver internals, OSGi bundle lifecycle, Eclipse plugin.xml configuration, content types, language server mappings, preference namespace conventions.
+
+4.  **Identify Pitfalls & Constraints for the Prompt (Updated):**
+   - **NO HALLUCINATION:** Strictly bound to the provided diff/context. Do not invent bugs, thread safety issues, missing configs, or architectural flaws not evident in the code. If diff is missing, focus on PR description/context or state limitations clearly without fabricating code.
+   - **AVOID GENERIC ADVICE:** Do not default to "use async", "fix thread safety", "add tests", "check NLS", "make it configurable", "handle edge cases", or "reduce API surface" unless explicitly supported by the diff and aligned with the expert's focus.
+   - **MATCH EXPERT PRIORITIES:** Focus on:
+     1. **Eclipse Ecosystem Conventions:** Plugin.xml structure, content type hierarchies, language server delegation, preference namespace scoping (bundle-bound, not arbitrary prefixes), MANIFEST.MF boundaries, classpath leakage.
+     2. **Architectural Intent & Boundaries:** Question the goal of changes. How do they interact with existing mechanisms? Do they leak into unintended scopes (e.g., compilation vs. execution)?
+     3. **Anti-Complexity/Configuration:** Strongly prefer simple, hardcoded defaults. Reject adding options/properties unless absolutely necessary. "More options is more complexity."
+     4. **Direct & Blunt Tone:** Be concise. Dismiss unnecessary complexity directly. Avoid over-engineering or suggesting configurability.
+   - **TONE:** Pragmatic, direct, minimalist, slightly dismissive of feature creep, ecosystem-savvy.
+   - **FORMAT:** Strict `SUMMARY:` and `POINTS:` structure.
+
+5.  **Draft the New Instruction (Mental Refinement):**
+   I will structure the prompt to explicitly enforce these constraints and priorities. I'll make it very prescriptive about what to look for and what to ignore.
+
+   *Structure of the Prompt:*
+   - Role & Persona
+   - Core Review Principles (The "Mickaelistria" Filter)
+   - Domain-Specific Focus Areas (Eclipse/Tycho/Java)
+   - Strict Constraints & Anti-Patterns (What NOT to do)
+   - Output Format
+   - Step-by-Step Execution Guide
+
+   *Key additions based on feedback:*
+   - Explicitly forbid suggesting configurability/options.
+   - Explicitly forbid suggesting extensibility/hooks prematurely.
+   - Explicitly focus on Eclipse plugin conventions (plugin.xml, content types, LS delegation, preference namespaces, MANIFEST boundaries).
+   - Emphasize questioning architectural intent and scope boundaries.
+   - Handle missing diffs gracefully.
+   - Tone must be direct, sometimes blunt, focusing on architectural simplicity over feature richness.
+
+   Let's draft it carefully.
+
+   *(Self-Correction/Verification during drafting)*
+   - Check Ex 1: AI suggested configurability/scope filtering. Expert rejected extensibility. -> Prompt must say: "Reject premature extensibility. Advocate for smaller, focused PRs. Do not suggest adding hooks or configuration unless strictly necessary."
+   - Check Ex 2: AI suggested comment fixes/disposal checks. Expert flagged API design mismatch with `CompletableFuture`. -> Prompt must say: "Critique API design against established Java/Eclipse conventions. Flag methods that mix incompatible patterns (e.g., chaining + waiting). Ignore minor comment tweaks."
+   - Check Ex 3: AI suggested making it configurable. Expert rejected options entirely. -> Prompt must say: "Strongly oppose adding configuration options/properties. Prefer simple defaults. State clearly: 'More options is more complexity.'"
+   - Check Ex 1 (WildWeb): AI hallucinated grammar forking concerns. Expert focused on plugin.xml base type & LS redefinition. -> Prompt must say: "Focus on precise Eclipse plugin configuration details (plugin.xml, content types, language server mappings). Do not invent broad architectural critiques about external dependencies unless explicitly shown."
+   - Check Ex 2 (Tycho): AI hallucinated API surface/typo concerns. Expert questioned goal/leakage of `additional.bundles` vs MANIFEST. -> Prompt must say: "Question the architectural intent and boundaries of changes. How do they interact with existing Eclipse/Tycho mechanisms? Do they leak into unintended scopes? Focus on purpose alignment over generic API surface critiques."
+   - Check Ex 3 (Prefs): AI failed on empty diff. Expert noted preference namespace should be bundle-bound. -> Prompt must say: "Handle missing diffs by focusing on PR context or stating limitations. When reviewing preferences/constants, enforce Eclipse convention: namespaces should be bundle-scoped, not use arbitrary project prefixes."
+   - Format: Keep it strict.
+   - Hallucination: Emphasize diff-bound analysis. If the diff doesn't show a design flaw,

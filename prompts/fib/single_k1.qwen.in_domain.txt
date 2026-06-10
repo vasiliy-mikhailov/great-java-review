@@ -1,0 +1,52 @@
+## Inputs
+     ...
+     ## Reference review (target style/concerns)
+     ...
+     ## Generated Outputs
+     ...
+     ```
+     This implies the assistant *receives* the reference review as part of the input/context and must align its output to it. The original prompt missed instructing the assistant to *use the reference review as the primary guide for content and tone*.
+   - I need to rewrite the instruction to explicitly handle:
+     1. Using the reference review as the ground truth for concerns/points.
+     2. Matching the exact terse, imperative tone.
+     3. Strict diff anchoring (no complaining about missing context, no inventing issues).
+     4. Output format constraints.
+     5. Domain knowledge (Vert.x, Java, TCCL, platform constraints, test placement strategies).
+
+4.  **Draft - Section by Section:**
+   *Role/Context:* Expert Java code reviewer for high-performance frameworks (Vert.x).
+   *Task:* Generate a code review based on the provided PR diff and reference review.
+   *Key Constraints:*
+   - Strictly align with the reference review's specific concerns. Do not invent new issues.
+   - Match the reference's tone: extremely concise, imperative, high-signal, one-liner comments.
+   - Format: SUMMARY (1 short paragraph), POINTS (list with `[file:line]`).
+   - Principles: Zero hallucination, strict diff anchoring, catch typos/naming immediately, strict platform/API constraints, prioritize correctness/concurrency/etc.
+   - Domain specifics to embed: TCCL vs TCCK, avoid `sun.misc`/`com.sun`, document mutability/reflection of returned collections, test placement conventions (e.g., integration tests in `HttpTest` vs unit tests), Vert.x threading model awareness.
+
+   Let's refine the instruction to be highly precise and address the feedback directly.
+
+   *Structure of New Instruction:*
+   ```
+   You are an expert Java code reviewer specializing in high-performance frameworks (e.g., Vert.x).
+   You will be provided with a PR diff and a reference review that captures the exact concerns and tone of a senior framework maintainer.
+   Your task is to generate a code review that strictly mirrors the reference's substantive points and adopts its terse, high-signal voice.
+
+   OUTPUT FORMAT:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   CRITICAL REVIEW PRINCIPLES:
+   1. REFERENCE ANCHORING IS MANDATORY: The reference review contains the exact concerns you must address. Do not invent new issues, speculate on unshown logic, or complain about incomplete diffs. Expand only on what the reference explicitly flags.
+   2. ZERO HALLUCINATION & STRICT DIFF ANCHORING: Only comment on what is explicitly changed in the diff. If the reference points to a specific line/concept, anchor your comment precisely to that location in the provided diff.
+   3. TERSE, IMPERATIVE TONE: Match the reference reviewer's voice exactly. Use short, direct, one-sentence comments. Avoid explanations, justifications, or alternative implementations unless explicitly stated in the reference. State the problem and the required fix/constraint immediately.
+   4. CATCH TYPOS & NAMING CONVENTIONS IMMEDIATELY: Flag obvious typos in variable/method names directly. Example: `TCCK` must be corrected to `TCCL` (Thread Context ClassLoader). State the correction plainly.
+   5. STRICT PLATFORM/API CONSTRAINTS: Reject hard dependencies on internal/sun-specific packages (e.g., `com.sun.management.*`, `sun.misc.*`). These are platform-specific and will break portability. State this constraint directly without suggesting workarounds.
+   6. DOMAIN-SPECIFIC PRIORITIES: 
+      - Collections/Returns: Always document whether returned collections (Sets, Maps, Lists) are mutable and if modifications reflect back to the internal state or HTTP response.
+      - Testing Strategy: If a new test is added, note if it belongs in a broader integration test suite (e.g., `HttpTest`) rather than an isolated unit test, per framework conventions.
+      - Concurrency/Correctness: Prioritize thread-safety, resource leaks, null-handling, and API contracts.
+
+   Generate the review now.

@@ -1,0 +1,75 @@
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Original Instructions:** The user provided a prompt for an "expert Java code reviewer" that takes a PR (title, description, changed files, diff) and outputs a focused review in a specific format (`SUMMARY:` and `POINTS:` with `[path/File.java:line]` anchors). It prioritizes correctness, concurrency, resource leaks, null-handling, API design, error handling, tests, edge cases. It emphasizes anchoring to the diff and not inventing files/lines.
+   - **Examples & Feedback:**
+     - *Example 1:* Input is a markdown version mapping update. Reference review: `POINTS: - [platform/jewel/VERSIONS.md:7] agree, my mistake`. Generated output: Overly formal, invents a verification request about build artifacts. Feedback: Misses the core point (acknowledging a prior mistake), tone is too formal/verbose, invents irrelevant concerns. Score: 0.17.
+     - *Example 2:* Input is a `pom.xml` dependency update (Jackson 1.x to 2.x). Reference review: `POINTS: - [openstack-client-connectors/resteasy-connector/pom.xml:20] I removed the dependency from the parent.` Generated output: Focuses on version age, missing Java code updates, classpath conflicts. Feedback: Completely misses the reference's point about parent POM removal, invents concerns. Score: 0.13.
+     - *Example 3:* Input is Python code adding a `continue` for `None` values. Reference review: Points out that native tag filter doesn't support `IS NULL`, row-based path depends on native filtering for lazy reads, so it should fail fast with a clear error instead of silently broadening match. Generated output: Correctly identifies silent skip is bad, suggests raising error, matches reference's conclusion. Score: 0.87. Feedback says it's good but slightly verbose, wants prompt to match reference's concerns/voice more closely.
+   - **Key Observations from Feedback:**
+     - The assistant is *over-generating* generic, textbook code review advice (security, version updates, missing corresponding code changes, formal tone).
+     - The reference reviews are *highly contextual, conversational, and specific to the PR's actual intent/context* (e.g., "agree, my mistake", "I removed the dependency from the parent", "Get. But the current native tag filter does not support...").
+     - The assistant fails to recognize when a change is a simple correction, a follow-up to a prior discussion, or requires domain-specific architectural knowledge that isn't obvious from the diff alone.
+     - The prompt needs to explicitly instruct the assistant to:
+       - Match the conversational, direct, and context-aware tone of real maintainers.
+       - Avoid inventing concerns or generic best practices if the diff is straightforward or if the reference indicates a specific contextual reason.
+       - Focus strictly on what the diff actually changes and why it matters in *this specific context*.
+       - Acknowledge when a change is a correction, a follow-up, or has a specific architectural constraint.
+       - Keep it concise and high-signal, avoiding fluff.
+       - The prompt currently says "expert Java code reviewer", but Example 3 is Python, and Example 1 is Markdown. So it's actually a *general* code reviewer, not just Java. I should adjust that or make it language-agnostic but keep the Java-specific priorities if applicable, or just generalize to "expert software engineer/code reviewer".
+       - The feedback repeatedly says: "Improve the prompt so the generated review matches the reference reviewer's concerns and voice more closely." This implies the prompt needs to explicitly model the *style* and *reasoning process* of the reference reviewer.
+
+2.  **Identify Core Task & Input Format:**
+   - **Task:** Generate a focused, high-signal code review comment for a given PR diff hunk.
+   - **Input Format:** REPO, PR #, Code under review (diff hunks with file paths and line numbers), Reference review (target style/concerns - though in real use, this might not be provided, but the prompt should be trained to mimic this style). Wait, the prompt says "You are given a pull request...". The examples show inputs including a "Reference review". In actual deployment, the assistant will likely just get the PR info and diff. The prompt needs to internalize the *style* of the reference reviews without needing them as input.
+   - **Output Format:** `SUMMARY:` paragraph, `POINTS:` list with `[path:line]` anchors.
+
+3.  **Extract Niche/Domain Specifics & Strategies from Examples:**
+   - *Context Awareness:* Real reviews often reference prior conversations, architectural constraints, or specific subsystem behaviors (e.g., "row-based path depends on native filtering to preserve lazy offset/limit reads", "I removed the dependency from the parent").
+   - *Tone:* Direct, conversational, pragmatic. Uses phrases like "Get.", "agree, my mistake", "For now I changed this to...". Avoids corporate/formal fluff.
+   - *Focus:* Only comment on what's actually changed and why it matters *here*. Don't preach generic best practices unless directly relevant to the diff's impact.
+   - *Handling Simple/Corrective Changes:* If it's a version bump or doc fix, acknowledge it briefly. Don't overcomplicate.
+   - *Language Agnostic:* The prompt says "Java code reviewer" but examples include Python and Markdown. I should change it to "expert software engineer and code reviewer" or keep Java focus but note it applies generally. I'll adjust to "expert code reviewer" but keep the priority list.
+   - *Strategy:* The assistant needs to simulate the mindset of a project maintainer: understand the *intent* behind the change, check against known architectural constraints, match the conversational tone, and only flag real blockers or necessary clarifications.
+
+4.  **Draft New Instructions (Mental Refinement):**
+   I need to rewrite the prompt to explicitly address the failures:
+   - Stop inventing generic concerns.
+   - Adopt a direct, maintainer-like voice.
+   - Focus on architectural/contextual implications over textbook rules.
+   - Keep it concise.
+   - Explicitly handle non-Java files if they appear.
+   - Structure the prompt to guide the reasoning process before output.
+
+   Let's craft it step-by-step:
+   - **Role:** Expert code reviewer & project maintainer.
+   - **Task:** Analyze the provided PR diff and generate a focused, high-signal review.
+   - **Style/Voice:** Direct, conversational, pragmatic. Match the tone of experienced open-source maintainers. Avoid corporate fluff, generic best-practice lectures, or over-explaining obvious changes. Use concise, actionable language.
+   - **Content Priorities:** 
+     1. Context & Intent: What is the PR actually trying to do? Acknowledge corrections or follow-ups naturally.
+     2. Architectural/Domain Constraints: Consider how the change interacts with the existing codebase (e.g., native vs. Java layers, lazy evaluation, dependency management, parent POMs, filtering pipelines).
+     3. Real-world Impact: Focus on correctness, edge cases, and silent failures. Prefer failing fast over silent degradation.
+     4. Strict Diff Anchoring: Only comment on what's in the diff. Never invent files, lines, or missing code. If the diff is self-contained and correct, keep the review brief or acknowledge it.
+   - **Output Format:** Keep the requested format.
+   - **Explicit Constraints from Feedback:** 
+     - Do not invent concerns about version ages, missing corresponding files, or security unless directly implied by the diff.
+     - If the change is a simple fix, doc update, or dependency swap, acknowledge it directly. If there's a known constraint (e.g., parent POM management, native layer limitations), state it clearly.
+     - Match the reference style: concise, context-aware, pragmatic.
+
+   Let's structure the prompt carefully.
+
+   ```
+   You are an expert code reviewer and project maintainer.
+   You are given a pull request (repo, PR number, and diff hunks).
+   Write a focused, high-signal code review that matches the pragmatic, conversational style of experienced open-source maintainers.
+
+   OUTPUT FORMAT:
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   GUIDELINES:
+   1. MATCH THE MAINTAINER VOICE: Be direct, conversational, and concise. Avoid corporate fluff, textbook lectures, or over-explaining obvious changes. Use phrases like "Get.", "For now...", or "agree" when appropriate. If the change is a simple correction or follow-up, acknowledge it naturally.
+   2. PRIORITIZE CONTEXT & ARCHITECTURE OVER TEXTBOOK RULES: Focus on how the change interacts with the existing codebase. Consider subsystem constraints (e.g., native vs. managed layers, lazy evaluation pipelines, dependency inheritance like parent POMs, filtering logic). If a change silently alters behavior (e.g., skipping nulls, broadening

@@ -1,0 +1,10 @@
+EXAMINE_DONE_MARK
+=== EXAMINE 49721 ===
+PR title: ["PR #49721: Add fallback support for '/opt/homebrew/bin' on macOS"]
+HUMAN review (target): "POINTS: - [test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java:110] This is unrelated to falling back to an additional path. It's also unnecessary as `@DisabledIfProcessUnavailable` is never used with slashes in the command names as that would likely hurt their portability. Please revert. - [core/spring-boot-do"
+>>> RAW(last400): 'homebrew/bin/docker` is the expected Docker CLI for their CI environment.\n\n- [buildpack/CredentialHelperTests.java:109-112] The assertion change from `allSatisfy` to two `anySatisfy` calls is correct: with two fallback directories, two suppressed exceptions are generated, and each `anySatisfy` verifies that at least one suppressed exception contains the respective path. This is semantically sound.'
+N_ORCH_DELEGATIONS: 8
+REVIEW_LEN: 2808
+REVIEW: 'SUMMARY:\nThis PR correctly adds `/opt/homebrew/bin` fallback support for Apple Silicon macOS across three modules. The core logic is sound, but there are minor code quality issues (trailing slash inconsistency, dead guard code) and a behavioral change in test conditions worth noting.\n\nPOINTS:\n- [buildpack/CredentialHelper.java:44-46] Trailing slash inconsistency: `OPT_HOMEBREW_BIN` and `USR_LOCAL_BIN` end with `/` (e.g., `"/opt/homebrew/bin/"`), while the same constants in `ProcessRunner.java:46-48` and `DisabledIfProcessUnavailableCondition.java:45-47` do NOT end with `/`. This works because '
+SCORE: 0.235
+EXAMINE_DONE

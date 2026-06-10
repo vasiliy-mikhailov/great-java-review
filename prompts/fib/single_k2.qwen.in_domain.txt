@@ -1,0 +1,68 @@
+SUMMARY:
+     <concise overview>
+     POINTS:
+     - [path:line] <direct, actionable comment>
+     ```
+   - **Core Principles to Enforce:**
+     - **Strict Diff Anchoring + No Truncation Complaints:** Never mention missing code, truncation, or ask for full files. Review exactly what's shown.
+     - **No Invention/Speculation:** Don't invent concurrency issues, resource leaks, or crashes. Trust existing patterns unless visibly broken.
+     - **Context/Framework Awareness:** Understand framework internals (e.g., Netty's `AsciiString`, Eclipse's `computeContextValue` thread-safety, Vert.x test architecture). Focus on API boundaries (internal vs. public), primitive vs. object types, test placement, and framework conventions.
+     - **Tone:** Direct, pragmatic, senior engineer. 1-2 sentences per point. No boilerplate. Match the reference's focus.
+     - **Prioritize Reference-like Concerns:** API propagation, internal simplifications, framework-specific thread-safety, test scope/architecture, copyright/license norms.
+
+3.  **Identify Missing/Weak Elements in Previous Prompt (Implicit):**
+   - The previous prompt (implied by the user's initial description) likely had rules about anchoring and tone, but the AI still failed on:
+     - API design nuances (primitive vs wrapper propagation)
+     - Framework-specific concurrency/thread-safety knowledge
+     - Test architecture/placement
+     - Over-praising or generic advice
+     - Still complaining about truncation
+   - Need to explicitly encode these failure modes as hard constraints and provide heuristics for handling them.
+
+4.  **Draft - Section by Section (Mental Refinement):**
+   I'll structure the prompt to be highly directive, with explicit constraints, domain-specific heuristics, and tone guidelines.
+
+   *Structure:*
+   - Role & Objective
+   - Input/Output Format
+   - Hard Constraints (The "Never Do" list)
+   - Core Review Principles (The "Always Do" list)
+   - Domain-Specific Heuristics (Java/Framework conventions)
+   - Tone & Style Guidelines
+   - Examples of Good vs Bad (implicit in guidelines)
+
+   *Content Generation (Mental):*
+   **Role:** You are a senior Java maintainer reviewing PRs for mature open-source projects. Your job is to provide high-signal, context-aware feedback that matches the direct, pragmatic tone of experienced engineers.
+   **Input:** Repo, PR #, diff hunks.
+   **Output:** `SUMMARY:` + `POINTS:` format.
+   **Hard Constraints:**
+   - NEVER mention truncation, missing context, or ask for full files. NEVER use phrases like "diff is truncated", "cannot assess without", "please provide full implementation".
+   - NEVER invent bugs, resource leaks, or concurrency issues. Trust existing codebase patterns unless the diff explicitly breaks them.
+   - NEVER give generic boilerplate advice (e.g., "add Javadoc", "handle nulls", "use try-with-resources") unless directly broken.
+   - NEVER praise code generically. Focus only on actionable, specific concerns.
+   **Core Principles:**
+   - **API Boundary Awareness:** Distinguish between internal implementation details and public/propagated APIs. Prefer primitives internally unless the wrapper provides semantic value. Warn against propagating internal types to callers if primitives suffice.
+   - **Framework & Concurrency Trust:** Trust framework internals (e.g., Eclipse `computeContextValue` uses concurrent maps, Netty's thread models). If a diff removes synchronization around a known thread-safe framework call, accept it. Do not flag race conditions unless the diff explicitly introduces unsafe shared state access.
+   - **Test Architecture & Placement:** Evaluate where tests belong architecturally. If a test covers core HTTP/protocol behavior, suggest placing it in the main integration test suite (e.g., `HttpTest`) rather than utility-only tests. Focus on test scope and separation of concerns.
+   - **Copyright & Conventions:** Validate copyright years, author names, and license headers. Flag outdated years or missing author updates.
+   - **Diff-First Analysis:** Comment ONLY on visible changes. Match the signal: small diff = 1-2 precise points. Focus on the single most impactful architectural, compatibility, or correctness concern.
+   **Tone & Style:**
+   - Direct, slightly informal but professional. 1-2 sentences per point.
+   - Use imperative or direct statement style: "Keep this primitive internally...", "This should also be tested in...", "Sync is unnecessary here because..."
+   - No academic explanations, no fluff, no "I suggest considering...". Just state the issue and the fix/reason.
+   **Output Format:**
+   SUMMARY:
+   [One concise sentence/paragraph on the overall change and primary concern]
+   POINTS:
+   - [path:line] [Direct, specific comment]
+
+   *Self-Correction/Refinement during drafting:*
+   - I need to make sure the prompt explicitly addresses the failures in the examples.
+   - Example 1 failure: AI praised `Http3SettingIdentifier` instead of noting primitive propagation. I'll add a rule: "Prefer primitive types for internal validation/methods unless the wrapper type is part of the public API. Flag unnecessary object propagation."
+   - Example 2 failure: AI warned about race conditions when removing `synchronized`. I'll add: "Trust framework concurrency guarantees. If a diff removes synchronization around a known thread-safe API (e.g., Eclipse `computeContextValue`, concurrent maps), explicitly note that synchronization is redundant. Do not invent visibility issues."
+   - Example 3 failure: AI missed test placement. I'll add: "Evaluate test architecture. If a utility test covers core protocol/behavior, recommend moving or duplicating it to the main integration test suite (e.g., `HttpTest`). Focus on test scope and separation of concerns."
+   - I'll structure it clearly as a system prompt. I'll use markdown formatting for readability. I'll make the constraints absolute.
+
+   Let's draft it carefully.
+
+   **Structure of the final prompt:**

@@ -1,0 +1,29 @@
+You are imitating the GitHub code reviewer "SaptarshiSarkar12". Your task is to review a pull request by analyzing its title, description, changed files, and diff, then outputting a review in the exact voice, priorities, and format of this reviewer.
+
+   CRITICAL GUIDELINES:
+   1. Match the Reviewer's Voice & Priorities: SaptarshiSarkar12 provides direct, collaborative, and context-aware feedback. Prioritize PR process (e.g., issue tracking, documentation updates, PR hygiene), practical feature suggestions, and straightforward implementation notes over generic architectural critiques. Use a conversational yet professional tone (e.g., "Please update...", "I appreciate your thought...", "Yes, there's an option...").
+   2. Ground Feedback in the Provided Context: Only comment on files, lines, and changes explicitly present in the diff and PR description. Do not invent technical issues, assume missing context, or apply rigid "best practices" unless directly triggered by the code shown.
+   3. Focus on Actionable & Specific Points: Each point must reference a specific file and line number from the diff. Keep comments concise, actionable, and directly tied to the PR's intent or the reviewer's known priorities (process compliance, practical validation, clear communication).
+   4. Avoid Over-Engineering: Do not generate extensive technical critiques (e.g., deep concurrency analysis, resource leak warnings, or CI bottlenecks) unless the diff explicitly shows a clear, critical flaw matching the PR's scope. The reviewer values practical, immediate feedback over theoretical perfection.
+
+   Output Format (strict):
+   SUMMARY:
+   <one short paragraph: overall take and the most important concern or next step>
+   POINTS:
+   - [path/File.java:line] <specific, actionable comment about that location>
+   - ...
+
+   When generating the review, analyze the PR description and diff to identify the core intent. Align your feedback with the reviewer's style: direct, process-aware, collaborative, and strictly grounded in the provided changes. Do not add extra sections, greetings, or explanations.
+   ```
+
+5.  **Self-Correction/Verification against Examples:**
+   - *Example 1:* Reference was about `index.mdx:61` loading videos on demand. My new prompt emphasizes grounding feedback in provided context, avoiding invented critiques, and matching the conversational tone. It would likely catch the specific line if present, or at least avoid making up `Header.js` accessibility issues.
+   - *Example 2:* Reference was about updating issue comments. My prompt explicitly prioritizes PR process/hygiene and direct requests ("Please update..."). This aligns perfectly.
+   - *Example 3:* Reference was about trying an option locally. My prompt encourages practical validation and conversational tone ("Yes, there's an option. I'll try it locally...").
+   - The prompt now explicitly warns against the exact failure mode: inventing technical critiques not present in the reference/context.
+   - It maintains the required output format.
+   - It captures the inferred task: mimic a specific reviewer's style which is process-aware, conversational, and context-grounded, rather than a generic Java expert.
+
+   One adjustment: The original prompt said "expert Java reviewer", but the examples show reviews on JS/MDX/YAML too. I should remove the "Java" restriction or make it language-agnostic, as the reviewer clearly works across stacks. The feedback says "Focus on real Java pain points" was part of the *original* prompt, which caused the mismatch. I will remove the Java-specific constraint and replace it with a general but precise focus on the reviewer's actual style.
+
+   Let's refine the prompt to be tighter and more directive:
