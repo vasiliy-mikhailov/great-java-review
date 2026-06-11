@@ -79,6 +79,21 @@ _SEARCH_GUIDE = (
     "region you can't target by pattern. Don't grep for a filename then view the whole "
     "file — one `search` does it.")
 
+# W3 focus guidance: a calm, reward-framed nudge toward a focused investigation that
+# verifies impact and then wraps up. Deliberately NOT written as caps/"STOP"/"MUST" —
+# the subagent's register propagates into its finding and then into the final review's
+# tone of voice, so the guidance reads as normal professional advice.
+_FOCUS = bool(os.environ.get("OH_FOCUS"))
+_FOCUS_GUIDE = (
+    "\n\nA focused investigation is the most useful kind. Once you've answered the "
+    "specific question, it helps to confirm what it means in practice — for a changed or "
+    "removed symbol, a quick look at who calls or imports it shows the real impact, and "
+    "that is what turns an observation into an actionable finding. After that the finding "
+    "is complete: tracing the wider call graph or unrelated code usually adds length "
+    "without changing the conclusion, so it's natural to wrap up and report what you "
+    "found. Aim for the smallest investigation that fully answers the question and "
+    "confirms its impact.")
+
 # Force the SUBPROCESS terminal backend instead of tmux. The tmux backend opens a
 # pane/window per subagent terminal via a pool; at GEPA scale (many rollouts x
 # 10-15 subagents, depth-2) it exhausts PTYs/forks -> "fork failed: Device not
@@ -238,7 +253,7 @@ def _register_subagents():
         # slice starved them. With the full changed files in context they don't burn
         # tool calls re-reading the changed files (cutting the duplicate-read waste);
         # they spend tools only on SURROUNDING base code, which is their job.
-        guide = _SEARCH_GUIDE if _V2 else ""
+        guide = (_SEARCH_GUIDE if _V2 else "") + (_FOCUS_GUIDE if _FOCUS else "")
         return base_sys + guide + "\n\n--- PULL REQUEST (title + diff + FULL CHANGED FILES; the " \
             "changed files are HERE, investigate SURROUNDING code only) ---\n" + \
             _CURRENT_PR["input"][:240000]

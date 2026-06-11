@@ -2767,6 +2767,212 @@
       "net": 1,
       "trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr.json",
       "judge_trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr__judge.json"
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThe PR correctly addresses the missing extension metadata for the SSE and stdio transport modules. Adding `quarkus-extension.yaml` and `<description>` tags will significantly improve discoverability and presentation on `code.quarkus.io` and Maven Central. The changes align with Quarkus extension conventions. One minor typo needs correction before merging.\n\nPOINTS:\n- `transports/stdio/pom.xml` (line 14): Typo in the description tag. `stanard` should be `standard`. \n  ```xml\n  <!-- Current -->\n  <description>This extension enables developers to implement the MCP server features easily using stanard input/output (stdio).</description>\n  <!-- Fix -->\n  <description>This extension enables developers to implement the MCP server features easily using standard input/output (stdio).</description>\n  ```\n- `transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml` & `transports/stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml`: The YAML structure, field names (`name`, `metadata.keywords`, `metadata.guide`, `metadata.categories`, `metadata.status`), and placement in the `runtime` module's `META-INF` directory are correct and follow Quarkus extension standards. The `preview` status and Quarkiverse guide URL are appropriate.\n- `transports/sse/pom.xml` & `transports/stdio/pom.xml`: Adding `<description>` to the parent POMs is good practice. Maven Central will index these, but ensure that the `runtime` and `deployment` child POMs either inherit this description or explicitly define it if you want it to appear directly on the artifact pages. Quarkus's build plugins usually handle inheritance correctly, but it's worth verifying after the next release.",
+      "sec": 52.7,
+      "tok": {
+        "prompt": 1477,
+        "completion": 2232,
+        "total": 3709
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "Typo 'stanard' should be 'standard' in transports/stdio/pom.xml description",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified in diff: 'stanard input/output' is clearly a typo for 'standard'"
+          },
+          {
+            "point": "YAML structure and field names are correct per Quarkus extension conventions",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Compared against existing core/runtime/.../quarkus-extension.yaml - structure is valid but this is praise/validation"
+          },
+          {
+            "point": "POM description inheritance advice for Maven Central",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague general advice with no concrete issue identified"
+          }
+        ],
+        "missed_human": [],
+        "n_good": 1,
+        "n_wrong": 0,
+        "n_trivial": 2,
+        "n_missed": 0,
+        "net_score": 1
+      },
+      "net": 1,
+      "trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr_code.json",
+      "judge_trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr_code__judge.json"
+    },
+    "mr_code_tools": {
+      "text": "SUMMARY:\nThis PR adds extension metadata (quarkus-extension.yaml and pom.xml descriptions) to the SSE and stdio transport extensions so they display properly on code.quarkus and Maven Central. The approach is sound, but there's a typo and a missing field compared to existing conventions.\n\nPOINTS:\n- [transports/stdio/pom.xml:14] Typo: \"stanard input/output\" should be \"standard input/output\". The word \"standard\" is misspelled.\n- [transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml:1] Missing `description` field. The existing core extension at `core/runtime/src/main/resources/META-INF/quarkus-extension.yaml` includes a `description` field (\"This extension enables developers to implement the MCP server features easily.\"). The new SSE and stdio YAML files should also include this field so code.quarkus uses it. For SSE, something like: `description: This extension enables developers to implement the MCP server features easily using server side events (SSE).`\n- [transports/stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml:1] Same issue: add a `description` field matching the pom.xml description, consistent with the core extension's convention.",
+      "sec": 82.3,
+      "tok": {
+        "prompt": 52385,
+        "completion": 3054,
+        "total": 55439
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "Typo: 'stanard input/output' should be 'standard input/output' in stdio/pom.xml",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified typo 'stanard' exists in the diff for transports/stdio/pom.xml:14"
+          },
+          {
+            "point": "Missing `description` field in SSE quarkus-extension.yaml - core extension has one",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified core/runtime/src/main/resources/META-INF/quarkus-extension.yaml line 2 has 'description: This extension enables developers to implement the MCP server features easily.' The proposed SSE yaml in diff lacks this field."
+          },
+          {
+            "point": "Missing `description` field in stdio quarkus-extension.yaml - should match core convention",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Same verification: proposed stdio yaml in diff lacks description field while core extension includes one."
+          }
+        ],
+        "missed_human": [],
+        "n_good": 3,
+        "n_wrong": 0,
+        "n_trivial": 0,
+        "n_missed": 0,
+        "net_score": 3
+      },
+      "net": 3,
+      "trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr_code_tools.json",
+      "judge_trace": "results/traces/quarkiverse__quarkus-mcp-server__51__mr_code_tools__judge.json"
+    }
+  },
+  {
+    "repo": "spring-projects/spring-boot",
+    "pr": 49721,
+    "reviewer": "wilkinsona",
+    "pr_input": "REPO: spring-projects/spring-boot\nPR #49721: Add fallback support for '/opt/homebrew/bin' on macOS\nChanged files (4): buildpack/spring-boot-buildpack-platform/src/main/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelper.java, buildpack/spring-boot-buildpack-platform/src/test/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelperTests.java, core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java, test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java\nDiff (+68/-25):\nPR DESCRIPTION:\n## Summary\r\nImprove macOS process startup fallback by supporting both Homebrew bin locations:\r\n- `/opt/homebrew/bin` (default on Apple Silicon)\r\n- `/usr/local/bin` (default on Intel macOS; also common in older or Rosetta-based setups)\r\n\r\n## Problem\r\nSome macOS code paths retried process startup using only `/usr/local/bin`.\r\nOn Apple Silicon systems, executables installed via Homebrew are typically located under\r\n`/opt/homebrew/bin`, so process startup could fail when `PATH` is restricted or does not\r\ninclude that location.\r\n\r\n## Changes\r\n- Added `OPT_HOMEBREW_BIN` as an additional fallback alongside the existing `USR_LOCAL_BIN`.\r\n- Updated macOS fallback handling in:\r\n  - `core/spring-boot-docker-compose` `ProcessRunner`\r\n  - `test-support` `DisabledIfProcessUnavailableCondition`\r\n  - `buildpack` `CredentialHelper`\r\n- Updated `CredentialHelperTests` to verify that both fallback candidates are attempted.\r\n\r\n## Why this is low risk\r\n- Behavior change is limited to macOS code paths guarded by OS checks.\r\n- Windows and Linux behavior is unchanged.\r\n- Existing `/usr/local/bin` fallback behavior is preserved.\r\n\r\n## Verification\r\nExecuted with JDK 25:\r\n- `:buildpack:spring-boot-buildpack-platform:test --tests org.springframework.boot.buildpack.platform.docker.configuration.CredentialHelperTests`\r\n- `:test-support:spring-boot-test-support:test --tests org.springframework.boot.testsupport.process.DisabledIfProcessUnavailableTests`\r\n- `:core:spring-boot-docker-compose:test --tests org.\n\nDIFF:\n\n--- buildpack/spring-boot-buildpack-platform/src/main/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelper.java (+19/-9) ---\n@@ -41,6 +41,10 @@ class CredentialHelper {\n \n \tprivate static final String USR_LOCAL_BIN = \"/usr/local/bin/\";\n \n+\tprivate static final String OPT_HOMEBREW_BIN = \"/opt/homebrew/bin/\";\n+\n+\tprivate static final String[] MAC_OS_BIN_DIRECTORIES = { OPT_HOMEBREW_BIN, USR_LOCAL_BIN };\n+\n \tprivate static final Set<String> CREDENTIAL_NOT_FOUND_MESSAGES = Set.of(\"credentials not found in native keychain\",\n \t\t\t\"no credentials server URL\", \"no credentials username\");\n \n@@ -92,16 +96,22 @@ private Process start(ProcessBuilder processBuilder) throws IOException {\n \t\t\tif (!Platform.isMac()) {\n \t\t\t\tthrow ex;\n \t\t\t}\n-\t\t\ttry {\n-\t\t\t\tList<String> command = new ArrayList<>(processBuilder.command());\n-\t\t\t\tcommand.set(0, USR_LOCAL_BIN + command.get(0));\n-\t\t\t\treturn processBuilder.command(command).start();\n-\t\t\t}\n-\t\t\tcatch (Exception suppressed) {\n-\t\t\t\t// Suppresses the exception and rethrows the original exception\n-\t\t\t\tex.addSuppressed(suppressed);\n-\t\t\t\tthrow ex;\n+\t\t\tString executable = processBuilder.command().get(0);\n+\t\t\tfor (String binDirectory : MAC_OS_BIN_DIRECTORIES) {\n+\t\t\t\ttry {\n+\t\t\t\t\tList<String> command = new ArrayList<>(processBuilder.command());\n+\t\t\t\t\tif (executable.startsWith(binDirectory)) {\n+\t\t\t\t\t\tcontinue;\n+\t\t\t\t\t}\n+\t\t\t\t\tcommand.set(0, binDirectory + executable);\n+\t\t\t\t\treturn processBuilder.command(command).start();\n+\t\t\t\t}\n+\t\t\t\tcatch (Exception suppressed) {\n+\t\t\t\t\t// Suppresses the exception and rethrows the original exception\n+\t\t\t\t\tex.addSuppressed(suppressed);\n+\t\t\t\t}\n \t\t\t}\n+\t\t\tthrow ex;\n \t\t}\n \t}\n \n--- buildpack/spring-boot-buildpack-platform/src/test/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelperTests.java (+3/-1) ---\n@@ -106,7 +106,9 @@ void getWhenExecutableDoesNotExistErrorThrowsException() {\n \t\t\t.satisfies((ex) -> {\n \t\t\t\tif (Platform.isMac()) {\n \t\t\t\t\tassertThat(ex.getMessage()).doesNotContain(\"/usr/local/bin/\");\n-\t\t\t\t\tassertThat(ex.getSuppressed()).allSatisfy((suppressed) -> assertThat(suppressed)\n+\t\t\t\t\tassertThat(ex.getSuppressed()).anySatisfy((suppressed) -> assertThat(suppressed)\n+\t\t\t\t\t\t.hasMessageContaining(\"/opt/homebrew/bin/\" + executable));\n+\t\t\t\t\tassertThat(ex.getSuppressed()).anySatisfy((suppressed) -> assertThat(suppressed)\n \t\t\t\t\t\t.hasMessageContaining(\"/usr/local/bin/\" + executable));\n \t\t\t\t}\n \t\t\t});\n--- core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java (+20/-5) ---\n@@ -44,6 +44,10 @@ class ProcessRunner {\n \n \tprivate static final String USR_LOCAL_BIN = \"/usr/local/bin\";\n \n+\tprivate static final String OPT_HOMEBREW_BIN = \"/opt/homebrew/bin\";\n+\n+\tprivate static final String[] MAC_OS_BIN_DIRECTORIES = { OPT_HOMEBREW_BIN, USR_LOCAL_BIN };\n+\n \tprivate static final boolean MAC_OS = System.getProperty(\"os.name\").toLowerCase(Locale.ROOT).contains(\"mac\");\n \n \tprivate static final Log logger = LogFactory.getLog(ProcessRunner.class);\n@@ -108,11 +112,22 @@ private Process startProcess(String[] command) {\n \t\t}\n \t\tcatch (IOException ex) {\n \t\t\tString path = processBuilder.environment().get(\"PATH\");\n-\t\t\tif (MAC_OS && path != null && !path.contains(USR_LOCAL_BIN)\n-\t\t\t\t\t&& !command[0].startsWith(USR_LOCAL_BIN + \"/\")) {\n-\t\t\t\tString[] localCommand = command.clone();\n-\t\t\t\tlocalCommand[0] = USR_LOCAL_BIN + \"/\" + localCommand[0];\n-\t\t\t\treturn startProcess(localCommand);\n+\t\t\tif (MAC_OS && path != null) {\n+\t\t\t\tfor (String binDirectory : MAC_OS_BIN_DIRECTORIES) {\n+\t\t\t\t\tif (path.contains(binDirectory) || command[0].startsWith(binDirectory + \"/\")) {\n+\t\t\t\t\t\tcontinue;\n+\t\t\t\t\t}\n+\t\t\t\t\tString[] localCommand = command.clone();\n+\t\t\t\t\tlocalCommand[0] = binDirectory + \"/\" + command[0];\n+\t\t\t\t\tProcessBuilder localProcessBuilder = new ProcessBuilder(localCommand);\n+\t\t\t\t\tlocalProcessBuilder.directory(this.workingDirectory);\n+\t\t\t\t\ttry {\n+\t\t\t\t\t\treturn localProcessBuilder.start();\n+\t\t\t\t\t}\n+\t\t\t\t\tcatch (IOException suppressed) {\n+\t\t\t\t\t\tex.addSuppressed(suppressed);\n+\t\t\t\t\t}\n+\t\t\t\t}\n \t\t\t}\n \t\t\tthrow new ProcessStartException(command, ex);\n \t\t}\n--- test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java (+26/-10) ---\n@@ -43,6 +43,10 @@ class DisabledIfProcessUnavailableCondition implements ExecutionCondition {\n \n \tprivate static final String USR_LOCAL_BIN = \"/usr/local/bin\";\n \n+\tprivate static final String OPT_HOMEBREW_BIN = \"/opt/homebrew/bin\";\n+\n+\tprivate static final String[] MAC_OS_BIN_DIRECTORIES = { OPT_HOMEBREW_BIN, USR_LOCAL_BIN };\n+\n \tprivate static final boolean MAC_OS = System.getProperty(\"os.name\").toLowerCase(Locale.ROOT).contains(\"mac\");\n \n \t@Override\n@@ -68,23 +72,35 @@ private Stream<String[]> getAnnotat",
+    "human": "POINTS:\n- [test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java:110] This is unrelated to falling back to an additional path. It's also unnecessary as `@DisabledIfProcessUnavailable` is never used with slashes in the command names as that would likely hurt their portability. Please revert.\n- [core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java:140] This is unrelated to falling back to an additional path. It's also almost certainly unnecessary as ProcessRunner shouldn't be called with a command containing a `/`. Please revert.\n- [buildpack/spring-boot-buildpack-platform/src/main/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelper.java:120] This is unrelated to falling back to an additional path. It's also almost certainly unnecessary as the credential helper shouldn't have a `/` in its name. Please revert.",
+    "mr": {
+      "text": "SUMMARY: The PR effectively extends macOS process startup fallbacks to include `/opt/homebrew/bin` alongside the existing `/usr/local/bin`, resolving Apple Silicon Homebrew path resolution issues. The implementation is consistent across three modules, preserves existing behavior, and properly attaches suppressed exceptions for debugging. Minor improvements are recommended around `ProcessBuilder` state management, test assertion strictness, and configuration preservation.\n\nPOINTS:\n- `buildpack/spring-boot-buildpack-platform/src/main/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelper.java` (L96-115): The retry loop mutates the original `processBuilder` via `processBuilder.command(command)`. While `executable` is cached before the loop, subsequent iterations read from the mutated builder state. This works by accident but is fragile. Consider resetting the command before each iteration (`processBuilder.command(originalCommand)`) or instantiating a fresh `ProcessBuilder` per attempt to avoid unintended state leakage.\n- `core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java` (L112-128): `new ProcessBuilder(localCommand)` inherits environment variables but drops other builder configurations (e.g., `redirectErrorStream()`, `redirectOutput()`, `inheritIO()`). If `ProcessRunner` relies on these settings elsewhere, they will be lost during fallback. Reusing the original builder with a reset command or explicitly copying settings would be safer.\n- `buildpack/spring-boot-buildpack-platform/src/test/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelperTests.java` (L106-113): Using `anySatisfy` for both fallback paths means the test passes if at least one suppressed exception matches each pattern, without guaranteeing both directories were actually attempted. Consider asserting `hasSize(2)` on `ex.getSuppressed()` or using `allSatisfy` to strictly verify both fallbacks were tried.\n- `core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java` & `buildpack/.../CredentialHelper.java` (L112, L103): The `path.contains(binDirectory)` heuristic could theoretically match false positives (e.g., `/usr/local/bin_backup`). This is consistent with the existing codebase and acceptable for a fallback, but worth noting if stricter path matching (e.g., splitting by `:`) is desired in the future.\n- `test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java`: The diff is truncated, but the visible changes follow the established pattern. Ensure the fallback loop here also preserves any `ProcessBuilder` or stream configurations specific to this class, and verify that the test suite covers the new fallback path.",
+      "sec": 100.5,
+      "tok": {
+        "prompt": 1857,
+        "completion": 4321,
+        "total": 6178
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "CredentialHelper mutation bug: processBuilder.command() read each iteration causes fragile state",
+            "verdict": "wrong",
+            "severity": "none",
+            "score": -1,
+            "checked": "PR code caches executable before loop; command.set(0, binDirectory + executable) overwrites position 0 unconditionally using cached value, so mutation is harmless by design"
+          },
+          {
+            "point": "ProcessRunner drops ProcessBuilder config (redirectErrorStream, etc.) during fallback",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "grep confirmed no redirectErrorStream/inheritIO/redirectOutput calls exist in ProcessRunner; only command+directory are set, nothing is actually lost"
+          },
+          {
+            "point": "Test assertion: anySatisfy doesn't guarantee both fallback dirs were attempted",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "PR uses anySatisfy for both /opt/homebrew/bin and /usr/local/bin; suggesting hasSize(2) is concrete actionable improvement"
+          },
+          {
+            "point": "path.contains(binDirectory) heuristic could match false positives",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Noted as acceptable for fallback; vague future suggestion, not actionable"
+          },
+          {
+            "point": "Ensure test-support fallback preserves ProcessBuilder/stream configs",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Diff truncated; non-specific advice about unverified code"
+          }
+        ],
+        "missed_human": [
+          "The startsWith(binDirectory) guard clause in all 3 files is unnecessary and should be reverted - credential helpers, compose commands, and @DisabledIfProcessUnavailable values should never contain slashes, so this check adds no value"
+        ],
+        "n_good": 1,
+        "n_wrong": 1,
+        "n_trivial": 3,
+        "n_missed": 1,
+        "net_score": -1
+      },
+      "net": -1,
+      "trace": "results/traces/spring-projects__spring-boot__49721__mr.json",
+      "judge_trace": "results/traces/spring-projects__spring-boot__49721__mr__judge.json"
+    },
+    "mr_code": {
+      "text": "SUMMARY:\nThe PR effectively resolves a macOS process startup failure on Apple Silicon systems where Homebrew defaults to `/opt/homebrew/bin`. By replacing the single hardcoded fallback with an ordered array iteration, the change improves reliability while preserving existing behavior on Intel Macs, Linux, and Windows. The implementation is clean, well-guarded by OS checks, and appropriately low-risk.\n\nPOINTS:\n- `buildpack/spring-boot-buildpack-platform/src/main/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelper.java`\n  - **Positive**: The loop correctly attempts both directories, attaches suppressed exceptions for debugging, and safely skips if the executable is already prefixed.\n  - **Minor Suggestion**: There's a trailing slash inconsistency across files (`CredentialHelper` defines `\"/opt/homebrew/bin/\"` while `ProcessRunner` uses `\"/opt/homebrew/bin\"`). Consider standardizing on no trailing slash and using `Paths.get(binDirectory, executable).toString()` or explicitly appending `\"/\"` during concatenation to prevent future string-matching edge cases.\n\n- `buildpack/spring-boot-buildpack-platform/src/test/java/org/springframework/boot/buildpack/platform/docker/configuration/CredentialHelperTests.java`\n  - **Positive**: Changing `allSatisfy` to two `anySatisfy` assertions correctly validates that both fallback paths are attempted and recorded in the suppressed exceptions array.\n\n- `core/spring-boot-docker-compose/src/main/java/org/springframework/boot/docker/compose/core/ProcessRunner.java`\n  - **Positive**: Placing `/opt/homebrew/bin` first in the array is optimal for modern macOS environments, reducing unnecessary failed attempts on Apple Silicon.\n  - **Note**: The `path.contains(binDirectory)` substring check is preserved from the original code. While functional, it can theoretically match unintended directories (e.g., `/usr/local/bin-backup`). This is a pre-existing limitation and not introduced here, but worth noting if `PATH` parsing is ever tightened.\n\n- `test-support/spring-boot-test-support/src/main/java/org/springframework/boot/testsupport/process/DisabledIfProcessUnavailableCondition.java`\n  - **Positive**: Follows the same robust iteration pattern as the other modules. The diff is truncated in the prompt, but the approach aligns consistently with the rest of the PR.\n\n- **General**: The change is well-scoped, maintains backward compatibility, and correctly handles exception suppression. Ready to merge after standard CI validation.",
+      "sec": 117.4,
+      "tok": {
+        "prompt": 5886,
+        "completion": 3991,
+        "total": 9877
+      },
+      "judge": {
+        "candidate": [
+          {
+            "point": "Trailing slash inconsistency across files (CredentialHelper has '/usr/local/bin/' with trailing slash while ProcessRunner/DisabledIfProcessUnavailableCondition have '/usr/local/bin' without)",
+            "verdict": "good",
+            "severity": "normal",
+            "score": 1,
+            "checked": "Verified: CredentialHelper.java:42 has '/usr/local/bin/', ProcessRunner.java:45 has '/usr/local/bin', DisabledIfProcessUnavailableCondition.java:44 has '/usr/local/bin' - inconsistency confirmed"
+          },
+          {
+            "point": "Test change from allSatisfy to anySatisfy correctly validates both fallback paths",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Praise restating what the code does - not actionable feedback"
+          },
+          {
+            "point": "Placing /opt/homebrew/bin first in array is optimal for Apple Silicon",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Restates PR intent, no new insight or concern raised"
+          },
+          {
+            "point": "DisabledIfProcessUnavailableCondition follows same robust iteration pattern",
+            "verdict": "trivial",
+            "severity": "none",
+            "score": 0,
+            "checked": "Vague praise with no substantive observation"
+          }
+        ],
+        "missed_human": [
+          "DisabledIfProcessUnavailableCondition.java:110 - startsWith check for slashes is unnecessary since @DisabledIfProcessUnavailable is never used with slashes in command names - should be reverted",
+          "ProcessRunner.java:140 - startsWith check for slashes is unnecessary since ProcessRunner shouldn't be called with commands containing '/' - should be reverted",
+          "CredentialHelper.java:120 - startsWith check for slashes is unnecessary since credential helper shouldn't have '/' in its name - should be reverted"
+        ],
+        "n_good": 1,
+        "n_wrong": 0,
+        "n_trivial": 3,
+        "n_missed": 3,
+        "net_score": -2
+      },
+      "net": -2,
+      "trace": "results/traces/spring-projects__spring-boot__49721__mr_code.json",
+      "judge_trace": "results/traces/spring-projects__spring-boot__49721__mr_code__judge.json"
     }
   }
 ]

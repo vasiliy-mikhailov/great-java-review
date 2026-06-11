@@ -1,0 +1,354 @@
+[
+  {
+    "repo": "quarkusio/quarkus",
+    "pr": 28314,
+    "reviewer": "radcortez",
+    "net": 8,
+    "sec": 375.8,
+    "sent": 551110,
+    "recv": 11928,
+    "calls": 22,
+    "text": "SUMMARY:\nThis PR refactors the OpenTelemetry extension to align package structure with the Micrometer extension, but introduces a critical typo in new package paths, removes a helper method that other processors depend on, and changes imports to reference a class location that doesn't exist yet in this PR.\n\nPOINTS:\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryProcessor.java:36-37] **Typo in new package path will cause compile failure**: The new imports reference `io.quarkus.opentelemetry.runtime.tracing.intrumentation.reactivemessaging` and `io.quarkus.opentelemetry.runtime.tracing.intrumentation.restclient` \u2014 \"intrumentation\" is misspelled (missing 'e'), should be \"instrumentation\". Neither the misspelled nor correctly-spelled package exists yet in the runtime module, so these imports will fail to compile.\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryProcessor.java:178-180] **Removed `isClassPresent` method breaks `TracerProcessor`**: The `isClassPresent` static method is removed along with the `QuarkusClassLoader` import. However, `TracerProcessor.java` imports it via `import static io.quarkus.opentelemetry.deployment.OpenTelemetryProcessor.isClassPresent;` and uses it at lines 62 and 84 for conditional build steps (`MetricsExtensionAvailable`, `GrpcExtensionAvailable`). The truncated diff for TracerProcessor shows the import line being modified, but verify this is updated to call `QuarkusClassLoader.isClassPresentAtRuntime(...)` directly \u2014 otherwise this PR will not compile.\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryEnabled.java:5] [OpenTelemetryProcessor.java:35] [TracerEnabled.java:5] **Imports reference non-existent class location**: All three files now import `io.quarkus.opentelemetry.runtime.config.OpenTelemetryConfig`, but the `OpenTelemetryConfig` class is still defined at `io.quarkus.opentelemetry.runtime.OpenTelemetryConfig` with no `config` subpackage. While the PR description states this is \"part of series of PR\", this means the PR cannot compile standalone until the runtime class is moved. Additionally, 9+ runtime module files (TracerProducer, WithSpanInterceptor, OpenTelemetryClientFilter, EventBusInstrumenterVertxTracer, SqlClientInstrumenterVertxTracer, GrpcTracingClientInterceptor, GrpcTracingServerInterceptor, HttpInstrumenterVertxTracer, OpenTelemetryRecorder) still import from the old path and are not updated here.\n- [extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/common/*.java] **Incomplete test file consolidation**: The PR adds `common/HelloResource.java`, `common/TestSpanExporter.java`, `common/TestUtil.java`, and `common/TracerRouter.java` to a new `common` subpackage, but identical-named classes already exist at `io.quarkus.opentelemetry.deployment` package level. The old files at the package level should be removed and test references updated to import from the `common` subpackage.\n- [extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/NonAppEndpointsEqualRootPath.java:1] **Test class name missing \"Test\" suffix**: This file is named `NonAppEndpointsEqualRootPath.java` instead of `NonAppEndpointsEqualRootPathTest.java`, which breaks the naming convention used by all other test classes in this extension. The test extension field is also named `TEST` (all caps) instead of the conventional `config` or `test` used in sibling test classes.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Typo in new package path will cause compile failure: imports reference 'intrumentation' (missing 'e'), neither misspelled nor correctly-spelled package exists",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified runtime module has packages 'tracing.reactivemessaging' and 'tracing.restclient', no 'intrumentation' or 'instrumentation' subpackage exists; imports will fail compilation"
+        },
+        {
+          "point": "Removed isClassPresent method breaks TracerProcessor which imports it via static import and uses it at lines 62 and 84",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified TracerProcessor.java line 3 has 'import static io.quarkus.opentelemetry.deployment.OpenTelemetryProcessor.isClassPresent' and uses it at lines 62,84; method is being removed from OpenTelemetryProcessor"
+        },
+        {
+          "point": "Imports reference non-existent class location io.quarkus.opentelemetry.runtime.config.OpenTelemetryConfig",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified OpenTelemetryConfig is at io.quarkus.opentelemetry.runtime.OpenTelemetryConfig (package level), no 'config' subpackage exists in runtime module; compilation will fail"
+        },
+        {
+          "point": "Incomplete test file consolidation: common/ files added but old files at package level not removed",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified common/ subpackage doesn't exist at base commit, old files HelloResource.java etc. exist at package level, PR adds files to common/ without showing deletions of old files"
+        },
+        {
+          "point": "Test class NonAppEndpointsEqualRootPath.java missing 'Test' suffix, uses TEST constant instead of config like sibling tests",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified NonAppEndpointsEqualRootPath.java lacks Test suffix (unlike NonAppEndpointsDisabledTest.java etc.), uses 'TEST' constant while sibling NonAppEndpointsDisabledTest uses 'config'"
+        }
+      ],
+      "missed_human": [
+        "None - human review was a clarification about prior conversation regarding gRPC proto file package alignment, not identifying new code issues"
+      ],
+      "n_good": 5,
+      "n_wrong": 0,
+      "n_trivial": 0,
+      "n_missed": 0,
+      "net_score": 8
+    }
+  },
+  {
+    "repo": "apache/dubbo",
+    "pr": 13489,
+    "reviewer": "SaptarshiSarkar12",
+    "net": 6,
+    "sec": 290.1,
+    "sent": 463971,
+    "recv": 8504,
+    "calls": 23,
+    "text": "SUMMARY:\nThis PR adds a new `check-format` job to the GitHub Actions workflow that runs `mvn spotless:check` as a gate before other CI jobs. Spotless is already configured in the project's pom.xml (using palantirJavaFormat), so the plugin invocation is valid. However, the change introduces action version inconsistencies, overly restrictive job dependencies that serialize previously parallel work, and fragile log-parsing logic.\n\nPOINTS:\n- [.github/workflows/build-and-test-pr.yml:26-30] **Action version inconsistency** \u2014 The new `check-format` job uses `actions/checkout@v4`, `actions/setup-java@v4`, and `actions/upload-artifact@v4`, while every existing job in the workflow uses v3 equivalents. Align these versions with the rest of the workflow for consistency, or consider updating all jobs together.\n- [.github/workflows/build-and-test-pr.yml:66,73,86,94,224,232,319,327,365,373,420,434,439,469] **Overly restrictive dependency chain** \u2014 Adding `needs: check-format` to 14 downstream jobs forces serialization of work that was previously parallel. Jobs like `license`, `error-code-inspecting`, and `native-image-inspecting` independently compile and inspect code; they do not logically depend on a formatting check. This will measurably increase CI wall-clock time. Remove `needs: check-format` from jobs that don't genuinely require formatted source code to function.\n- [.github/workflows/build-and-test-pr.yml:44-45] **Fragile log parsing** \u2014 The sed pattern `sed 's/Check if code needs formatting    Check if code aligns with code style   [0-9A-Z:.-]\\+//'` hardcodes the job name and step name into the regex. If these are renamed, the summary generation will silently produce garbage output. Consider parsing the spotless output more robustly (e.g., regex on file paths rather than stripping job metadata).\n- [.github/workflows/build-and-test-pr.yml:32] **Use Maven wrapper for consistency** \u2014 The command uses `mvn spotless:check` but the entire rest of the workflow uses `./mvnw` (Maven wrapper). Use `./mvnw spotless:check` to ensure the same Maven version is used consistently across all CI steps.\n- [.github/workflows/build-and-test-pr.yml:50-56] **Unnecessary complexity in failure handling** \u2014 The `continue-on-error: true` + conditional summary + `actions/github-script@v7.0.1` pattern is more complex than needed. Since `spotless:check` naturally fails when formatting issues exist, you could simplify by letting it fail naturally and using `if: failure()` for the artifact upload and summary generation. The `core.setFailed()` call in the final step is redundant because the job would already be in a failure state from the spotless check outcome.\n- [.github/workflows/build-and-test-pr.yml:23-24] **Spotless is JDK 11+ gated** \u2014 The spotless plugin is configured under the `java11+` profile (pom.xml:851, auto-activates for JDK 11+). Java 21 is used here, which is correct. Consider adding a comment documenting this assumption so future maintainers understand why Java 21 is required for this job.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Action version inconsistency - PR uses @v4 actions while existing workflow uses @v3",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified base workflow uses checkout@v3, setup-java@v3, upload-artifact@v3 throughout; PR adds @v4 versions"
+        },
+        {
+          "point": "Overly restrictive dependency chain - needs: check-format added to 13+ jobs serializing previously parallel work",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified from diff: license, build-source, unit-test-prepare, unit-test, samples-test-prepare, samples-test-job, samples-test-result, integration-test-prepare, integration-test-job, integration-test-result, jacoco-result-merge, error-code-inspecting, native-image-inspecting all get needs: check-format"
+        },
+        {
+          "point": "Fragile log parsing - sed pattern hardcodes job/step names",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: sed 's/Check if code needs formatting    Check if code aligns with code style   [0-9A-Z:.-]\\+//' hardcodes exact names from PR"
+        },
+        {
+          "point": "Use bare mvn instead of ./mvnw Maven wrapper",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: base workflow uses ./mvnw at lines 36, 73, 320, 326, 367, 372, 375; PR uses bare mvn"
+        },
+        {
+          "point": "Unnecessary complexity - continue-on-error + core.setFailed() is redundant",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: spotless:check failure already puts job in failure state; core.setFailed() adds no value"
+        },
+        {
+          "point": "Spotless is JDK 11+ gated in profile",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified pom.xml lines 849-852: <profile><id>java11+</id><activation><jdk>[11,)</jdk></activation> contains spotless plugin"
+        }
+      ],
+      "missed_human": [],
+      "n_good": 6,
+      "n_wrong": 0,
+      "n_trivial": 0,
+      "n_missed": 0,
+      "net_score": 6
+    }
+  },
+  {
+    "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+    "pr": 575,
+    "reviewer": "mickaelistria",
+    "net": 6,
+    "sec": 420.3,
+    "sent": 440551,
+    "recv": 11714,
+    "calls": 35,
+    "text": "SUMMARY:\nThis PR fixes the ESLint VSCode integration by correctly configuring workspaceFolder, workingDirectory (auto mode), and nodePath (pointing to a directory with node_modules instead of the node executable). The logic is sound and the direction is correct, but the implementation introduces several null-safety gaps and a typo that could cause runtime crashes.\nPOINTS:\n- [ESLintClientImpl.java:33] `configurationParams.getItems().get(0)` has no null/empty check \u2014 if the items list is empty (per LSP spec, it CAN be), this throws `IndexOutOfBoundsException`. Add a guard: `if (configurationParams.getItems().isEmpty()) { return ... default config; }`.\n- [ESLintClientImpl.java:36] `configurationItem.getScopeUri()` can return `null` (per LSP spec for workspace-level or general configuration requests). `new URI(null)` throws `NullPointerException`. Check for null before constructing the URI.\n- [ESLintClientImpl.java:36] Double semicolon typo: `getParentFile();;` \u2014 remove the extra semicolon.\n- [ESLintClientImpl.java:42-44] The `URISyntaxException` catch block is silent \u2014 no logging. Worse, `highestPackageJsonDir` remains `null`, which then causes NPE at `highestPackageJsonDir.toURI().toString()` and `highestPackageJsonDir.getAbsolutePath()` on subsequent lines. At minimum, log the exception via `Activator.logError()` or return a safe default config.\n- [ESLintClientImpl.java:46] Same null-safety risk: if the try block fails or `getScopeUri()` was null, `highestPackageJsonDir` is null, and `.toURI().toString()` will NPE here.\n- [ESLintClientImpl.java:54] Same null-safety risk: `highestPackageJsonDir.getAbsolutePath()` will NPE if `highestPackageJsonDir` is null.\n- [ESLintClientImpl.java:59] `Map.of()` is a Java 9+ API. Verify that this project's minimum Java target version is 9+ (check `pom.xml`/`build.properties`). If the target is Java 8, this will fail to compile.\n- [ESLintClientImpl.java:36] Minor: `new File(new URI(...))` \u2014 on Windows, this works because the `File(URI)` constructor handles URI decoding. However, consider using `new File(Paths.get(new URI(...)))` for consistency with modern Java I/O practices.\n- [ESLintClientImpl.java:40] The `while (parentFile != null)` upward walk for `package.json` is a new pattern in this codebase. Consider extracting this into a shared utility method (e.g., `NodeProjectUtil.findNearestPackageJsonDir(File)`) since other parts of the project may benefit from it (e.g., debug launch configuration, npm integration), and it will make the test surface cleaner.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "IndexOutOfBoundsException on getItems().get(0) - empty list check missing",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: get(0) on empty list throws IIOBE; LSP spec allows empty items"
+        },
+        {
+          "point": "NPE on getScopeUri() returning null",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: LSP spec allows null scopeUri; new URI(null) throws NPE"
+        },
+        {
+          "point": "Double semicolon typo getParentFile();;",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: double semicolon present in diff line 36"
+        },
+        {
+          "point": "Silent URISyntaxException catch leaving highestPackageJsonDir null",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: catch block has only comment, null propagates to lines 46,54"
+        },
+        {
+          "point": "NPE on highestPackageJsonDir.toURI().toString() if null",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: null propagation from failed try block or null scopeUri"
+        },
+        {
+          "point": "NPE on highestPackageJsonDir.getAbsolutePath() if null",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: same null propagation issue as above"
+        },
+        {
+          "point": "Map.of() Java 9+ compatibility concern",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "MANIFEST.MF shows Bundle-RequiredExecutionEnvironment: JavaSE-11, Map.of() is safe"
+        },
+        {
+          "point": "Consider Paths.get() instead of new File(URI)",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Stylistic preference; new File(URI) constructor handles decoding correctly"
+        },
+        {
+          "point": "Extract upward walk to shared utility method",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Refactoring suggestion; no existing callers found in codebase"
+        }
+      ],
+      "missed_human": [
+        "Human HashMap capacity point already addressed in PR with new HashMap<>(6, 1.f)",
+        "Human singletonMap/Map.of observations are code references without clear identified issues"
+      ],
+      "n_good": 6,
+      "n_wrong": 0,
+      "n_trivial": 3,
+      "n_missed": 0,
+      "net_score": 6
+    }
+  },
+  {
+    "repo": "apache/accumulo-fluo",
+    "pr": 982,
+    "reviewer": "keith-turner",
+    "net": 3,
+    "sec": 206.2,
+    "sent": 238637,
+    "recv": 6430,
+    "calls": 19,
+    "text": "SUMMARY:\nThis PR removes informational print statements and adds `System.exit(-1)` on scan failures. The PR title (\"stopped printing meta info\") contradicts the diff which removes meta info. Additionally, the new `System.exit(-1)` calls could terminate non-CLI callers unexpectedly.\n\nPOINTS:\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:93] **PR title contradicts the diff**: The title says \"fixes #981 stopped printing meta info in scan\", but this diff REMOVES the meta info messages (\"Scanning snapshot of data...\" and \"No data found\"). If meta info stopped printing, the fix should restore those messages, not remove them. Please clarify the intent or fix the PR title.\n\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:129-130] **`System.exit(-1)` may affect non-CLI callers**: The subagent found that `AppRunner.java` (modules/cluster/src/main/java/org/apache/fluo/cluster/runner/AppRunner.java:75-78) calls `ScanUtil.scanFluo()` from an instance method, not a CLI main method. Adding `System.exit(-1)` on `FluoException` could unexpectedly terminate an application that embeds this utility. Consider throwing a runtime exception instead, or at minimum document that callers must handle this termination behavior. Note: the existing `System.exit(-1)` for `IllegalArgumentException` (line 107) has the same risk, but was already present before this PR.\n\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:171-172] **Same `System.exit(-1)` concern for `scanAccumulo`**: `AppRunner.java` also calls `scanAccumulo()` (line 75-78). Same risk of unexpected JVM termination for non-CLI embedding scenarios.\n\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:127-128] **Removal of \"No data found\" message may confuse users**: This informational message helped users distinguish between \"scan returned no results\" vs \"scan produced no output for another reason\". If intentional removal, consider whether users would benefit from retaining it.\n\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:129, 171] **Good: Error messages now go to `System.err`**: Changing from `System.out.println` to `System.err.println` for failure messages aligns with codebase conventions (matches `FluoWorkerImpl`, `FluoOracleImpl`, `FluoExec`, and `FluoWait`).\n\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java] **No test coverage for `scanFluo`/`scanAccumulo`**: The existing test `ScanTest.java` only tests `getSpan()` and `getColumns()`. Consider adding integration tests for error paths if `System.exit(-1)` behavior is intentional.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "PR title contradicts the diff - title says 'stopped printing meta info' but diff removes meta info messages",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "PR title 'fixes #981 stopped printing meta info in scan' vs diff removing 'Scanning snapshot of data...' and 'No data found' messages at lines 93-94, 137-138, 147-148 in ScanUtil.java"
+        },
+        {
+          "point": "System.exit(-1) may affect non-CLI callers - AppRunner.java calls scanFluo() from instance method",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "AppRunner.java lines 75-78: scan() method calls ScanUtil.scanFluo() and scanAccumulo() from non-static instance method"
+        },
+        {
+          "point": "Same System.exit(-1) concern for scanAccumulo",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "AppRunner.java line 76: ScanUtil.scanAccumulo() called from same instance method"
+        },
+        {
+          "point": "Removal of 'No data found' message may confuse users",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Opinion/UX concern about removing line 138 'No data found' message - not a concrete bug or actionable fix"
+        },
+        {
+          "point": "Good: Error messages now go to System.err aligning with codebase conventions",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "FluoWorkerImpl lines 87,94 use System.err.println; FluoExec line 49 uses System.err.println; BUT FluoWait uses log.error not System.err - claim about FluoWait is incorrect; also this is praise not a finding"
+        },
+        {
+          "point": "No test coverage for scanFluo/scanAccumulo",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "ScanTest.java only tests getSpan() and getColumns() methods - no tests for scanFluo() or scanAccumulo() methods"
+        }
+      ],
+      "missed_human": [
+        "Human reviewer clarifies that System.exit(-1) changes are an INTENTIONAL bug fix to address missing error return codes - this is a separate bug noticed while working on the main issue, not an unintended consequence the candidate frames as a risk to reconsider"
+      ],
+      "n_good": 4,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 1,
+      "net_score": 3
+    }
+  },
+  {
+    "repo": "netty/netty",
+    "pr": 14487,
+    "reviewer": "franz1981",
+    "net": 0,
+    "sec": 884.1,
+    "sent": 4872740,
+    "recv": 25115,
+    "calls": 89,
+    "text": "SUMMARY:\nThis PR adds FileRegion support to io_uring using the SPLICE operation. The implementation follows established patterns from epoll's sendfile support, with IoUringFileRegion wrapping DefaultFileRegion for zero-copy file transfer. However, there is a critical assertion bug in the error path and the truncated diff prevents full verification of write completion handling.\n\nPOINTS:\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringChannel.java:329] **CRITICAL: `assert numOutstandingWrites > 0` will fail when `fileRegion.open()` throws.** In `scheduleWriteSingle` (AbstractIoUringStreamChannel.java), when `fileRegion.open()` throws IOException, the catch block calls `handleWriteError(e)` and returns 0. This causes the assertion `assert numOutstandingWrites > 0` in `scheduleWrite` to fail. Compare with NIO transport (AbstractNioByteChannel.doWriteInternal) which does NOT assert on write count\u2014instead it propagates exceptions to `handleWriteError()` in flush0(). Either remove the assertion or restructure error handling to let exceptions propagate rather than returning 0.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:writeComplete0] **Cannot verify IoUringFileRegion completion handling\u2014diff is truncated at line 390+**. The `writeComplete0` method's IoUringFileRegion branch is cut off. Need to verify: (1) Is the file region properly closed via `fileRegion.close()` after completion? (2) Are partial writes handled correctly with `channelOutboundBuffer.progress(res)`? (3) Is `channelOutboundBuffer.remove()` called when `fileRegion.transferred() >= fileRegion.count()`? Compare with NIO pattern at AbstractNioByteChannel.java:231-250.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:207-213] **`filterOutboundMessage` only supports `DefaultFileRegion`, not generic `FileRegion` implementations.** The comment states \"the channel can only support DefaultFileRegion instead of FileRegion\" which is by design since SPLICE requires direct file descriptor access. This is acceptable but means custom FileRegion wrappers (like FileRegionWrapper in testCustomFileRegion) will throw `UnsupportedOperationException`. This is consistent with the test skipping via `supportsCustomFileRegion() = false`.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringChannel.java:322] **Good: `msgCount > 1 && in.current() instanceof ByteBuf` guard prevents batching IoUringFileRegion with other messages.** Since SPLICE is a single-operation write, it cannot be combined with writev/gather-write. This correctly routes non-ByteBuf messages to `scheduleWriteSingle`.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringChannel.java:410] **Good: `IORING_OP_SPLICE` added to write completion handler switch.** Correctly routes SPLICE completions through `writeComplete()` like other write operations.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:208] **Consider adding `IoUring.isIOUringSpliceSupported()` to `REQUIRED_IORING_OPS` probe array in Native.java.** Currently `IORING_OP_SPLICE` is not in the required ops list (line 295 in Native.java base). If SPLICE is not supported by the kernel, `isIOUringSpliceSupported()` should return false. Verify this check is properly implemented so FileRegion writes gracefully degrade rather than failing.\n\n- [transport-native-io_uring/src/test/java/io/netty/channel/uring/IoUringSocketFileRegionTest.java] **Test correctly skips `testCustomFileRegion` via `supportsCustomFileRegion() = false`.** This matches the implementation limitation that only DefaultFileRegion is supported for SPLICE-based transfer. However, consider adding a dedicated test that verifies `UnsupportedOperationException` is thrown when a non-DefaultFileRegion is written, to make the limitation explicit.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:cancelOutstandingWrites] **Potential FD leak on cancellation: if a SPLICE operation is cancelled mid-flight, verify the IoUringFileRegion's file descriptor is closed.** When `writeId != 0` and `cancelOutstandingWrites` is called (e.g., on channel close), the SPLICE is cancelled but the opened file descriptor in IoUringFileRegion may not be cleaned up. Compare with Epoll's LinuxSocket.sendFile which manages the fd through DefaultFileRegion's lifecycle.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "CRITICAL assertion bug when fileRegion.open() throws - scheduleWriteSingle returns 0, triggering assert numOutstandingWrites > 0",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 1,
+          "checked": "Verified line 332 in AbstractIoUringChannel.java has 'assert numOutstandingWrites > 0;'. The PR's NEW scheduleWriteSingle returns 0 on IOException (after handleWriteError), which would set numOutstandingWrites=0 and trigger this assertion. This is a real bug in the error path."
+        },
+        {
+          "point": "Cannot verify write completion handling - diff truncated",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "This is noting incomplete information, not a finding"
+        },
+        {
+          "point": "filterOutboundMessage only supports DefaultFileRegion",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Design observation - not an issue, just explaining the implementation decision"
+        },
+        {
+          "point": "Good guard msgCount > 1 && instanceof ByteBuf prevents batching IoUringFileRegion",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Praising the code change - verified the change exists in diff but this is not a finding of an issue"
+        },
+        {
+          "point": "IORING_OP_SPLICE added to write completion handler",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Restating what the code does - verified at line 409-410 in AbstractIoUringChannel"
+        },
+        {
+          "point": "Add IORING_OP_SPLICE to REQUIRED_IORING_OPS at line 295",
+          "verdict": "wrong",
+          "severity": "none",
+          "score": -1,
+          "checked": "WRONG LINE NUMBER: REQUIRED_IORING_OPS is at lines 170-187 in Native.java, NOT line 295 (which is 'static native void ioUringExit'). The candidate's line reference is factually incorrect."
+        },
+        {
+          "point": "Test correctly skips testCustomFileRegion",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Restating test behavior from diff - not a finding"
+        },
+        {
+          "point": "Potential FD leak on cancellation - verify IoUringFileRegion fd cleanup",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Valid concern: base cancelOutstandingWrites (lines 394-405) only cancels the writeId operation but doesn't address potential fd management in IoUringFileRegion. If SPLICE is cancelled mid-flight, the opened file descriptor may leak."
+        }
+      ],
+      "missed_human": [
+        "Human suggests prepending IoUring.isIOUringSpliceSupported() check in filterOutboundMessage before type filtering - there's no point performing type checks if SPLICE is not supported. This is a valid performance optimization the candidate did not mention."
+      ],
+      "n_good": 2,
+      "n_wrong": 1,
+      "n_trivial": 5,
+      "n_missed": 1,
+      "net_score": 0
+    }
+  }
+]
