@@ -1,0 +1,73 @@
+{
+  "pr": 49721,
+  "own_review": [
+    {
+      "loc": "CredentialHelper.java:100-111, ProcessRunner.java:115-117, DisabledIfProcessUnavailableCondition.java:80-82",
+      "issue": "KEY DEFECT: the per-directory startsWith guards (`executable.startsWith(binDirectory)` / `command[0].startsWith(binDirectory + \"/\")`) only skip the matching directory's iteration. If the command is already an absolute path under one bin dir (e.g. /usr/local/bin/docker), the loop still prepends the OTHER directory, producing a garbage path like /opt/homebrew/bin//usr/local/bin/docker. The old single-guard code in ProcessRunner/Condition skipped the fallback entirely in that case. The guards are also unnecessary since commands never contain '/' in practice. Correct fix is a single startsWith(\"/\") absolute-path guard (as done in polish); the human reviewer asked to revert all three guards.",
+      "severity": "medium"
+    },
+    {
+      "loc": "CredentialHelper.java:100-111",
+      "issue": "Mutation aliasing: processBuilder.command(command) mutates the shared builder inside the loop; the second iteration copies the already-mutated list and only works because index 0 is overwritten from the pre-captured `executable`. Fragile, and leaves the caller's ProcessBuilder mutated when all attempts fail.",
+      "severity": "minor"
+    },
+    {
+      "loc": "DisabledIfProcessUnavailableCondition.java:86-87",
+      "issue": "catch (Exception ignored) swallows fallback failure details entirely (including InterruptedException without restoring interrupt status); the final RuntimeException carries neither cause nor suppressed exceptions, hurting diagnosability.",
+      "severity": "minor"
+    },
+    {
+      "loc": "ProcessRunner.java:118-126",
+      "issue": "Fallback no longer routes through startProcess(), duplicating the directory(workingDirectory) setup; final ProcessStartException now references the original command with suppressed fallback errors (behavior change, arguably an improvement).",
+      "severity": "trivial"
+    },
+    {
+      "loc": "CredentialHelper.java vs ProcessRunner.java / DisabledIfProcessUnavailableCondition.java",
+      "issue": "Pre-existing inconsistencies preserved: CredentialHelper has no PATH-containment guard while the other two do; trailing-slash convention in the constants differs across the three classes.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "CredentialHelper.java:100-112 fragile mutation-in-loop pattern; works accidentally because index 0 is overwritten; suggests capturing original command or fresh ProcessBuilder", "verdict": "good", "score": 1, "note": "Verified real and the analysis is exactly correct."},
+        {"point": "ProcessRunner.java:119-122 'clean approach worth noting as the model'", "verdict": "trivial", "score": 0, "note": "Praise/consistency remark, not a finding."},
+        {"point": "Trailing-slash convention inconsistency across the three classes", "verdict": "trivial", "score": 0, "note": "Accurate but a pre-existing pure style nit."},
+        {"point": "CredentialHelperTests.java:109 suggest adding hasSize(2) count assertion", "verdict": "trivial", "score": 0, "note": "Valid minor test-hardening suggestion."}
+      ],
+      "missed": [
+        "DisabledIfProcessUnavailableCondition startsWith guard causes cross-directory prefixing / unnecessary — human asked to revert",
+        "ProcessRunner startsWith guard causes cross-directory prefixing / unnecessary — human asked to revert",
+        "CredentialHelper startsWith guard causes cross-directory prefixing / unnecessary — human asked to revert"
+      ],
+      "exceeds": [
+        "Mutation-in-loop aliasing analysis in CredentialHelper (not in human review)"
+      ],
+      "net": -2
+    },
+    "v5": {
+      "points": [
+        {"point": "CredentialHelper.java:100-111 mutation side-effects, suggests fresh ProcessBuilder per attempt for consistency", "verdict": "good", "score": 1, "note": "Verified real."},
+        {"point": "CredentialHelperTests use absolute paths (geExecutableAbsolutePath); the startsWith(binDirectory) guard won't catch absolute paths, producing /opt/homebrew/bin//var/folders/... ; verified DockerRegistryConfigAuthentication.java:59 prepends docker-credential-", "verdict": "good", "score": 1, "note": "This IS the key cross-directory/absolute-path prefixing defect — v5 identifies the exact mechanism and verified production input shape, but wrongly concludes 'not a production bug' and recommends changing tests instead of the guard. Partial catch, credited for CredentialHelper."},
+        {"point": "ProcessRunnerTests has no tests for the macOS fallback logic (old or new)", "verdict": "good", "score": 1, "note": "Verified: runWhenProcessDoesNotStart only asserts exception type; no suppressed/fallback assertions."},
+        {"point": "DisabledIfProcessUnavailableTests is a single smoke test, fallback paths untested", "verdict": "good", "score": 1, "note": "Verified: the file is exactly one @DisabledIfProcessUnavailable smoke test."},
+        {"point": "Trailing-slash style inconsistency across the three classes", "verdict": "trivial", "score": 0, "note": "Accurate, pre-existing style nit."}
+      ],
+      "missed": [
+        "ProcessRunner startsWith guard causes cross-directory prefixing / unnecessary — human asked to revert (v5 only flagged the analogous issue in CredentialHelper, and even there drew the wrong conclusion)",
+        "DisabledIfProcessUnavailableCondition startsWith guard — same, not flagged"
+      ],
+      "exceeds": [
+        "Mutation aliasing analysis in CredentialHelper",
+        "Verified test coverage gaps in ProcessRunnerTests and DisabledIfProcessUnavailableTests",
+        "Cross-checked production call site DockerRegistryConfigAuthentication.java:59 to establish input shape"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v4": 0,
+    "v5": 0
+  },
+  "qualitative": "The decisive defect is the per-directory startsWith guards: for a command already rooted in one bin dir (or any absolute path), the loop prepends the other dir, yielding nonsense like /opt/homebrew/bin//usr/local/bin/docker — the human asked to revert all three guards, and the polish fix replaced them with a startsWith(\"/\") check. v4 missed this entirely and even declared the PR 'functionally correct', leaving only its (good) mutation-aliasing point against three misses. v5 actually surfaced the exact mechanism — including the double-slash garbage path and a verified production call-site check — but misclassified it as a test-setup inconsistency ('not a production bug') and missed the same guard in the other two files. v5's two test-coverage absence claims and v4's 'all USR_LOCAL_BIN usages covered' claim were all verified true, so neither candidate fabricated absences. Overall v5 is clearly stronger: more verified substance, partial credit on the key defect, fewer misses."
+}

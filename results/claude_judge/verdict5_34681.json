@@ -1,0 +1,74 @@
+{
+  "pr": 34681,
+  "own_review": [
+    {"file": "core/deployment/src/main/java/io/quarkus/deployment/dev/testing/JunitTestRunner.java", "line": 119, "issue": "New static field firstDeploymentClassLoader captures the first deployment classloader forever and is never cleared or closed; in long continuous-testing sessions it pins the entire first CL graph (metaspace leak) and may become a closed/stale QuarkusClassLoader whose loadClass() then fails when constructing FacadeClassLoader.", "severity": "major"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/AppMakerHelper.java", "line": 251, "issue": "getStartupAction() creates `Collection<Runnable> shutdownTasks = new HashSet()` and makeCuratedApplication() adds curatedApplication::close to it, but the collection is never executed or registered anywhere - the CuratedApplication created on this path is never closed (classloader/resource leak).", "severity": "major"},
+    {"file": "extensions/devservices/h2/src/main/java/io/quarkus/devservices/h2/deployment/H2DevServicesProcessor.java", "line": 93, "issue": "Hardcoded `hackPendingDeferredDevServiceStart = true` makes tcpServer.stop() unreachable dead code - the H2 TCP server is deliberately never stopped (acknowledged port leak shipped to users, TODO references #45785/#45786).", "severity": "major"},
+    {"file": "test-framework/common/src/main/java/io/quarkus/test/common/PathTestHelper.java", "line": 160, "issue": "Potential infinite recursion: getTestClassesLocation(Class) hits the new \"quarkus\" protocol branch and calls getTestClassesLocation(class, curatedApplication); if the class is found neither in test sources nor any source classifier, the fallback `return getTestClassesLocation(requiredTestClass)` re-enters the quarkus-protocol branch and recurses until StackOverflowError (the TODO itself admits the maven source-set case lands here).", "severity": "major"},
+    {"file": "test-framework/common/src/main/java/io/quarkus/test/common/PathTestHelper.java", "line": 162, "issue": "qcl.getCuratedApplication() can be null: setCuratedApplication() is only added to getOrCreateBaseRuntimeClassLoader() and createRuntimeClassLoader() builders, not to deployment/augmentation classloaders, so a class loaded by a deployment CL with \"quarkus\" protocol leads to NPE in getTestClassesLocation(testClass, null).", "severity": "medium"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/AbstractJvmQuarkusTestExtension.java", "line": 265, "issue": "evaluateExecutionCondition catches Exception|ServiceConfigurationError and rethrows IllegalStateException WITHOUT chaining the cause (only logged at debug) - original stack trace lost; also turns surefire rerunFailingTestsCount reruns into hard failures (acknowledged limitation #46048 shipped).", "severity": "medium"},
+    {"file": "core/deployment/src/main/java/io/quarkus/deployment/dev/testing/JunitTestRunner.java", "line": 700, "issue": "FacadeClassLoader close/TCCL-restore is not in a finally block: if anything between the constructor and close() throws (sorting, transformation loop, deployment CL creation), the facade loader leaks and the TCCL is left pointing at it; close() failures are wrapped in RuntimeException aborting the run. Also closing the loader that just loaded the test classes before tests execute relies on FacadeClassLoader.close() not closing the delegated runtime classloaders (unverifiable, implementation in truncated portion).", "severity": "medium"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/QuarkusTestExtension.java", "line": 612, "issue": "ensureStarted() drops the old TestResourceUtil.testResourcesRequireReload(...) trigger; restart now keys solely on classloader identity (isNewApplication). Unless FacadeClassLoader guarantees a distinct classloader for every distinct resource set, per-class test resources with the same profile will no longer force an app restart (behavioral regression risk; FacadeClassLoader not visible in diff).", "severity": "medium"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/AbstractJvmQuarkusTestExtension.java", "line": 111, "issue": "getCuratedApplication() does a blind cast ((QuarkusClassLoader) requiredTestClass.getClassLoader()) - opaque ClassCastException for classes loaded by non-Quarkus loaders, unlike the descriptive handling in QuarkusTestExtension.getClassLoaderFromTestClass().", "severity": "minor"},
+    {"file": "test-framework/common/src/main/java/io/quarkus/test/common/TestResourceManager.java", "line": 608, "issue": "Public API weakened: TestResourceClassEntry constructor widened to Class<?> with an unchecked cast (which due to erasure cannot fail at construction, only later), and testResourceLifecycleManagerClass() return type changed to Class<?> - source-incompatible change for external callers.", "severity": "minor"},
+    {"file": "test-framework/common/src/main/java/io/quarkus/test/common/PathTestHelper.java", "line": 170, "issue": "Public method getAppClassLocation(Class) removed (no internal callers at base, but it is public API in test-framework-common; external breakage).", "severity": "minor"},
+    {"file": "test-framework/common/src/main/java/io/quarkus/test/common/TestResourceManager.java", "line": 474, "issue": "Contradictory logic in findTestResourceInstancesOfClass: loop guard `current != Object.class && current != null` tolerates null, but the inner `if (current == null) throw new RuntimeException(\"Internal error...\")` fires first, making the guard dead and turning the @interface case the comment claims to handle into a hard internal error.", "severity": "minor"},
+    {"file": "independent-projects/bootstrap/core/src/main/java/io/quarkus/bootstrap/classloading/QuarkusClassLoader.java", "line": 48, "issue": "Mutable back-references added (curatedApplication field, settable startupAction) create bidirectional retention QuarkusClassLoader <-> CuratedApplication/StartupAction; in flat-classpath mode setStartupAction() overwrites shared state on the long-lived base runtime CL, pinning stale StartupActions; contributes to acknowledged increased memory footprint.", "severity": "minor"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/QuarkusTestExtension.java", "line": 443, "issue": "getEndpointPath() replaces direct testHTTPEndpoint.value() access with reflective Method.invoke and a `value` placeholder object initialized to \"[no value]\" - needless reflection and weaker error message.", "severity": "minor"},
+    {"file": "test-framework/junit5/src/main/java/io/quarkus/test/junit/AppMakerHelper.java", "line": 53, "issue": "Dead copied fields (quarkusTestMethodContextClass, hasPerTestResources, testMethodInvokers) and a third copy of the Gradle/IDE path-discovery block (also in QuarkusMainTestExtension.getCuratedApplication and originally in AbstractJvmQuarkusTestExtension); configCleanup is mutable instance state that loses earlier cleanups if reused.", "severity": "minor"},
+    {"file": "core/runtime/src/main/java/io/quarkus/runtime/configuration/ConfigRecorder.java", "line": 108, "issue": "Typo \"Internal errror\" in user-facing exception message; generic RuntimeException for an internal invariant.", "severity": "trivial"},
+    {"file": "multiple files", "line": 0, "issue": "Heavy WIP hygiene shipped: ~40 TODO comments, commented-out code blocks (JunitTestRunner, AbstractJvmQuarkusTestExtension index writing, MyContextProvider assertion), unrelated fluent-call reformatting churn, accidental indent change in integration-tests/maven/pom.xml, missing EOF newline in QuarkusMainTestExtension, raw types in RedisInstrumentationDisabledProfile plus hardcoded dev-services port 4001 workaround.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "JunitTestRunner firstDeploymentClassLoader missing volatile (memory visibility, codebase-consistent evidence)", "grade": "good", "score": 1},
+        {"point": "firstDeploymentClassLoader never cleared -> metaspace/classloader leak in extended dev sessions", "grade": "good", "score": 1},
+        {"point": "FACADE_CLASS_LOADER_NAME references class not in base; 'verify FacadeClassLoader delegates properly' - generic verify-style, no finding", "grade": "trivial", "score": 0},
+        {"point": "WithTestProfileAndNestedTest 'ensure this annotation is removed or test restructured' - the real PR DELETES this entire file; claim verified only against base", "grade": "wrong", "score": -1},
+        {"point": "QuarkusTestNestedWithTestProfileTestCase 'PR should add @Disabled or restructure' - the real PR DOES add @Disabled with a descriptive message; claim verified only against base", "grade": "wrong", "score": -1},
+        {"point": "QuarkusConfigFactory.setConfig check-then-act race - pattern exists at base but the file is not visibly changed by this PR; speculative concurrency scenario, out-of-scope review noise", "grade": "trivial", "score": 0},
+        {"point": "CurrentTestApplication TODO echo, 'track a follow-up issue'", "grade": "trivial", "score": 0},
+        {"point": "Repro42006Test 'verify lambda classes accessible' - verify-style, no concrete issue", "grade": "trivial", "score": 0},
+        {"point": "CuratedApplication: claims createDeploymentClassLoader() 'has been modified' (it is NOT touched by the PR; only getOrCreateBaseRuntimeClassLoader and createRuntimeClassLoader hunks exist) and the setAggregateParentResources observation is base-only", "grade": "wrong", "score": -1},
+        {"point": "H2 t.printStackTrace() - pre-existing unchanged context line, style nit framed as PR issue", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "human: FacadeClassLoader pre-discovery design question (instance-factory alternative / bytecode-instrumented JUnit annotations)",
+        "H2 deliberate hardcoded hackPendingDeferredDevServiceStart=true port leak - the actual change in the very file v4 commented on",
+        "AppMakerHelper.getStartupAction shutdownTasks (incl. curatedApplication::close) collected but never run -> CuratedApplication leak",
+        "PathTestHelper getTestClassesLocation potential infinite recursion via the quarkus-protocol fallback",
+        "evaluateExecutionCondition swallows exception cause and hard-fails surefire reruns"
+      ],
+      "exceeds": [
+        "Missing volatile on firstDeploymentClassLoader - a verified visibility nit neither the human nor my review called out"
+      ],
+      "net": -6
+    },
+    "v5": {
+      "points": [
+        {"point": "H2 hardcoded hackPendingDeferredDevServiceStart=true disables TCP server shutdown - deliberate port leak; verified real", "grade": "good", "score": 1},
+        {"point": "AbstractJvmQuarkusTestExtension.getCuratedApplication blind (QuarkusClassLoader) cast with no error handling, contrasted with getClassLoaderFromTestClass - verified real", "grade": "good", "score": 1},
+        {"point": "AppMakerHelper duplicates path-resolution logic with QuarkusMainTestExtension.getCuratedApplication - verified real (triplicated block)", "grade": "good", "score": 1},
+        {"point": "TestResourceManager unchecked cast to Class<? extends QuarkusTestResourceLifecycleManager> unsafe across classloaders, suggests ClassCoercingTestProfile-style wrapper - verified real change (minor imprecision: erasure means the cast itself cannot fail, failure surfaces later)", "grade": "good", "score": 1},
+        {"point": "QuarkusTestExtensionState.clone(o) in truncated portion - cautions about Thread shutdownHook/Closeable fields (fields verified real at base) but verify-style, no concrete defect", "grade": "trivial", "score": 0},
+        {"point": "doJavaStart TODO echo about redundant startup work", "grade": "trivial", "score": 0},
+        {"point": "StartupActionImpl TODO echo about dev-mode recreations", "grade": "trivial", "score": 0},
+        {"point": "ClassCoercingTestProfile.testResources() TODO echo (author-acknowledged limitation)", "grade": "trivial", "score": 0},
+        {"point": "Praise for @Disabled message on ModernEnglishCase", "grade": "trivial", "score": 0},
+        {"point": "QuarkusClassLoader bidirectional curatedApplication/startupAction references -> GC retention, ties to acknowledged memory footprint increase - verified real", "grade": "good", "score": 1}
+      ],
+      "missed": [
+        "human: FacadeClassLoader pre-discovery design question (instance-factory alternative / bytecode-instrumented JUnit annotations)",
+        "JunitTestRunner static firstDeploymentClassLoader never cleared/closed - stale-classloader risk and metaspace leak",
+        "AppMakerHelper.getStartupAction shutdownTasks (incl. curatedApplication::close) collected but never run -> CuratedApplication leak",
+        "PathTestHelper getTestClassesLocation potential infinite recursion via the quarkus-protocol fallback",
+        "evaluateExecutionCondition swallows exception cause and hard-fails surefire reruns"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {"v4": 3, "v5": 0},
+  "qualitative": "v5 is clearly the stronger review: five verified, change-anchored findings (H2 deliberate port leak, blind classloader cast, triplicated path-resolution logic, cross-classloader cast unsafety, bidirectional CL references) and zero fabrications, though half its points are TODO-echoes or verify-style filler and it missed the biggest leaks (firstDeploymentClassLoader retention, the discarded shutdownTasks in AppMakerHelper). v4's two real points on firstDeploymentClassLoader (volatile + retention) are good - the volatile nit even exceeds both the human and my review - but they are swamped by three absence-fabrications: it demanded fixes the PR already contains (the deleted WithTestProfileAndNestedTest, the @Disabled it asked for) and described createDeploymentClassLoader as modified when the PR never touches it, all artifacts of judging from a 7k-truncated diff against the base repo. Both candidates missed the human reviewer's FacadeClassLoader design question, which sits in the portion of the diff truncated even in the v5 input. Net: v5 0, v4 -6."
+}

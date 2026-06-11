@@ -1,0 +1,42 @@
+{
+  "pr": 374,
+  "own_review": [
+    {"file": "docs/contrib/env.md", "line": 19, "issue": "`sudo apt-get install rpmbuild` is wrong: there is no Debian/Ubuntu package named 'rpmbuild'; the rpmbuild binary is provided by the 'rpm' package (`sudo apt-get install rpm`). The copy-pasted command fails as written.", "severity": "medium"},
+    {"file": "docs/contrib/env.md", "line": 7, "issue": "Thrift version guidance is imprecise: the compiler version actually needs to match libthrift 0.9.3 pinned in rubix-spi/pom.xml:23, and the CI Dockerfile builds thrift 0.9.3 from source (Dockerfile:33-63). apt's thrift-compiler / EPEL's thrift will almost certainly not be 0.9.3; docs should recommend verifying `thrift --version` and prefer the source install for 0.9.3. The doc partially hedges this already.", "severity": "minor"},
+    {"file": "docs/contrib/env.md", "line": 21, "issue": "NOT an issue (verification note): the quoted error `Could not find artifact jdk.tools:jdk.tools:jar:1.6` is real and accurate. It does not come from this repo's poms but transitively from hadoop-annotations (via hadoop-common 2.6.0, pom.xml:53,151-153), which declares jdk.tools:jdk.tools:1.6 with a systemPath to ${java.home}/../lib/tools.jar. On JDK >8 tools.jar is absent and exactly this error appears. Reviews 'correcting' or dismissing this are themselves wrong.", "severity": "note"},
+    {"file": "docs/contrib/env.md", "line": 26, "issue": "The new '## Building' header lands above fork/clone/upstream steps; the only build-ish command in the section is the pre-existing `mvn test`. Adding an explicit `mvn clean install` would make the section live up to its name.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "env.md:20 — error message references jdk.tools 1.6, suggest changing to 1.8 since project uses Java 1.8", "grade": "wrong", "score": -1, "note": "The 1.6 in the error is the literal version hadoop-annotations (transitive of hadoop-common 2.6.0) declares for jdk.tools; the doc quotes the real Maven error verbatim. Changing it to 1.8 would make the doc inaccurate. v4 verified only the project's own pom and missed the transitive source."},
+        {"point": "env.md:7 — 'match the version you are going to deploy on' misleading; compiler should match build's 0.9.3 (rubix-spi/pom.xml:23)", "grade": "good", "score": 1, "note": "Verified: libthrift 0.9.3 pinned in rubix-spi/pom.xml:23. Aligns with the human reviewer's version-matching concern."},
+        {"point": "env.md:11 — apt thrift-compiler may install a version other than 0.9.3; suggest verifying with thrift --version", "grade": "good", "score": 1, "note": "Real concern; Debian/EPEL packages do not ship 0.9.3. Doc only partially hedges this."},
+        {"point": "env.md:1-31 — Rubix vs RubiX spelling inconsistency", "grade": "trivial", "score": 0, "note": "Cosmetic; pre-existing inconsistency."}
+      ],
+      "missed": [
+        "apt-get install rpmbuild is an invalid Debian package name (should be 'rpm') — command fails as written"
+      ],
+      "exceeds": [],
+      "net": 0
+    },
+    "v5": {
+      "points": [
+        {"point": "env.md:21 — JDK 8/tools.jar rationale 'unsubstantiated': no pom in repo contains jdk.tools/tools.jar; suggests rewriting rationale to source/target 1.8", "grade": "wrong", "score": -1, "note": "False. The error comes transitively from hadoop-annotations (hadoop-common 2.6.0 is a direct dependency, pom.xml:151-153), which declares jdk.tools:jdk.tools:1.6 with systemPath to tools.jar. The doc's rationale is correct and contributors on JDK >8 DO hit exactly that error; v5 verified only the repo's own poms and confidently called accurate documentation 'misleading'."},
+        {"point": "env.md:26 — '## Building' section has no actual build command; suggest adding mvn clean install (docker_build_rubix.sh uses mvn clean -B install -DskipTests)", "grade": "good", "score": 1, "note": "Verified docker_build_rubix.sh command. Useful actionability gap, though the claim 'contains only fork/clone/git-remote instructions' overlooks the existing `mvn test` step in that section."},
+        {"point": "env.md:25 — rpmbuild prerequisite documented but invocation missing; suggest `mvn clean package -Prpm`", "grade": "good", "score": 1, "note": "Verified: 'rpm' profile with rpm-maven-plugin in rubix-rpm/pom.xml:56-66. Makes the prerequisite actionable; beyond both human and my review."},
+        {"point": "env.md:7 — redundancy between intro 'uses Java 8' and the JDK 8 prerequisite", "grade": "trivial", "score": 0, "note": "An 'implicit' duplicate is not really redundancy; cosmetic at best."}
+      ],
+      "missed": [
+        "Human's core point: thrift compiler version must match across build and deployment; apt/EPEL packages won't be 0.9.3 while the build docker image builds 0.9.3 from source (v5 confirmed 0.9.3 in the summary but raised no version-mismatch point)",
+        "apt-get install rpmbuild is an invalid Debian package name (should be 'rpm') — command fails as written"
+      ],
+      "exceeds": [
+        "rpm profile invocation suggestion (`mvn clean package -Prpm`), verified against rubix-rpm/pom.xml — present in neither the human review nor my own"
+      ],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {"v4": 0, "v5": 1},
+  "qualitative": "This docs-only PR hides one subtle trap, and both candidates fell into it from opposite directions: the quoted `jdk.tools:jdk.tools:jar:1.6` error is real, arising transitively from hadoop-annotations under hadoop-common 2.6.0, so v4 was wrong to 'correct' 1.6 to 1.8 and v5 was wrong to declare the rationale unsubstantiated after grepping only the repo's own poms (a textbook base-repo-only absence fabrication). v4 otherwise tracked the human reviewer's thrift version-matching concern well with two solid points; v5 missed that concern entirely but contributed a genuinely useful, verified suggestion to document the `-Prpm` invocation. Neither candidate caught the one concrete command bug in the diff: `apt-get install rpmbuild` references a nonexistent Debian package (it should be `rpm`). Net result: v4 edges out v5 (0 vs -1), with v5's confident false negation of accurate documentation being the most damaging single point."
+}

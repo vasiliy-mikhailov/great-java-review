@@ -1,0 +1,141 @@
+{
+ "pr": 45727,
+ "own_review": [
+  {
+   "point": "Removes public, NON-deprecated API methods (buildConsumerProperties(SslBundles), buildProducerProperties(SslBundles), buildAdminProperties(SslBundles), buildStreamsProperties(SslBundles), and public inner-class buildProperties(SslBundles) on Consumer/Producer/Admin/Streams/Ssl) without a deprecation cycle; these are documented for user code ('override the default kafkaConsumerFactory bean'). Acceptable only because target branch is main/4.0.0-SNAPSHOT (verified via gradle.properties at PR parent e337541ae4d), but should be called out; would be a blocker on a 3.x branch.",
+   "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+   "severity": "normal"
+  },
+  {
+   "point": "Test coverage loss: sslBundleConfiguration test deleted outright instead of being adapted to the no-arg method (set bundle -> buildConsumerProperties() -> assert no SSL_ENGINE_FACTORY_CLASS_CONFIG); the 'bundle set => Ssl.buildProperties returns empty map' behavior is no longer asserted.",
+   "file": "spring-boot-project/spring-boot-autoconfigure/src/test/java/org/springframework/boot/autoconfigure/kafka/KafkaPropertiesTests.java",
+   "severity": "normal"
+  },
+  {
+   "point": "PR description inaccuracy: claims 'the removed test has been restored and updated' but sslBundleConfiguration was deleted; description also calls the removed overloads 'deprecated' though only Ssl.buildProperties() no-arg carried @Deprecated.",
+   "file": "PR description",
+   "severity": "normal"
+  },
+  {
+   "point": "Verified behavior-preserving: sslBundles param was completely unused in base Ssl.buildProperties(SslBundles) (bundle name set -> empty Properties regardless); SSL bundles are applied via KafkaConnectionDetails/applySslBundle in KafkaAutoConfiguration. All in-repo callers updated in the commit (KafkaStreamsAnnotationDrivenConfiguration, KafkaAutoConfiguration, Properties.with, all inner classes, all 5 tests); no doc/adoc or external-module references remain; un-deprecating Ssl.buildProperties() is correct.",
+   "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+   "severity": "normal"
+  }
+ ],
+ "versions": {
+  "v2": {
+   "points": [
+    {
+     "point": "KafkaStreamsAnnotationDrivenConfiguration not updated, project will fail to compile",
+     "verdict": "wrong",
+     "why": "False vs code: commit 51a9ee8d3d5 changes buildStreamsProperties(null) -> buildStreamsProperties(); diff was merely truncated"
+    },
+    {
+     "point": "Five test methods still invoke removed overload; 'updates are not reflected'",
+     "verdict": "wrong",
+     "why": "False vs code: the PR removed sslBundleConfiguration and rewrote the other four to properties::buildConsumerProperties"
+    },
+    {
+     "point": "Properties.with(...,SslBundles) must also be updated (not visible, truncated)",
+     "verdict": "trivial",
+     "why": "Hedged verification note; the PR already updates with() \u2014 adds nothing vs actual code"
+    },
+    {
+     "point": "Ssl deprecated no-arg delegator should be cleaned up into single buildProperties()",
+     "verdict": "trivial",
+     "why": "Exactly what the PR already does (removes @Deprecated delegator); not visible due to truncation"
+    },
+    {
+     "point": "SslBundles import should be removed / verify propagation",
+     "verdict": "trivial",
+     "why": "Visible diff already shows the import removal"
+    }
+   ],
+   "missed": [
+    "Public non-deprecated API removed without deprecation cycle (breaking change, only OK because target is 4.0 main)",
+    "sslBundleConfiguration deletion loses coverage of bundle-set => no SSL_ENGINE_FACTORY/ssl.* props behavior"
+   ],
+   "exceeds": [],
+   "net": -4
+  },
+  "v3": {
+   "points": [
+    {
+     "point": "KafkaStreamsAnnotationDrivenConfiguration must be updated; no diff provided for it",
+     "verdict": "wrong",
+     "why": "False vs code: the commit updates that line; claimed missing merely because truncated"
+    },
+    {
+     "point": "5 SslBundles-overload test callers must be removed or rewritten",
+     "verdict": "good",
+     "why": "Matches human reference (adapt 4 exception tests to no-arg); accurate, actionable, no false 'not done' claim"
+    },
+    {
+     "point": "Truncated diff: inner-class buildProperties + Properties.with must all drop SslBundles to compile",
+     "verdict": "trivial",
+     "why": "Verification note; PR already does all of it"
+    },
+    {
+     "point": "PR title/description understates scope (only mentions buildConsumerProperties(SslBundles))",
+     "verdict": "good",
+     "why": "True: description names one method while ~10 public methods change; legit author-facing point"
+    },
+    {
+     "point": "Properties.with at 1797 still takes SslBundles in base, must be updated",
+     "verdict": "trivial",
+     "why": "Duplicate of its own point 3; already done in PR"
+    },
+    {
+     "point": "SslBundles import should be removed",
+     "verdict": "trivial",
+     "why": "Visible diff already removes it"
+    }
+   ],
+   "missed": [
+    "Public non-deprecated API removed without deprecation cycle (breaking change, only OK because target is 4.0 main)"
+   ],
+   "exceeds": [
+    "PR description scope mismatch (broader than the single method named) \u2014 angle neither human nor judge review stated"
+   ],
+   "net": 0
+  },
+  "v4": {
+   "points": [
+    {
+     "point": "COMPILATION ERROR RISK: KafkaStreamsAnnotationDrivenConfiguration not changed, will fail to compile",
+     "verdict": "wrong",
+     "why": "False vs code: the commit changes that call; diff truncation mistaken for a missing change"
+    },
+    {
+     "point": "Verified sslBundles param is dead/unused in Ssl.buildProperties and Properties.with; removal safe",
+     "verdict": "trivial",
+     "why": "Correct verification (judge confirmed) but praise/safety confirmation, not an issue"
+    },
+    {
+     "point": "@Deprecated no-arg Ssl.buildProperties should collapse into single no-arg implementation",
+     "verdict": "trivial",
+     "why": "Exactly what the PR already does"
+    },
+    {
+     "point": "5 test methods must be updated (drop arg or remove); restored-test claim not visible in diff",
+     "verdict": "good",
+     "why": "Actionable, aligns with human reference, properly hedged about truncation"
+    },
+    {
+     "point": "Import removal good; KafkaAutoConfiguration's own SslBundles import correctly preserved",
+     "verdict": "trivial",
+     "why": "Accurate but praise/restating"
+    }
+   ],
+   "missed": [
+    "Public non-deprecated API removed without deprecation cycle (breaking change, only OK because target is 4.0 main)",
+    "sslBundleConfiguration deletion loses coverage of bundle-set => no SSL_ENGINE_FACTORY/ssl.* props behavior"
+   ],
+   "exceeds": [
+    "Verified the sslBundles parameter was genuinely never consumed and noted KafkaAutoConfiguration still legitimately needs its own SslBundles import"
+   ],
+   "net": -2
+  }
+ },
+ "qualitative": "v3 is the best (net 0): it engaged with the test rewrites in the same direction as the human reference and added a legitimate point about the PR description understating its scope, while keeping most truncation-related observations as hedged verification notes. The characteristic failure shared by all three candidates is treating diff truncation as a defect: each asserted that KafkaStreamsAnnotationDrivenConfiguration (and, for v2, the tests and Properties.with) was 'not updated' and would break compilation, when the actual commit updates every one of those sites. v2 is worst because it converted truncation into two outright false 'will not compile / updates not reflected' findings. v4 did genuinely useful verification (confirming the sslBundles parameter was dead code) but most of its points merely re-derive changes the PR already contains. Nobody raised the most review-worthy point: this removes public, never-deprecated API methods documented for user code without a deprecation cycle (all three even mislabeled the overloads as 'deprecated'), acceptable only because the PR targets the 4.0 main branch; nobody flagged the silent loss of the sslBundleConfiguration assertion either."
+}

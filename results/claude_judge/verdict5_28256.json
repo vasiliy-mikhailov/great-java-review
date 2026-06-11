@@ -1,0 +1,122 @@
+{
+  "pr": 28256,
+  "own_review": [
+    {
+      "file": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:398-401",
+      "issue": "Re-enabling IS_NOT_DISTINCT_FROM in gatherConstraints makes constant inference eliminate equi-join keys (pulled-up predicates like 'a IS NOT DISTINCT FROM CAST(2)' now yield constants). Consequence: queries such as 'on a = d and b = e and d = 2 and b = 1' lose their equi-join condition entirely (where=[true]) and can only be planned as NestedLoopJoin. The PR changes BroadcastHashJoinTest/ShuffledHashJoinTest/SortMergeJoinTest.scala to expect 'Cannot generate a valid execution plan' TableException, and had to remove TABLE_EXEC_DISABLED_OPERATORS from DecimalITCase testJoin1-7 because those tests would now fail with HashJoin/NestedLoopJoin disabled. This is a user-visible behavior change: previously-planning queries now fail under operator restrictions or degrade to cross-product nested-loop joins; deserves explicit discussion/release note.",
+      "severity": "high"
+    },
+    {
+      "file": "flink-table/flink-table-planner/src/test/resources/org/apache/flink/table/planner/plan/stream/sql/join/JoinTest.xml:427-470,1016-1040",
+      "issue": "Streaming plan consequences: join inputSpec degrades from JoinKeyContainsUniqueKey to NoUniqueKey (larger/more expensive join state), and the all-constant-key case now uses Exchange(distribution=[single]) forcing single-parallelism. Potential state-size and throughput regression for streaming jobs with constant-restricted join keys; worth acknowledging in the PR.",
+      "severity": "medium"
+    },
+    {
+      "file": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:79-81",
+      "issue": "Stale class javadoc: the first paragraph still says the class was copied over 'because of current Calcite way of inferring constants from IS NOT DISTINCT FROM clashes with filter push down' — this PR re-enables exactly that behavior, so the stated rationale is now contradictory. Should be rewritten (e.g., reference CALCITE-5336 resolving the clash).",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-planner/src/test/scala/org/apache/flink/table/planner/runtime/batch/table/DecimalITCase.scala:22",
+      "issue": "Unused import: all 7 usages of ExecutionConfigOptions (TABLE_EXEC_DISABLED_OPERATORS in testJoin1-7) are removed but the import at line 22 remains.",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:84",
+      "issue": "Updated javadoc says 'Line 2489~2494' for the CALCITE-6764 modification; after this diff the FLINK MODIFICATION markers land at 2489~2493 (off by one). Trivial.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {
+          "point": "Stale class-level comment still cites the IS-NOT-DISTINCT-FROM/filter-push-down clash as the reason for the fork; suggests updating with CALCITE-5336 and notes Calcite 1.37.0 at flink-table/pom.xml:82",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: paragraph remains post-PR and contradicts the change; pom.xml:82 indeed has calcite.version 1.37.0"
+        },
+        {
+          "point": "Comment at line 85 should also reference CALCITE-5336",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Redundant restatement of point 1's suggestion"
+        },
+        {
+          "point": "Change is correct and minimal; IS NOT DISTINCT FROM equivalent to EQUALS for non-null constants",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Affirmation, not a finding"
+        },
+        {
+          "point": "Suggest dedicated unit test that predicateConstants() handles IS_NOT_DISTINCT_FROM; existing WindowJoinITCase/IntervalJoinITCase/MultiJoinTestPrograms cover join conditions, not constant inference",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: all three named test classes exist in the base repo; the PR adds no dedicated constant-inference test"
+        },
+        {
+          "point": "XML golden changes consistent and 'semantically correct'; characterizes DynamicFunctionPlanTest change as removing deterministic expressions from group-by",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Affirmation; also slightly mischaracterizes LOCALTIME (a dynamic, not plainly deterministic, function) and overlooks that one test family now fails to plan at all"
+        }
+      ],
+      "missed": [
+        "Core regression: equi-join keys eliminated by constant inference -> non-NestedLoop joins fail with TableException; testInnerJoinWithJoinConditionPushDown overrides and removed golden XML; DecimalITCase forced to drop TABLE_EXEC_DISABLED_OPERATORS (human's main point)",
+        "Streaming plan consequences: NoUniqueKey input specs and Exchange(single) parallelism collapse",
+        "Unused ExecutionConfigOptions import in DecimalITCase.scala after removing all usages"
+      ],
+      "exceeds": [
+        "Verified-against-repo detail work: exact Calcite version with pom path/line, and a survey of existing IS NOT DISTINCT FROM tests to justify the coverage suggestion"
+      ],
+      "net": -1
+    },
+    "v5": {
+      "points": [
+        {
+          "point": "Class javadoc still cites the filter-push-down clash as the fork rationale; PR does not explain why re-enabling is safe (CALCITE-5336)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real, matches my finding"
+        },
+        {
+          "point": "Previously-working testInnerJoinWithJoinConditionPushDown now expects TableException in Broadcast/ShuffledHash/SortMergeJoin suites; removed golden XML proves it used to plan; asks for root-cause investigation",
+          "verdict": "critical",
+          "score": 2,
+          "note": "Verified — this is the central behavioral consequence and matches the human's main point. v5 misses the nuance that NestedLoop still plans it (so it's a planner-capability restriction, not total failure), but the identification and challenge are correct and important"
+        },
+        {
+          "point": "Removing golden XML while keeping the Scala test that expects an exception is 'inconsistent/confusing'; either remove the test or fix the root cause",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False premise: when a plan test throws, there is no golden plan to record, so removing the XML TestCase is required; the override-with-assertThatThrownBy pattern already exists immediately above each added override in the same files — this is the established convention, not an inconsistency"
+        },
+        {
+          "point": "NULL-literal edge: x IS NOT DISTINCT FROM NULL would infer x = NULL through the same path; isConstant accepts NULL literals; suggests a targeted test",
+          "verdict": "good",
+          "score": 1,
+          "note": "Reasoning verified against gatherConstraint (isConstant check actually at base line 440, not 427 — immaterial). Legitimate edge-case scrutiny neither human nor my review surfaced as an explicit point"
+        },
+        {
+          "point": "Line-number references in the FLINK-modification comment are fragile; use anchors instead",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Fair nit, but line-number references are the existing convention in Flink's copied Calcite classes"
+        }
+      ],
+      "missed": [
+        "Streaming plan consequences: NoUniqueKey input specs and Exchange(single) parallelism collapse",
+        "Unused ExecutionConfigOptions import in DecimalITCase.scala after removing all usages"
+      ],
+      "exceeds": [
+        "NULL-literal inference edge case (x IS NOT DISTINCT FROM NULL -> x = NULL) with a concrete test suggestion — beyond both the human comment and my own listed findings"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v4": 0,
+    "v5": 0
+  },
+  "qualitative": "v5 is clearly stronger: it found the PR's load-bearing issue — that constant inference now strips equi-join keys so previously-planning queries throw 'Cannot generate a valid execution plan' in the hash/merge join suites — which is exactly the human reviewer's main point, and it added a genuine NULL-literal edge-case analysis. Its one bad point (calling the golden-XML removal 'inconsistent') stems from not knowing Flink's plan-test convention. v4, working from the truncated diff, never saw the Scala test overrides or DecimalITCase changes and so completely missed the regression, instead pronouncing the plan changes 'expected' and 'semantically correct'; its remaining value is careful doc-hygiene and test-coverage work with impressively verified repo details (Calcite 1.37.0 at pom.xml:82, real test class names). Neither candidate fabricated absences. Both missed the streaming NoUniqueKey/single-exchange performance consequence and the now-unused ExecutionConfigOptions import."
+}

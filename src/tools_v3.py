@@ -17,7 +17,6 @@ import token_meter as tm  # noqa: E402
 tm.install()
 import call_log  # noqa: E402
 call_log.install()
-import point_judge_grounded as g  # noqa: E402
 from oh_delegate import oh_review_delegate, _V2, _FOCUS  # noqa: E402
 from agent_poc_batch import base_sha, ensure_repo  # noqa: E402
 import dataset as ds  # noqa: E402
@@ -35,15 +34,6 @@ def _select(args, prs):
         return prs[: int(args[0])]
     want = {int(a.split(":")[-1]) for a in args}
     return [x for x in prs if x["pr"] in want] or prs[:1]
-
-
-def _judge(d, pi, human, cand, tp, attempts=3):
-    for _ in range(attempts):
-        r = g.grounded_judge(d, pi, human, cand, trace_path=tp)
-        if r:
-            return r
-        print("      judge parse-fail, retry…", flush=True)
-    return None
 
 
 def main():
@@ -78,8 +68,7 @@ def main():
         p1, c1 = tm.total()
         sent, recv = p1 - p0, c1 - c0
         ncalls = sum(1 for _ in open(clog))
-        jr = _judge(d, pi, human, rv, os.path.join(TRACE_DIR, tag + "__judge.json")) \
-            if len(rv.strip()) >= MIN else None
+        jr = None   # judging removed: Claude re-judges stored texts (see AGENTS.md)
         net = (jr or {}).get("net_score")
         rec = {"repo": repo, "pr": pr, "reviewer": p.get("reviewer"),
                "net": net, "sec": sec, "sent": sent, "recv": recv, "calls": ncalls,

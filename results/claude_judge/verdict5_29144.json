@@ -1,0 +1,63 @@
+{
+  "pr": 29144,
+  "own_review": [
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1338,
+      "issue": "getFileScanPartitionSpec uses requireNonNull(spec, \"Table specs doesn't contain specId: \" + specId): (a) the message string is concatenated eagerly on every call, on the per-file hot path this perf PR is optimizing; (b) NPE is the wrong exception type for a metadata-inconsistency condition -- checkState/verifyNotNull is more idiomatic (matches human reviewer's checkState comment); (c) grammar: 'specs doesn't' should be 'specs don't' or 'Spec map does not contain'.",
+      "severity": "minor"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java",
+      "line": 447,
+      "issue": "In pruneFileScanTask the spec lookup is hoisted above the pathDomain and fileModifiedTimeDomain early-return branches, so the lookup is wasted when those prune the task. It is only a HashMap.get, so negligible.",
+      "severity": "trivial"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1335,
+      "issue": "Behavior change: task.spec() always succeeded (spec string is carried with the task), whereas the map lookup throws if the file's specId is absent from table.specs(). Safe in practice -- planFiles only yields files whose spec exists in current metadata, and IcebergSplitSource line 361 already assumes this for delete files -- but worth noting.",
+      "severity": "info"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/StructLikeWrapperWithFieldIdToIndex.java",
+      "line": 33,
+      "issue": "Verified at base commit: the removed createStructLikeWrapper(FileScanTask) overload had exactly 3 callers (IcebergMetadata:942, IcebergSplitSource:416, PartitionsTable:181) and the re-signatured (StructType->PartitionSpec) overload had 1 caller (FilesTablePageSource:324); all 4 are updated in the PR and there are no test usages, so no compile breaks. Likewise the removed getPartitionKeys(FileScanTask) overload's only caller (IcebergSplitSource:464) is updated.",
+      "severity": "positive"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "PartitionsTable still calls fileScanTask.spec() twice; optimization missed there", "grade": "wrong", "score": -1, "note": "Fabricated: the full PR updates PartitionsTable.java to use getFileScanPartitionSpec and passes spec to acceptDataFile. Artifact of the 7k-truncated diff."},
+        {"point": "Verify getFileScanPartitionSpec handles null specsById / absent specId; method 'not visible in diff'; add fallback to fileScanTask.spec()", "grade": "wrong", "score": -1, "note": "The method IS in the diff and explicitly handles the absent-spec case via requireNonNull with a message. The suggested silent fallback to spec() would defeat the PR's purpose."},
+        {"point": "Verify getPartitionKeys signature change is consistent; a grep would confirm", "grade": "trivial", "score": 0, "note": "Pure hedge with no finding; the 2-arg overload exists and the call is correct."},
+        {"point": "Old single-arg createStructLikeWrapper(FileScanTask) still calls spec(); deprecate it", "grade": "wrong", "score": -1, "note": "Fabricated: the overload is deleted in the full PR."}
+      ],
+      "missed": [
+        "Human: requireNonNull should be checkState (guaranteed-present invariant) -- IcebergUtil.java:1338"
+      ],
+      "exceeds": [],
+      "net": -4
+    },
+    "v5": {
+      "points": [
+        {"point": "Grammar in error message: 'Table specs doesn't contain' should be plural", "grade": "trivial", "score": 0, "note": "Real but cosmetic."},
+        {"point": "Confirmed all 4 callers of the removed/re-signatured createStructLikeWrapper overloads are updated; no external breakage", "grade": "good", "score": 1, "note": "Verified true against base commit; directly refutes the failure mode v4 fell into."},
+        {"point": "Confirmed removed getPartitionKeys(FileScanTask) overload had a single caller, updated in the PR; other callers already used the 2-arg form", "grade": "good", "score": 1, "note": "Verified true (IcebergSplitSource:464; IcebergStatistics:95, IcebergPageSourceProvider:325, IcebergMetadata:956/3415 use the 2-arg form)."},
+        {"point": "Verified specsById is a final field initialized in the constructor from icebergTable.specs(); all new usages are in instance methods", "grade": "good", "score": 1, "note": "Verified true (fields at lines 178-179, init at 221-222)."},
+        {"point": "requireNonNull guard is a good fail-fast defensive check", "grade": "trivial", "score": 0, "note": "Accurate praise, but the human reviewer's actual ask (checkState) goes unmade."}
+      ],
+      "missed": [
+        "Human: use checkState instead of requireNonNull for the guaranteed-present spec -- IcebergUtil.java:1338 (v5 discussed the guard but endorsed it rather than flagging the idiomatic/eager-message issue)"
+      ],
+      "exceeds": [],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v4": 3,
+    "v5": 0
+  },
+  "qualitative": "v4 is dominated by truncation-induced absence fabrications: it confidently reports that PartitionsTable was missed and that the old createStructLikeWrapper(FileScanTask) overload survives, when the full PR updates/removes both, and it claims the new helper is 'not visible in the diff' while proposing a fallback that would defeat the optimization. Its only non-fabricated point is a contentless 'go grep and verify' hedge. v5, given the full diff, repeats none of v4's fabrications -- it instead verifies exactly the things v4 invented problems about (caller migration, overload removal, specsById initialization) and gets them all right, adding only a trivial grammar nit. Neither candidate surfaces the human reviewer's substantive ask to replace requireNonNull with checkState (and neither notes the eagerly concatenated error message on the hot path), so both take one miss, but v5 is accurate and grounded where v4 is actively misleading."
+}

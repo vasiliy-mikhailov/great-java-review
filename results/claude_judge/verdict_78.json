@@ -1,0 +1,109 @@
+{
+  "pr": 78,
+  "own_review": [
+    {
+      "point": "Wildcard bound that is itself a ParameterizedTypeName generates non-compiling code: for e.g. Set<? extends List<String>> the new branch emits Types.subtypeOf(List<String>.class) because target is rendered with $T.class. Should recurse via makeType(target) and emit with $L — same class of bug (uncompilable generated code) the PR is fixing.",
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:505",
+      "severity": "critical"
+    },
+    {
+      "point": "Runtime breakage with the project's pinned Moshi 1.4.0: Types.subtypeOf/supertypeOf DO exist in 1.4.0, but Moshi 1.4 has no wildcard stripping in adapter lookup (Util.removeSubtypeWildcard came later). CollectionJsonAdapter resolves the element type to the raw WildcardType; StandardJsonAdapters matches by identity (type == String.class fails), and the lookup falls through to ClassJsonAdapter, which builds a reflective adapter over String with zero serializable fields — serializes elements as {} / throws JsonDataException on read. The PR makes generated code compile but the adapters don't work at runtime; for '? extends X' emitting the bound directly (X.class) would actually work. No functional/runtime test added in auto-value-moshi-tests to catch this (verified against moshi-1.4.0 sources).",
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:493-505",
+      "severity": "critical"
+    },
+    {
+      "point": "The else-throw IllegalArgumentException branch is unreachable: JavaPoet 1.7.0 WildcardTypeName enforces upperBounds.size() == 1 in its constructor (checkArgument), so if lowerBounds != 1 the upperBounds==1 branch always matches; also the message 'more than one bound' misdescribes the impossible zero-bound case.",
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:501-504",
+      "severity": "normal"
+    },
+    {
+      "point": "Test coverage regression: the simple() test mutates the existing Set<String> and Map<String, Set<String>> cases into wildcard cases instead of adding new properties, losing regression coverage of plain single-parameter and nested non-wildcard parameterized types.",
+      "file": "auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java:75-77",
+      "severity": "normal"
+    },
+    {
+      "point": "No test for the unbounded wildcard Set<?> (JavaPoet represents it as upperBounds=[Object], which would emit Types.subtypeOf(Object.class)) nor for a wildcard whose bound is parameterized.",
+      "file": "auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Convention: the extension reports problems via Messager (printMessage at lines 138/143); throwing IllegalArgumentException from the extension crashes the compile with a stack trace instead of a clear diagnostic tied to the property.",
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:502-504",
+      "severity": "normal"
+    },
+    {
+      "point": "Verified correct (not an issue): checking lowerBounds before upperBounds is required, since JavaPoet's '? super X' carries upperBounds=[Object]; upper-first would misclassify it as subtypeOf(Object).",
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:497-500",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "WildcardTypeName can have lowerBounds==1 AND upperBounds>1 ('? super T extends A & B'), silently dropping bounds", "verdict": "wrong", "why": "JavaPoet 1.7.0 constructor enforces upperBounds.size()==1 (checkArgument); the cited syntax does not exist in Java"},
+        {"point": "Lower-bound-first ordering is confusing, add a clarifying comment", "verdict": "trivial", "why": "Correct analysis but the deliverable is just a comment suggestion"},
+        {"point": "Verify subtypeOf/supertypeOf exist in Moshi 1.4.0; if not, generated code won't compile", "verdict": "trivial", "why": "Hedged 'verify' with no finding; the methods do exist in 1.4.0 (Types.java:96,104)"},
+        {"point": "Test replaced non-wildcard Set<String>/Map<String,Set<String>> cases, losing non-wildcard coverage", "verdict": "good", "why": "Real coverage regression; matches my finding"},
+        {"point": "No test for unbounded wildcard Set<?>", "verdict": "good", "why": "Real, concrete test gap"}
+      ],
+      "missed": [
+        "Parameterized wildcard bound emits non-compiling Types.subtypeOf(List<String>.class) — needs makeType recursion",
+        "Moshi 1.4.0 cannot resolve adapters for wildcard element types at runtime; fix compiles but doesn't work, no functional test",
+        "Throw branch is unreachable per JavaPoet invariant (v1 instead asserted the opposite)",
+        "Messager-based diagnostic instead of throwing, per codebase convention"
+      ],
+      "exceeds": [],
+      "net": -2
+    },
+    "v2": {
+      "points": [
+        {"point": "Test coverage regression: non-wildcard single-parameter and nested parameterized cases no longer covered", "verdict": "good", "why": "Real regression, well argued with concrete remedy"},
+        {"point": "IllegalArgumentException crashes annotation processing; use Messager.printMessage ERROR instead", "verdict": "good", "why": "Matches codebase convention (Messager used at lines 138/143); actionable — though its suggested '? extends T & Serializable' test case is not valid Java"},
+        {"point": "Wildcard logic correct: lowerBounds-first ordering and unbounded '?' handling are fine", "verdict": "trivial", "why": "Accurate verification/praise, not an issue"}
+      ],
+      "missed": [
+        "Parameterized wildcard bound emits non-compiling Types.subtypeOf(List<String>.class)",
+        "Moshi 1.4.0 runtime cannot resolve wildcard element adapters; no functional test",
+        "Throw branch unreachable given JavaPoet's upperBounds==1 invariant",
+        "No test for unbounded wildcard Set<?>"
+      ],
+      "exceeds": [],
+      "net": -2
+    },
+    "v3": {
+      "points": [
+        {"point": "CRITICAL: Types.subtypeOf/supertypeOf were added in Moshi 1.9.0 and don't exist in 1.4.0; generated code will fail to compile", "verdict": "wrong", "why": "Fabricated: both methods exist in moshi 1.4.0 (Types.java lines 96 and 104, verified from Maven Central sources)"},
+        {"point": "Use RuntimeException instead of IllegalArgumentException for code-gen-time validation", "verdict": "trivial", "why": "Subjective style opinion with no real benefit"},
+        {"point": "Unbounded wildcard yields verbose Types.subtypeOf(Object.class); maybe Types.wildcardOf() if available", "verdict": "trivial", "why": "Hedged musing; no Types.wildcardOf exists in Moshi, no actionable issue"},
+        {"point": "Add a dedicated handlesWildcardTypes() test method instead of embedding in simple()", "verdict": "trivial", "why": "Mild structure preference; also wrongly praises the coverage as 'good', missing the regression"}
+      ],
+      "missed": [
+        "Parameterized wildcard bound emits non-compiling Types.subtypeOf(List<String>.class)",
+        "Moshi 1.4.0 runtime cannot resolve wildcard element adapters; no functional test",
+        "Throw branch unreachable per JavaPoet invariant",
+        "Test coverage regression from replacing non-wildcard cases",
+        "No test for unbounded wildcard Set<?>",
+        "Messager-based diagnostic convention"
+      ],
+      "exceeds": [],
+      "net": -7
+    },
+    "v4": {
+      "points": [
+        {"point": "IllegalArgumentException branch is unreachable (Java prohibits multi-bound wildcards, JavaPoet never constructs them); use comment or Messager", "verdict": "good", "why": "Verified true via JavaPoet 1.7.0 checkArgument(upperBounds.size()==1); only candidate to get this right"},
+        {"point": "No test for bare unbounded wildcard Set<?>, which would emit Types.subtypeOf(Object.class)", "verdict": "good", "why": "Real test gap with correct JavaPoet representation analysis"},
+        {"point": "Constructor parameter formatting changed inconsistently; normalize", "verdict": "wrong", "why": "False: old 'e,␣␣␣␣␣␣' + 'Set<...>' and new 'e,␣' + '␣␣␣␣␣Set<...>' concatenate to identical expected text — spaces merely moved across the string-literal split"},
+        {"point": "Could use Java 16+ instanceof pattern matching if project targets that baseline", "verdict": "trivial", "why": "Project targets Java 1.7 (dependencies.gradle); irrelevant hedge"},
+        {"point": "subtypeOf/supertypeOf confirmed available in Moshi 1.4.0; lower-before-upper ordering correct", "verdict": "trivial", "why": "Accurate verification/praise, not an issue"}
+      ],
+      "missed": [
+        "Parameterized wildcard bound emits non-compiling Types.subtypeOf(List<String>.class)",
+        "Moshi 1.4.0 runtime cannot resolve wildcard element adapters; no functional test",
+        "Test coverage regression from replacing non-wildcard cases"
+      ],
+      "exceeds": [],
+      "net": -2
+    }
+  },
+  "qualitative": "Three-way tie at the top (v1, v2, v4 at -2), with different failure modes; v2 is arguably best in spirit since it is the only candidate with zero fabrications, landing the coverage-regression and Messager points cleanly. v4 has the single deepest verified insight (the throw branch is provably dead per JavaPoet's upperBounds invariant) but fabricated a formatting inconsistency that disappears once the split string literals are concatenated. v1 found the same two test gaps as the field but invented an impossible '? super T extends A & B' multi-bound scenario that JavaPoet's constructor explicitly forbids. v3 is clearly worst: its headline 'CRITICAL' claim that subtypeOf/supertypeOf only arrived in Moshi 1.9.0 is flatly false (both are in 1.4.0's Types.java), and the rest is hedged style chatter. Every candidate missed the two deepest problems: a wildcard whose bound is itself parameterized still generates non-compiling 'List<String>.class' code, and with the project's pinned Moshi 1.4.0 the generated wildcard adapters resolve to an empty reflective String adapter at runtime, so the fix compiles but does not actually work and ships with no functional test. The human's coercion/subtypeOf comment appears to have been incorporated into the final diff, so it was not charged as a miss."
+}

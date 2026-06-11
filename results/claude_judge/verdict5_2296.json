@@ -1,0 +1,69 @@
+{
+  "pr": 2296,
+  "own_review": [
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:99-138 (/getTopicRequests, /topic/request/{topicReqId}) and KafkaConnectController.java:138 (/getConnectorRequests)", "issue": "Requestor-facing endpoints gated by approver-only permissions. At base these service methods (getTopicRequests, getTopicRequest, getConnectorRequests) had NO permission check and back the coral 'My requests' pages (coral/src/app/pages/requests, isMyRequest param) and the edit-own-request view. The PR annotates them with APPROVE_TOPICS/APPROVE_TOPICS_CREATE/APPROVE_CONNECTORS/APPROVE_ALL_REQUESTS_TEAMS only, so ordinary requestors now get 401 - and coral treats any 401 as session-expired and redirects to /login (coral/src/app/main.tsx:32, api.ts isUnauthorizedError). Logged-in requestors are effectively kicked to the login page when opening their own requests.", "severity": "critical"},
+    {"file": "core/src/main/java/io/aiven/klaw/controller/RequestController.java (/request/delete) -> RequestService.java:70-73", "issue": "Authorization bypass introduced: the PR removes the REQUEST_CREATE_TOPICS check from TopicControllerService.deleteTopicRequests and the REQUEST_CREATE_CONNECTORS check from KafkaConnectControllerService.deleteConnectorRequests, but these methods are also reachable via RequestController /request/delete -> RequestService.processDeleteRequest, which has no @PermissionAllowed and no check of its own. Any authenticated user can now delete topic/connector requests through /request/delete; deleteConnectorRequest (DeleteDataJdbc) filters only by tenantId, not by user/team, so other teams' connector requests can be deleted.", "severity": "critical"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:67-72", "issue": "Permission denial mapped to HTTP 401 UNAUTHORIZED instead of 403 FORBIDDEN. Pre-existing pattern (KlawNotAuthorizedException handler), but the PR massively expands the set of endpoints that return 401 to authenticated users (previously most returned 200 + NOT_AUTHORIZED body). Combined with coral's 401 -> /login redirect, every permission denial now ejects a logged-in user to the login screen.", "severity": "high"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/TopicRequestValidatorImpl.java:48-54 (removed check)", "issue": "Authorization now runs AFTER request validation on /createTopics and /updateTopics: the @Valid @TopicRequestValidator bean validation executes during argument resolution, before the AOP @Before advice on the controller method. Removing the auth check from the validator means unauthorized users' payloads go through full validation (DB lookups, tenant config, 'topic already exists' responses) and receive detailed 400 validation feedback; only syntactically valid requests reach the 401. Information disclosure and wasted work for unauthorized callers; previously the validator rejected with NOT_AUTHORIZED first.", "severity": "medium"},
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:74 (/createClaimTopicRequest), :141 (/getTopicTeam)", "issue": "Coverage gap vs PR goal ('checks Permissions on every API'): /createClaimTopicRequest and /getTopicTeam receive no @PermissionAllowed, and createClaimTopicRequest has no service-level permission check at all, while the connector counterpart /createClaimConnectorRequest was annotated. Inconsistent.", "severity": "medium"},
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java + KafkaConnectController.java vs services", "issue": "Annotation permission sets are broader than the retained service-layer checks: e.g. /execConnectorRequests(Decline) annotated {APPROVE_ALL_REQUESTS_TEAMS, APPROVE_CONNECTORS} but approveConnectorRequests/declineConnectorRequests still hard-require APPROVE_CONNECTORS (service lines 641/791); /execTopicRequestsDecline allows APPROVE_TOPICS_CREATE/APPROVE_ALL_REQUESTS_TEAMS but declineTopicRequests requires APPROVE_TOPICS (line 885). Users passing the aspect then get 200 + NOT_AUTHORIZED body - two contradictory authorization sources of truth.", "severity": "low"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowed.java:18", "issue": "@Order(Ordered.HIGHEST_PRECEDENCE) on the @interface declaration has no effect; the aspect class PermissionAllowedAspectInterceptor itself has no @Order/Ordered, so its precedence relative to other advice is undefined.", "severity": "low"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowed.java:15 vs PermissionAllowedAspectInterceptor.java:22", "issue": "@Target includes ElementType.TYPE (and @Inherited), but the pointcut @annotation(permissionAllowed) only matches method-level annotations - a class-level @PermissionAllowed would silently enforce nothing. False sense of security.", "severity": "low"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java:5", "issue": "Extends jakarta.validation.ConstraintDeclarationException, which is meant for invalid constraint declarations, not runtime authorization failures; semantically wrong parent and a ValidationException subtype.", "severity": "low"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowedAspectInterceptor.java:25", "issue": "Dead null check: the bound annotation parameter from @annotation(permissionAllowed) can never be null.", "severity": "trivial"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:68", "issue": "Typo in method name 'handlePermissionNotAuthoirzedExceptionInternal' (copies the existing typo).", "severity": "trivial"},
+    {"file": "core/src/test/java/io/aiven/klaw/TopicAclControllerIT.java", "issue": "Wildcard imports replace explicit imports (against typical style); @Autowired BuildProperties appears unused; no negative tests for the newly approver-gated GET endpoints (/getTopicRequests etc.), which is exactly where the regression hides.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "COMPILATION ERROR: handler references ApiResponse.UNAUTHORIZED which does not exist", "grade": "wrong", "score": -1, "note": "Fabricated. The diff uses ApiResponse.NOT_AUTHORIZED (which exists, ApiResponse.java:40). No compile error."},
+        {"point": "saveConnectorDocumentation (write op) gated by VIEW_CONNECTORS", "grade": "good", "score": 1, "note": "Verified: annotation is VIEW_CONNECTORS on a mutating endpoint; legitimate permission-semantics concern (team-ownership check in service mitigates)."},
+        {"point": "Redundant service-layer isNotAuthorizedUser checks remain; OR-logic annotation vs single-permission service checks inconsistent", "grade": "good", "score": 1, "note": "Substance verified (checks remain at 112/508/641/791/839 and OR-vs-single mismatch is real), though cited line numbers are wrong and it falsely lists deleteConnectorRequests as retained (the PR removed that one)."},
+        {"point": "restartConnector may be missing @PermissionAllowed (diff truncated)", "grade": "wrong", "score": -1, "note": "Absence fabrication: the full diff adds @PermissionAllowed(MANAGE_CONNECTORS) to /connector/restart."},
+        {"point": "TopicController annotation coverage unverified / zero annotations on 17 endpoints", "grade": "wrong", "score": -1, "note": "Absence fabrication: the PR annotates 15 of 17 TopicController endpoints including every one v4 lists."},
+        {"point": "Dual permission paths: consider removing TopicRequestValidatorImpl auth check", "grade": "wrong", "score": -1, "note": "Absence fabrication: the PR already removes exactly that check from TopicRequestValidatorImpl."},
+        {"point": "Typo handleKlawNotAuthoirzedExceptionInternal (pre-existing, self-acknowledged)", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Requestor-facing /getTopicRequests, /topic/request/{id}, /getConnectorRequests gated approver-only + coral 401->/login redirect locks requestors out (key defect)",
+        "/request/delete bypass: service-layer delete checks removed but RequestController/RequestService path has no annotation",
+        "401-vs-403 semantics: expanded blast radius of logout-on-denial via coral redirect",
+        "Validation now runs before authorization on /createTopics and /updateTopics (info leak to unauthorized users)",
+        "/createClaimTopicRequest and /getTopicTeam left unannotated (createClaimTopicRequest has no check at all)"
+      ],
+      "exceeds": [
+        "saveConnectorDocumentation VIEW permission on a write endpoint",
+        "redundant/inconsistent dual-layer permission checks"
+      ],
+      "net": -7
+    },
+    "v5": {
+      "points": [
+        {"point": "Missing AspectJ dependency - aspect advice will NOT execute; permission checks silently disabled", "grade": "wrong", "score": -1, "note": "Fabricated blocker. core/pom.xml has spring-boot-starter-data-jpa, which transitively includes spring-boot-starter-aop/aspectjweaver; the aspect code imports org.aspectj.* and compiles, and the PR's own integration tests (TopicAclControllerIT Order 50-52) assert 401s, proving the advice runs."},
+        {"point": "PermissionConstraintException extends jakarta.validation.ConstraintDeclarationException - wrong base class, breaks project exception convention", "grade": "good", "score": 1, "note": "Verified; matches my own finding."},
+        {"point": "Annotation OR-logic {APPROVE_ALL_REQUESTS_TEAMS, APPROVE_CONNECTORS} vs service check requiring only APPROVE_CONNECTORS (line 641) - user passes aspect, blocked by service", "grade": "good", "score": 1, "note": "Verified at KafkaConnectControllerService.java:641 (and 791 for decline). Real inconsistency, accurately located."},
+        {"point": "Residual blocking service-layer checks at 112/508/641/791/839 should be removed; check at ~532 is query filtering and should stay", "grade": "good", "score": 1, "note": "Line mapping verified accurate, including the correct distinction that getCreatedConnectorRequests uses the check for filtering. (Caveat the candidate misses: removing approve/decline service checks would open the RequestController bypass.)"},
+        {"point": "Typo handlePermissionNotAuthoirzedExceptionInternal", "grade": "trivial", "score": 0},
+        {"point": "Stale throws KlawNotAuthorizedException declarations after checkIsAuthorized removal", "grade": "trivial", "score": 0, "note": "Verified real but cleanup-level."},
+        {"point": "Consider @Around instead of @Before", "grade": "trivial", "score": 0, "note": "Style suggestion, self-labeled non-blocker."},
+        {"point": "Removed validator permission tests need replacement; verify aspect fires before validation", "grade": "trivial", "score": 0, "note": "Reasonable test-coverage note; brushes the validation-ordering issue but does not identify that bean validation actually runs BEFORE the aspect."}
+      ],
+      "missed": [
+        "Requestor-facing /getTopicRequests, /topic/request/{id}, /getConnectorRequests gated approver-only + coral 401->/login redirect locks requestors out (key defect)",
+        "/request/delete bypass: service-layer delete checks removed but RequestController/RequestService path has no annotation",
+        "401-vs-403 semantics: expanded blast radius of logout-on-denial via coral redirect",
+        "Validation runs before authorization on /createTopics and /updateTopics (only hinted at as a test suggestion)",
+        "/createClaimTopicRequest and /getTopicTeam left unannotated"
+      ],
+      "exceeds": [
+        "exception base-class critique",
+        "annotation-vs-service permission mismatch with exact lines",
+        "residual-check inventory distinguishing blocking vs filtering usage"
+      ],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {"v4": 3, "v5": 1},
+  "qualitative": "The human reference is a single whitespace suggestion, so almost all signal comes from verification against the repo. Neither candidate caught the planted key defect - requestor-facing /getTopicRequests, /getConnectorRequests and /topic/request/{id} now demand approver permissions while coral redirects every 401 to /login, locking ordinary requestors out of their own request pages - and neither noticed the /request/delete path through RequestService that loses its permission check entirely. v4 is badly damaged by truncation-driven fabrications: a nonexistent ApiResponse.UNAUTHORIZED 'compilation error' plus three absence claims (restartConnector annotation, TopicController coverage, validator check) that the full diff disproves. v5 fabricated one confident blocker (missing AspectJ dependency, refuted by spring-boot-starter-data-jpa's transitive spring-boot-starter-aop and the PR's own passing 401 ITs) but otherwise produced accurate, well-located findings - the exception base class, the annotation-vs-service permission mismatch at line 641, and a correct blocking-vs-filtering inventory of residual checks. v5 clearly outperforms v4, though both miss the security-relevant regressions that mattered most."
+}

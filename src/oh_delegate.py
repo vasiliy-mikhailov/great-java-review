@@ -79,6 +79,69 @@ _SEARCH_GUIDE = (
     "region you can't target by pattern. Don't grep for a filename then view the whole "
     "file — one `search` does it.")
 
+# v4 = search + verify-impact (kept from v3) + BREADTH-preserving language (replaces
+# v3's wrap-up-early, which suppressed survey findings: v3 goods 3.06/PR vs v2 3.82) +
+# path normalization + PR-added-file manifest. Same calm register throughout.
+_V4 = bool(os.environ.get("OH_V4"))
+_V5 = bool(os.environ.get("OH_V5"))
+if _V5:
+    _V4 = True              # v5 includes everything v4 has
+if _V4:
+    import path_norm
+    path_norm.install()
+    _V2 = True              # v4 includes the search tool wiring
+
+# v5 fixes #2 + #4 (subagent side), derived from Claude-judge fabrication tracing:
+# asymmetric verification (a base-repo check can never prove the PR lacks something)
+# and the findings ledger (66% of misses were topics touched in dialog but never
+# surfaced as findings). Calm register, as always.
+_V5_SUB_GUIDE = (
+    "\n\nTwo habits from reviewing past investigations. First, absence works differently "
+    "from presence: the repo here is the BASE commit, so not finding something in it can "
+    "never show that the pull request lacks it — the change may simply sit beyond what "
+    "you can see. Report what you positively observed in the visible diff or code; if "
+    "you suspect something is missing but cannot see the whole change, say so as an open "
+    "question rather than a finding. Second, keep a small ledger as you read: any "
+    "candidate issue you notice along the way — even minor or uncertain — belongs in "
+    "your report with a one-line note and your confidence. The reviewer assembling the "
+    "final review can only use what you hand over; an observation kept in your head is "
+    "a finding lost.")
+
+# v5 fix #3 (orchestrator side): hedge preservation through synthesis — a subagent's
+# "the PR must be adding this" must not become "missing X" in the review.
+_V5_ORCH_GUIDE = (
+    "\n\nWhen you assemble the final review from the findings, keep each claim at the "
+    "confidence its evidence supports. A finding hedged as 'probably' or 'the PR must "
+    "be adding this' stays hedged or becomes a question to the author — promoting it to "
+    "a definite 'missing'/'broken' claim is how fabrications are born, and one fabricated "
+    "blocker costs more credibility than three good findings earn. Walk through every "
+    "observation your investigators handed you and either include it, fold it into "
+    "another point, or consciously drop it — unexamined observations are missed findings. "
+    "The repo is at the base commit: nobody can prove the PR lacks something by its "
+    "absence from the base tree or from a truncated diff.")
+
+
+def _added_files_manifest(pr_input):
+    """W-fix #2: list files ADDED by the PR (32% of subagent sessions burn ~5 turns
+    hunting these on disk before concluding they only exist in the diff)."""
+    added = re.findall(r"^--- /dev/null\n\+\+\+ b/(\S+)", pr_input or "", re.MULTILINE)
+    if not added:
+        added = re.findall(r"^diff --git a/(\S+) b/\S+\nnew file", pr_input or "", re.MULTILINE)
+    if not added:
+        return ""
+    return ("\n\nNote: these files are ADDED by this PR and are NOT on disk at the base "
+            "commit — read their content from the diff below rather than searching the "
+            "repo for them: " + ", ".join(sorted(set(added))[:30]))
+_FOCUS_GUIDE_V4 = (
+    "\n\nTwo habits make an investigation most useful. First, confirm impact: for a "
+    "changed or removed symbol, a quick look at who calls or imports it shows what the "
+    "change really affects — that is what turns an observation into an actionable "
+    "finding. Second, keep your eyes open along the way: adjacent issues you notice "
+    "while reading are worth including — give each the same quick check against the "
+    "code (the file and line that shows it) before adding it, since one confirmed "
+    "finding outweighs several guesses. A finding list that covers the whole change, "
+    "with each point verified, is the most valuable report you can return.")
+
 # W3 focus guidance: a calm, reward-framed nudge toward a focused investigation that
 # verifies impact and then wraps up. Deliberately NOT written as caps/"STOP"/"MUST" —
 # the subagent's register propagates into its finding and then into the final review's
@@ -253,7 +316,12 @@ def _register_subagents():
         # slice starved them. With the full changed files in context they don't burn
         # tool calls re-reading the changed files (cutting the duplicate-read waste);
         # they spend tools only on SURROUNDING base code, which is their job.
-        guide = (_SEARCH_GUIDE if _V2 else "") + (_FOCUS_GUIDE if _FOCUS else "")
+        # v4 (user decision after two failed breadth smokes) = v3's proven guidance +
+        # path normalization ONLY. _FOCUS_GUIDE_V4 and the manifest stay unused.
+        # v5 adds the asymmetric-verification + findings-ledger guidance on top.
+        guide = (_SEARCH_GUIDE if _V2 else "") + \
+            (_FOCUS_GUIDE if (_FOCUS or _V4) else "") + \
+            (_V5_SUB_GUIDE if _V5 else "")
         return base_sys + guide + "\n\n--- PULL REQUEST (title + diff + FULL CHANGED FILES; the " \
             "changed files are HERE, investigate SURROUNDING code only) ---\n" + \
             _CURRENT_PR["input"][:240000]
@@ -344,7 +412,8 @@ def oh_review_delegate(repo_dir, pr_input, profile="qwen", max_steps=MAX_ORCH_ST
     all_tools = get_default_tools(enable_browser=False, enable_sub_agents=True)
     orch_tools = [t for t in all_tools
                   if getattr(t, "name", None) in ("task_tool_set", "task_tracker")]
-    agent = Agent(llm=llm, tools=orch_tools, system_prompt=(policy or ORCH_SYS),
+    orch_sys = (policy or ORCH_SYS) + (_V5_ORCH_GUIDE if _V5 else "")
+    agent = Agent(llm=llm, tools=orch_tools, system_prompt=orch_sys,
                   condenser=_condenser(llm))
 
     state = {"n": 0, "conv": None, "capped": False}

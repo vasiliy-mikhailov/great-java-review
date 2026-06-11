@@ -1,0 +1,99 @@
+{
+  "pr": 883,
+  "own_review": [
+    {"point": "updateSharedConfig() now persists every property not prefixed fluo.connection.* into Zookeeper CONFIG_SHARED — this includes fluo.accumulo.password and fluo.accumulo.user (required by hasRequiredAdminProps and present in fluo-app.properties). Plaintext Accumulo credentials end up stored in ZK and are printed by the new 'fluo config' command (FluoConfig.main dumps getApplicationConfig()). Old code only stored fluo.app.* and fluo.tx.rollback.time.", "file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java (updateSharedConfig)", "severity": "critical"},
+    {"point": "FluoAdmin public interface gains two new abstract methods getConnectionConfig()/getApplicationConfig() with no default implementation — source/binary break for any external FluoAdmin implementer.", "file": "modules/api/src/main/java/org/apache/fluo/api/client/FluoAdmin.java", "severity": "critical"},
+    {"point": "SimpleConfiguration.load(File/InputStream) made public, but both cast internalConfig to CompositeConfiguration; instances created via subset(prefix) (private Configuration constructor) hold a SubsetConfiguration, so calling load() on e.g. getAppConfiguration() throws ClassCastException.", "file": "modules/api/src/main/java/org/apache/fluo/api/config/SimpleConfiguration.java", "severity": "normal"},
+    {"point": "FluoInit.main checks only args.length < 1 but unconditionally executes Arrays.copyOfRange(args, 3, args.length) and reads args[1]/args[2]; invoking with 1-2 args crashes with ArrayIndexOutOfBounds/IllegalArgumentException instead of printing usage.", "file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "severity": "normal"},
+    {"point": "FluoExec.main contains a dead statement 'Arrays.copyOfRange(args, 3, args.length);' whose result is discarded (duplicated correctly two lines later).", "file": "modules/command/src/main/java/org/apache/fluo/command/FluoExec.java", "severity": "normal"},
+    {"point": "Environment.readZookeeperConfig: appConfig is now taken from the merged (local+ZK) config, so locally-passed fluo.app.* properties leak into appConfig — directly contradicting the retained comment 'make sure not to include config passed to env, only want config from zookeeper' (old code built appConfig from a ZK-only tmpConfig).", "file": "modules/core/src/main/java/org/apache/fluo/core/impl/Environment.java", "severity": "normal"},
+    {"point": "FluoGetJars catches all exceptions and only logs (exit code 0), so 'fluo oracle/worker' setup_service continues after a failed jar download; it also recursively deletes the user-supplied downloadPath if it exists (FileUtils.deleteDirectory) — dangerous with a wrong argument.", "file": "modules/command/src/main/java/org/apache/fluo/command/FluoGetJars.java", "severity": "normal"},
+    {"point": "fluo script 'stop' sends SIGKILL (kill -s KILL) immediately to oracle/worker pids — no graceful SIGTERM shutdown for in-flight work; FluoOracle/FluoWorker mains also catch Exception, log, and fall through to exit code 0 on startup failure, and loop forever even if the service dies.", "file": "modules/distribution/src/main/scripts/fluo; modules/command/.../FluoOracle.java, FluoWorker.java", "severity": "normal"},
+    {"point": "Unused imports/fields in new commands: FluoConfig and FluoGetProp import URI, FileUtils, hadoop Configuration/FileSystem/Path, slf4j (FluoGetProp has no logger; FluoConfig's log unused); FluoGetProp usage string says 'FluoGetProps'. Likely breaks checkstyle/import audits.", "file": "modules/command/src/main/java/org/apache/fluo/command/FluoConfig.java, FluoGetProp.java", "severity": "normal"},
+    {"point": "MiniFluoImpl now checks containsKey(ACCUMULO_TABLE_PROP) only; a user who set the deprecated fluo.admin.accumulo.table key (old fluo.properties) gets their table silently overridden to 'fluo'.", "file": "modules/mini/src/main/java/org/apache/fluo/mini/MiniFluoImpl.java", "severity": "normal"},
+    {"point": "getDepPositiveInt() drops the 'value > 0' Preconditions check that getPositiveInt enforced, so getZookeeperTimeout() no longer validates positivity; validate() also doesn't cover new props (dfs root, observer init dir/jars url, accumulo jars).", "file": "modules/api/src/main/java/org/apache/fluo/api/config/FluoConfiguration.java", "severity": "normal"},
+    {"point": "FluoFactory.newAdmin javadoc lists 'fluo.accumulo.classpath' as a required property — no such property exists (deprecated key is fluo.admin.accumulo.classpath; replacement is fluo.accumulo.jars which has a default).", "file": "modules/api/src/main/java/org/apache/fluo/api/client/FluoFactory.java", "severity": "normal"},
+    {"point": "getJarsFromClasspath() casts the classloader to URLClassLoader — fragile (fails on Java 9+) and silently empty if jars don't match the regex; copyJarsToDfs does not clear the destination dir (stale jars accumulate across re-inits, unlike copyDirToDfs which deletes first).", "file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java", "severity": "normal"},
+    {"point": "New 'ps' command in the fluo script is not listed in print_usage; 'setup_service $2' in exec is unquoted; $app is unset for exec so its log dir resolves to $FLUO_LOG_DIR/.", "file": "modules/distribution/src/main/scripts/fluo", "severity": "normal"},
+    {"point": "guice 4.0 version is hardcoded in modules/command/pom.xml instead of parent dependencyManagement; hadoop classes (FileSystem, Path) used in FluoGetJars/FluoConfig rely on a transitive dependency via fluo-core.", "file": "modules/command/pom.xml", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "metrics.md not updated, still references fluo.properties", "verdict": "wrong", "why": "PR updates docs/metrics.md in all 4 places to fluo-app.properties (verified in full diff)"},
+        {"point": "OracleRunnable hardcodes fluo.properties; YARN oracle will fail", "verdict": "wrong", "why": "Runnables are the deliberately retained @Deprecated YARN path that still uses apps/<app>/conf/fluo.properties; deprecated keys still load via fallbacks"},
+        {"point": "WorkerRunnable same hardcoded path + stale messages", "verdict": "wrong", "why": "Same as above — intentional deprecated path, not a break"},
+        {"point": "FluoConfigurationTest loads non-existent fluo.properties; must be updated", "verdict": "wrong", "why": "PR already renames it testLoadingOldPropsFile loading fluo.properties.deprecated and adds new multi-file tests"},
+        {"point": "FluoInstall needs new conn/app path getter methods", "verdict": "wrong", "why": "FluoInstall is marked @Deprecated by the PR; new commands take props paths as args, never use FluoInstall"},
+        {"point": "SimpleConfiguration diff not provided, must be reviewed", "verdict": "trivial", "why": "Meta-comment about truncation, not a finding; PR does add public load() methods"},
+        {"point": "New FluoCommand command cases require verification", "verdict": "trivial", "why": "Hedged 'verify' with no concrete issue; new commands live in new fluo-command module, not FluoCommand"},
+        {"point": "applications.md example incomplete, users get runtime errors", "verdict": "wrong", "why": "Under the new design FluoClientImpl needs only app name + zookeepers; accumulo creds are merged from ZK shared config, so the example works"},
+        {"point": "Verify CLIENT_* constants properly deprecated or renamed", "verdict": "trivial", "why": "Hedged 'verify'; PR does deprecate them with javadoc and adds replacements"}
+      ],
+      "missed": [
+        "human: FluoExec/new commands should pass old config through and only set app name for new config (config pass-through semantics)",
+        "Accumulo password/user now persisted to Zookeeper shared config and printed by 'fluo config' (security regression)",
+        "FluoAdmin interface gains two abstract methods — breaks external implementers",
+        "public SimpleConfiguration.load() throws ClassCastException on subset()-created instances",
+        "FluoInit crashes with ArrayIndexOutOfBounds when given 1-2 args (usage check only < 1)",
+        "FluoExec dead statement Arrays.copyOfRange result discarded",
+        "Environment appConfig now includes locally-passed props, contradicting retained comment",
+        "Swallowed exceptions/exit-0 in FluoGetJars/FluoOracle/FluoWorker and SIGKILL-only 'fluo stop'"
+      ],
+      "exceeds": [],
+      "net": -14
+    },
+    "v3": {
+      "points": [
+        {"point": "applications.md example fails hasRequiredClientProps (needs 4 props)", "verdict": "wrong", "why": "New client flow checks hasRequiredConnectionProps then merges accumulo creds from ZK; example is valid by design"},
+        {"point": "fluo-conn/fluo-app.properties doc links point to non-existent files", "verdict": "wrong", "why": "PR adds both files under modules/distribution/src/main/config/ (visible in full diff); claimed missing because not on base disk"},
+        {"point": "load(InputStream) is private; PR must make it public or add varargs ctor", "verdict": "wrong", "why": "PR already makes load(File)/load(InputStream) public with @since 1.2.0 javadoc"},
+        {"point": "No test coverage for multi-file loading of new test resources", "verdict": "wrong", "why": "PR adds testLoadingDistPropsFile and testLoadingTestPropsFile exercising exactly those resources incl. override behavior"},
+        {"point": "Oracle/WorkerRunnable hardcode fluo.properties, YARN will fail", "verdict": "wrong", "why": "Deprecated YARN path intentionally retained; old fluo.properties still supported via fallbacks"},
+        {"point": "FluoInstall needs conn/app path variants", "verdict": "wrong", "why": "FluoInstall is @Deprecated in the PR; new commands receive props paths as CLI args"},
+        {"point": "11 new main classes duplicate config loading/error handling; share a common utility", "verdict": "good", "why": "Real: each new main duplicates ~15 lines of arg validation/props-file boilerplate; only verifyApp* is shared via CommandUtil"},
+        {"point": "CLIENT_ACCUMULO_* constants unchanged so API contract preserved, docs out of sync", "verdict": "wrong", "why": "Constants ARE changed: PR deprecates all CLIENT_* and adds fluo.accumulo.*/fluo.connection.* replacements"},
+        {"point": "install.md should clarify migration path from single fluo.properties", "verdict": "trivial", "why": "Generic doc ask; install.md table already documents fluo.properties.deprecated as replaced"},
+        {"point": "YarnAppRunner validation fails unless both files merged before hasRequiredAdminProps", "verdict": "wrong", "why": "Deprecated YARN path still uses single fluo.properties; deprecated-key fallbacks keep validation working"}
+      ],
+      "missed": [
+        "human: FluoExec/new commands should pass old config through and only set app name for new config",
+        "Accumulo password/user now persisted to Zookeeper shared config and printed by 'fluo config' (security regression)",
+        "FluoAdmin interface gains two abstract methods — breaks external implementers",
+        "public SimpleConfiguration.load() throws ClassCastException on subset()-created instances",
+        "FluoInit crashes with ArrayIndexOutOfBounds when given 1-2 args",
+        "FluoExec dead statement Arrays.copyOfRange result discarded",
+        "Environment appConfig now includes locally-passed props, contradicting retained comment",
+        "Swallowed exceptions/exit-0 in FluoGetJars/FluoOracle/FluoWorker and SIGKILL-only 'fluo stop'"
+      ],
+      "exceeds": [
+        "Boilerplate (config loading, arg validation, exit handling) duplicated across the ~11 new command main classes; suggest a shared utility — verified real duplication neither human nor my review called out explicitly"
+      ],
+      "net": -15
+    },
+    "v4": {
+      "points": [
+        {"point": "applications.md example incomplete, fails at runtime, regression vs old example", "verdict": "wrong", "why": "FluoClientImpl now requires only connection props (app name); accumulo creds merged from ZK — the new minimal example is the intended design"},
+        {"point": "No public API for multi-file loading; load() is private", "verdict": "wrong", "why": "PR makes load(File) and load(InputStream) public (@since 1.2.0); FluoInit/FluoGetProp call config.load(appPropsFile)"},
+        {"point": "FluoConfiguration constructors lack multi-file support", "verdict": "wrong", "why": "Multi-file layering is provided by the new public load() methods, not constructors; claim of missing capability is false"},
+        {"point": "metrics.md fluo.properties reference not updated", "verdict": "wrong", "why": "PR updates metrics.md to fluo-app.properties in all occurrences including the link target"},
+        {"point": "Oracle/WorkerRunnable hardcoded conf/fluo.properties must load split files", "verdict": "wrong", "why": "Deprecated YARN path intentionally still consumes old fluo.properties; PR marks these classes @Deprecated"},
+        {"point": "FluoInstall.getFluoPropsPath still returns fluo.properties", "verdict": "wrong", "why": "FluoInstall is @Deprecated in the PR and unused by the new fluo-command module"}
+      ],
+      "missed": [
+        "human: FluoExec/new commands should pass old config through and only set app name for new config",
+        "Accumulo password/user now persisted to Zookeeper shared config and printed by 'fluo config' (security regression)",
+        "FluoAdmin interface gains two abstract methods — breaks external implementers",
+        "public SimpleConfiguration.load() throws ClassCastException on subset()-created instances",
+        "FluoInit crashes with ArrayIndexOutOfBounds when given 1-2 args",
+        "FluoExec dead statement Arrays.copyOfRange result discarded",
+        "Environment appConfig now includes locally-passed props, contradicting retained comment",
+        "Swallowed exceptions/exit-0 in FluoGetJars/FluoOracle/FluoWorker and SIGKILL-only 'fluo stop'"
+      ],
+      "exceeds": [],
+      "net": -14
+    }
+  },
+  "qualitative": "All three candidates reviewed essentially only the truncated (docs-only) portion of the diff plus the base repo, then asserted that the PR 'fails to update' things it actually updates: metrics.md was rewritten, SimpleConfiguration.load() was made public, fluo-conn/fluo-app.properties were added to the distribution, the old test was renamed and new multi-file tests added, and the CLIENT_* constants were deprecated. The recurring Oracle/WorkerRunnable and FluoInstall complaints are also false — those classes are part of the intentionally retained, @Deprecated old-fluo.properties path. The shared 'docs example is incomplete' claim misunderstands the PR's core design: clients now need only zookeepers + app name because accumulo credentials are merged from Zookeeper. v2 and v4 tie at -14 (v4 by saying less, v2 by hedging three points into harmless 'verify' statements); v3 lands at -15 despite being the only candidate with a genuinely good, verifiable point (boilerplate duplication across the ~11 new command mains), because it stacked the most fabricated claims. None found the real issues: plaintext Accumulo credentials now persisted to Zookeeper by updateSharedConfig, the FluoAdmin interface break, the public load() ClassCastException on subset configs, the FluoInit arg-handling crash, or the dead statement in FluoExec.",
+  "fabrication_pattern": "Asserting changes are missing based on the truncated diff instead of treating unseen files as unknown."
+}

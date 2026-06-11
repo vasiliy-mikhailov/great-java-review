@@ -1,0 +1,73 @@
+{
+  "pr": 659,
+  "own_review": [
+    {"point": "No readiness wait between 'Start test server' (nohup java ... &) and 'Run MCP conformance tests'; if the JVM hasn't bound port 8080 yet the npx run fails -> flaky CI. Add a curl retry loop / health check.", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "npx @modelcontextprotocol/conformance is unpinned (always latest); upstream releases can break CI for unrelated PRs. Pin a version (human reviewer raised exactly this; author deliberately chose latest until a stable release exists).", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "'Stop test server' uses if: steps.start_test_server.outcome == 'success' which (with the implicit success()) skips cleanup when the conformance step fails; should be if: always() && ... Mostly cosmetic on an ephemeral runner.", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "'Start test server' backgrounds the process so the step always succeeds even if the jar is missing or boot fails, and nohup.out is never printed/uploaded -> failures surface only as opaque conformance errors. Consider a startup check and dumping server logs on failure.", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "conformance/pom.xml carries unused codestart boilerplate: quarkus-junit5 test dep, surefire/failsafe config, native profile, and generate-code-tests/native-image-agent goals, though the module has zero tests and is never built native.", "file": "conformance/pom.xml", "severity": "normal"},
+    {"point": "quarkus.http.cors.origins includes 'http://::1' which is a malformed origin (IPv6 must be bracketed; 'http://[::1]' is already listed); also exact-match origins without ports won't match port-bearing Origin headers.", "file": "conformance/src/main/resources/application.properties", "severity": "normal"},
+    {"point": "quarkus.platform.version 3.32.1 diverges from root pom (3.27.2) and samples (3.27.0), and the standalone module isn't covered by dependabot's maven directory '/', so it will silently go stale.", "file": "conformance/pom.xml", "severity": "normal"},
+    {"point": "No timeout-minutes on the mcp-conformance-tests job; a hung server or test run holds the runner for the 6h default.", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "Verified the Java code itself is sound against the base APIs: ElicitationRequest schema record arities (incl. SEP-1034 defaults and SEP-1330 single/multi-select), ProgressTracker.advance delta semantics summing to total 100, ResourceManager.getResource/sendUpdateAndForget, @Scheduled backing dep present, and 999-SNAPSHOT matches the locally installed reactor version.", "file": "conformance/src/main/java/io/quarkiverse/mcp/conformance/ConformanceServer.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Stop step won't run if conformance tests fail; use if: always()", "verdict": "good", "why": "Verified: custom if without status function implies success(); cleanup skipped on failure."},
+        {"point": "Quarkus version mismatch 3.32.1 vs root 3.27.2 / samples 3.27.0", "verdict": "good", "why": "Verified against root pom and samples/weather/pom.xml; legitimate consistency question."},
+        {"point": "Unnecessary quarkus-maven-plugin goals (generate-code, generate-code-tests, native-image-agent)", "verdict": "good", "why": "Verified in pom; codestart boilerplate not needed for this module."},
+        {"point": "Static Counter / static volatile boolean / static AtomicLong state", "verdict": "wrong", "why": "Fabricated: actual file has only a private final instance AtomicInteger and two static final String constants."},
+        {"point": "Throws RuntimeException instead of ToolCallException for intentional error", "verdict": "wrong", "why": "Fabricated: test_error_handling already throws ToolCallException."},
+        {"point": "ToolArg descriptions are minimal like 'A string'", "verdict": "wrong", "why": "Fabricated: actual descriptions are 'The prompt to send to the LLM' / 'The message to show the user'."},
+        {"point": "Expand conformance matrix beyond ubuntu/JDK17", "verdict": "trivial", "why": "Single-cell matrix matches build-native/samples convention; protocol conformance is JDK-agnostic."}
+      ],
+      "missed": [
+        "Unpinned npx @modelcontextprotocol/conformance version (the one point the human reviewer made)",
+        "No readiness/health check before running conformance tests (startup race)",
+        "Backgrounded start step can't fail and server logs never surfaced on failure",
+        "Malformed CORS origin http://::1 in application.properties"
+      ],
+      "exceeds": [],
+      "net": -4
+    },
+    "v3": {
+      "points": [
+        {"point": "Stop step skipped when tests fail; use if: always() (flagged CRITICAL)", "verdict": "good", "why": "Real issue, verified; severity overstated since the runner is ephemeral."},
+        {"point": "Node.js 24 'does not exist yet', likely typo for 20/22", "verdict": "wrong", "why": "Node 24 exists (LTS since Oct 2025) and the diff comment states the conformance suite requires it."},
+        {"point": "Race condition: no health check before npx conformance run", "verdict": "good", "why": "Verified: next step runs immediately after nohup background start; matches my finding."},
+        {"point": "Quarkus platform 3.32.1 newer than samples 3.27.0; document or align", "verdict": "good", "why": "Verified version drift."},
+        {"point": "native-image-agent goal unnecessary", "verdict": "good", "why": "Verified boilerplate; module never built native."},
+        {"point": "Cannot review ConformanceServer.java (truncated)", "verdict": "trivial", "why": "Punt, not a finding; full file was recoverable from git history."},
+        {"point": "Cannot review application.properties / verify /mcp path", "verdict": "trivial", "why": "Punt; the file is 11 lines and recoverable."}
+      ],
+      "missed": [
+        "Unpinned npx @modelcontextprotocol/conformance version (human's point)",
+        "Backgrounded start step can't fail and server logs never surfaced on failure",
+        "Malformed CORS origin http://::1 in application.properties"
+      ],
+      "exceeds": [],
+      "net": 0
+    },
+    "v4": {
+      "points": [
+        {"point": "Quarkus version inconsistency 3.32.1 vs parent 3.27.2 / samples 3.27.0", "verdict": "good", "why": "Verified version drift."},
+        {"point": "999-SNAPSHOT limits standalone usability; consider pinning a released version", "verdict": "trivial", "why": "Factually accurate but misguided: the module's purpose is to conformance-test the current snapshot built in CI."},
+        {"point": "No server readiness check before running conformance tests", "verdict": "good", "why": "Verified race; matches my finding, with concrete retry/health suggestions."},
+        {"point": "Cleanup step should use if: always()", "verdict": "good", "why": "Verified: cleanup skipped on test failure as written."},
+        {"point": "Unnecessary native-image-agent goal", "verdict": "good", "why": "Verified boilerplate."},
+        {"point": "quarkus-scheduler dependency purpose unclear; remove if no @Scheduled", "verdict": "wrong", "why": "The dep is used: @Scheduled(every = \"3s\") updateWatchedResource() exists in ConformanceServer.java."},
+        {"point": "Node 24 may not be LTS; consider 22 unless tool requires it", "verdict": "trivial", "why": "Stale-knowledge hedge; Node 24 is current LTS and the diff comment says the suite requires 24."}
+      ],
+      "missed": [
+        "Unpinned npx @modelcontextprotocol/conformance version (human's point)",
+        "Backgrounded start step can't fail and server logs never surfaced on failure",
+        "Malformed CORS origin http://::1 in application.properties"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "qualitative": "v3 and v4 tie on net, with v4 marginally the most trustworthy: both correctly flagged the two genuine workflow issues (no readiness wait before the conformance run, and cleanup skipped on test failure) plus the version drift and native-image-agent boilerplate, but v3 made one outright false claim (asserting Node 24 doesn't exist when it is the documented requirement) and wasted two points punting on 'truncated' files that were recoverable from git history, while v4's errors were hedged speculation (the quarkus-scheduler dep is in fact used by a @Scheduled method, and the 999-SNAPSHOT suggestion would defeat the module's purpose). v2 is clearly worst: it fabricated three code-level findings against ConformanceServer.java (nonexistent static counters, a RuntimeException that is actually already a ToolCallException, and quoted ToolArg descriptions that appear nowhere), a classic pattern of reviewing an unseen file from imagination. Notably, all three candidates missed the single point the human reviewer actually made — that the unpinned 'npx @modelcontextprotocol/conformance' invocation floats on latest — and none noticed the malformed http://::1 CORS origin or that the backgrounded start step can never fail or surface server logs.",
+  "human_reference_note": "Human made one point: pin vs latest for the conformance tool version (author chose latest deliberately until a stable release)."
+}

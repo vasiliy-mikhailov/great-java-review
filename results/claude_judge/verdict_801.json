@@ -1,0 +1,76 @@
+{
+  "pr": 801,
+  "own_review": [
+    {"point": "gluonhq/setup-graalvm pinned to @master with default graalvm:latest — mutable ref, non-reproducible builds and supply-chain risk; pin to a tag/SHA and explicit GraalVM version", "file": ".github/workflows/build.yml:110 / docker-publish.yml:87", "severity": "normal"},
+    {"point": "GUI jobs lose the maven dependency cache the old graalvm/setup-graalvm step provided (cache: 'maven'); Gluon action has no cache input — slower CI for all GUI matrix legs", "file": ".github/workflows/build.yml", "severity": "normal"},
+    {"point": "JDK 23 is non-LTS and at/near EOL at PR time (JDK 24 GA Mar 2025): actions/setup-java distribution 'oracle' + java-version 23 (codeql.yml, formatter.yml) and download.oracle.com/graalvm/23/latest (Docker dev base) will stop resolving once Oracle drops 23 from 'latest'; LTS path (21->25) safer", "file": ".github/workflows/codeql.yml, formatter.yml, docker-compose.yaml", "severity": "normal"},
+    {"point": "dev Docker environment (docker-compose -> Docker/dev/commons/base) still installs plain Oracle GraalVM 23 for GUI dev builds while CI switched GUI to Gluon's GraalVM — the gluonfx build problem the PR fixes in CI presumably persists in the dev container", "file": "docker-compose.yaml:7", "severity": "normal"},
+    {"point": "new reachability-metadata.json added while the old split configs (reflect-config.json, jni-config.json, serialization-config.json, etc.) remain in the same META-INF/native-image dir — duplication/possible conflicts; old files should be removed or reconciled", "file": "GUI/src/main/resources/META-INF/native-image/", "severity": "normal"},
+    {"point": "resource-config.json rewritten as a single minified line — unreviewable/undiffable; content also silently changed: root locale \"\" dropped from bundles, SplashLight.png missing from the new globs section (only SplashDark present)", "file": "GUI/src/main/resources/META-INF/native-image/resource-config.json", "severity": "normal"},
+    {"point": "Windows GUI profile pins gluonfx back to 1.0.23 (1.0.25 unsupported on Windows per the added comment) while CI now installs Gluon GraalVM java23 — old plugin + new JDK combination untested; author admits only Ubuntu verified", "file": "GUI/pom.xml:126-131", "severity": "normal"},
+    {"point": "inconsistent arch values across workflows: 'x86_64' in build.yml vs 'amd64' in docker-publish.yml; the gluon action only documents x86_64/aarch64 ('amd64' happens to work because non-aarch64 falls through to amd64 for java23)", "file": ".github/workflows/docker-publish.yml:91", "severity": "normal"},
+    {"point": "parent pom still depends on JavaFX 23-ea+20 (early access) — upgrading the JDK to 23 while staying on EA JavaFX is inconsistent; move to stable JavaFX 23.x", "file": "pom.xml:30-38", "severity": "normal"},
+    {"point": "maven.compiler source/target duplicated in 4 poms plus compiler-plugin config — PR had to touch 4 places; centralize (e.g. maven.compiler.release in parent only)", "file": "pom.xml, Core/CLI/GUI pom.xml", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "parent pom.xml properties still 21 (Critical)", "verdict": "wrong", "why": "actual diff updates root pom properties to 23"},
+        {"point": "parent maven-compiler-plugin still hardcodes 21 (Critical)", "verdict": "wrong", "why": "actual diff updates <source>/<target> to 23"},
+        {"point": "native-maven-plugin 0.10.4 may not support JDK 23, bump to 0.10.6", "verdict": "trivial", "why": "0.10.4 (Dec 2024) postdates JDK 23 GA; hedged speculation, and 0.10.6 didn't exist at PR time"},
+        {"point": "JavaFX 23-ea+20 is Early Access", "verdict": "good", "why": "real: parent pom pins EA JavaFX while claiming production JDK 23"},
+        {"point": "gluonfx 1.0.25 bump appropriate", "verdict": "trivial", "why": "praise; also misses the Windows 1.0.23 override nuance"},
+        {"point": "good CLI/GUI setup separation in build.yml", "verdict": "trivial", "why": "praise/restating diff"},
+        {"point": "docker-publish mirrors build.yml correctly", "verdict": "trivial", "why": "praise"},
+        {"point": "codeql consistent with formatter", "verdict": "trivial", "why": "praise"},
+        {"point": "verify reachability-metadata.json generated via tracing agent", "verdict": "trivial", "why": "vague verification ask, no concrete finding"}
+      ],
+      "missed": ["human: explicit arch 'amd64' in docker-publish unnecessary (images amd64-only)", "gluonhq/setup-graalvm@master unpinned", "GUI jobs lose maven cache", "non-LTS JDK 23 EOL: oracle setup-java/download URLs will break", "old native-image split configs left + minified resource-config with dropped SplashLight glob/root locale", "Windows gluonfx 1.0.23 + java23 untested risk", "dev Docker GUI still uses Oracle (non-Gluon) GraalVM"],
+      "exceeds": [],
+      "net": -8
+    },
+    "v2": {
+      "points": [
+        {"point": "ICU mismatch: Java 23 ships icudt76b, ResourceNotFoundException likely", "verdict": "wrong", "why": "JDK 23 uses icudt74b (already in config); icudt76b is JDK 24+; asserted as fact"},
+        {"point": "native-maven-plugin 0.10.4 released Jan 2024 before JDK 23 GA", "verdict": "wrong", "why": "fabricated date: 0.10.4 released 2024-12-05, after JDK 23 GA"},
+        {"point": "JavaFX 23-ea+20 EA, use stable 23.0.1", "verdict": "good", "why": "real, concrete and actionable"},
+        {"point": "gluonhq/setup-graalvm@master unstable, pin to a tag", "verdict": "good", "why": "real: mutable ref + graalvm:latest, reproducibility/supply-chain risk"},
+        {"point": "confirm parent pom compiler config updated to 23", "verdict": "trivial", "why": "hedged verification ask; it was in fact updated"},
+        {"point": "verify reachability-metadata.json generated with Java 23", "verdict": "trivial", "why": "vague verification ask"},
+        {"point": "gluonfx 1.0.25 good but confirm release notes", "verdict": "trivial", "why": "vague verify-advice"},
+        {"point": "docker-compose GRAALVM_VERSION_MAJOR=21 should be updated to 23", "verdict": "wrong", "why": "the PR already updates it; claims the PR missed something it did"}
+      ],
+      "missed": ["human: explicit arch 'amd64' in docker-publish unnecessary (images amd64-only)", "GUI jobs lose maven cache", "non-LTS JDK 23 EOL: oracle setup-java/download URLs will break", "old native-image split configs left + minified resource-config with dropped SplashLight glob/root locale", "Windows gluonfx 1.0.23 + java23 untested risk", "dev Docker GUI still uses Oracle (non-Gluon) GraalVM"],
+      "exceeds": [],
+      "net": -7
+    },
+    "v3": {
+      "points": [
+        {"point": "Critical: maven-compiler-plugin <source>/<target> NOT updated, negates upgrade", "verdict": "wrong", "why": "actual diff updates them to 23; asserted as the PR's central flaw"},
+        {"point": "parent properties remain 21", "verdict": "wrong", "why": "actual diff updates root pom properties to 23"},
+        {"point": "JavaFX 23-ea+20 EA, consider stable release", "verdict": "good", "why": "real issue (line numbers off but substance correct)"},
+        {"point": "good CLI/GUI split with arch-aware macOS selection", "verdict": "trivial", "why": "praise"},
+        {"point": "docker-compose change propagates correctly to base Dockerfile", "verdict": "trivial", "why": "verification praise, no issue raised"},
+        {"point": "gluonfx 1.0.25 bump necessary, no conflicts", "verdict": "trivial", "why": "praise; misses Windows 1.0.23 override nuance"},
+        {"point": "codebase uses no Java 21+/23 features, upgrade is toolchain-driven", "verdict": "trivial", "why": "observation without action"}
+      ],
+      "missed": ["human: explicit arch 'amd64' in docker-publish unnecessary (images amd64-only)", "gluonhq/setup-graalvm@master unpinned", "GUI jobs lose maven cache", "non-LTS JDK 23 EOL: oracle setup-java/download URLs will break", "old native-image split configs left + minified resource-config with dropped SplashLight glob/root locale", "Windows gluonfx 1.0.23 + java23 untested risk", "dev Docker GUI still uses Oracle (non-Gluon) GraalVM"],
+      "exceeds": [],
+      "net": -8
+    },
+    "v4": {
+      "points": [
+        {"point": "CRITICAL: gluonfx <version> tag left empty, breaks GUI build", "verdict": "wrong", "why": "fabricated: actual diff has <version>${gluonfx-maven-plugin.version}</version>"},
+        {"point": "CRITICAL: compiler plugin still hardcodes 21", "verdict": "wrong", "why": "actual diff updates <source>/<target> to 23"},
+        {"point": "native-maven-plugin: JDK 23 support added in 0.10.5 (May 2024), 0.10.6 (Sept 2024)", "verdict": "wrong", "why": "fabricated dates (0.10.5=Feb 2025, 0.10.6=Mar 2025) and fabricated support claim; 0.10.4 postdates JDK 23"},
+        {"point": "confirm docker-compose GRAALVM arg updated to 23", "verdict": "trivial", "why": "hedged verification of something the PR did"},
+        {"point": "conditional JDK setup well-implemented", "verdict": "trivial", "why": "praise"},
+        {"point": "ICU may need icudt75b+ patterns, may already handle gracefully", "verdict": "trivial", "why": "hedged speculation that self-cancels; JDK 23 uses icudt74b which is present"}
+      ],
+      "missed": ["human: explicit arch 'amd64' in docker-publish unnecessary (images amd64-only)", "gluonhq/setup-graalvm@master unpinned", "GUI jobs lose maven cache", "non-LTS JDK 23 EOL: oracle setup-java/download URLs will break", "old native-image split configs left + minified resource-config with dropped SplashLight glob/root locale", "Windows gluonfx 1.0.23 + java23 untested risk", "dev Docker GUI still uses Oracle (non-Gluon) GraalVM", "JavaFX 23-ea early-access dependency"],
+      "exceeds": [],
+      "net": -11
+    }
+  },
+  "qualitative": "All four candidates were hurt by the truncated diff and hallucinated to different degrees, but v2 is clearly the best: it is the only one to flag the unpinned gluonhq/setup-graalvm@master ref (a genuine, verified issue), it caught the EA JavaFX dependency, and it hedged on the parent-pom question instead of asserting a false 'critical' — though it fabricated release dates for native-build-tools and a wrong ICU-76 claim, and incorrectly said docker-compose wasn't updated. v1 and v3 both invented the same false blocker (root pom/compiler-plugin still at 21 — the actual diff updates both) and otherwise padded with praise; each salvaged only the JavaFX-EA point. v4 is the worst: three confidently-asserted fabricated criticals, including an invented empty <version> tag (an artifact of the diff truncation point) and made-up plugin release dates, with no verified positive finding. Nobody made the human reviewer's point that the explicit 'amd64' arch in docker-publish is unnecessary, and all missed the lost maven cache for GUI jobs, the leftover old native-image configs / silently rewritten resource-config (dropped SplashLight glob), the untested Windows gluonfx-1.0.23+java23 combo, and the non-LTS JDK 23 EOL fragility of the oracle setup-java and download URLs."
+}

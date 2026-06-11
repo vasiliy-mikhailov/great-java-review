@@ -1,0 +1,91 @@
+{
+  "pr": 1284,
+  "own_review": [
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "948-989",
+      "issue": "BLOCKER: Ser.readResolve() switch handles ids 0-17 only; the new FILE_CONVERTER (id 19) and URI_CONVERTER (id 20) fall through to the default branch and throw ConfigMessages.msg.unknownConverterId (InvalidObjectException, 'Unknown converter ID: %s'). BuiltInConverter.writeReplace() serializes to Ser(id), so any serialization round-trip of the new converters fails on deserialization. Pre-existing gap: id 18 (PATH_CONVERTER) is also missing; the PR should add cases 18, 19, 20.",
+      "severity": "critical"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "190-192",
+      "issue": "Inconsistent trimming: URI_CONVERTER wraps with newTrimmingConverter but FILE_CONVERTER does not (test deliberately asserts new File(\" test\") keeps the leading space). This matches PATH_CONVERTER's no-trim precedent, but diverges from most other built-ins; worth an explicit decision.",
+      "severity": "minor"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "190-192",
+      "issue": "Behavioral change vs previous implicit converters: File/URI were previously resolved via Implicit.getConverter (constructor-based, serializable via their own Serialized form, no trimming, empty string passed to constructor). Now URI is trimmed and empty values convert to null via newEmptyValueConverter, and URI parsing goes through URI.create instead of new URI(String). Mostly an improvement but observable to existing users.",
+      "severity": "minor"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "191",
+      "issue": "URI.create's IllegalArgumentException is propagated raw; UUID_CONVERTER and INET_ADDRESS_CONVERTER wrap parse failures in dedicated ConfigMessages errors, and uriSyntaxInvalid(@Cause, String) already exists (_private/ConfigMessages.java:122-123). Wrapping would be more consistent.",
+      "severity": "minor"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "16",
+      "issue": "Unrelated whitespace change: blank line after license header removed.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {
+          "point": "Ser.readResolve missing cases 18/19/20; deserialization of new converters throws InvalidObjectException 'Unknown converter ID'",
+          "grade": "critical",
+          "score": 2,
+          "verified": "Confirmed: switch at Converters.java:948-989 ends at case 17; unknownConverterId is declared as InvalidObjectException with message 'Unknown converter ID: %s' (_private/ConfigMessages.java:49-50). Exact match including the pre-existing id-18 gap."
+        },
+        {
+          "point": "Nit: FILE_CONVERTER lacks trimming while URI_CONVERTER trims; consider consistency",
+          "grade": "good",
+          "score": 1,
+          "verified": "Confirmed in diff and base code; correctly notes PATH_CONVERTER also does not trim. Aligns with the human reviewer's trimming point."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Serialization blocker in Ser.readResolve (not in human reference)"
+      ],
+      "net": 3
+    },
+    "v5": {
+      "points": [
+        {
+          "point": "BLOCKER: Ser.readResolve missing case 18 (pre-existing) and cases 19/20 for the new converters; deserialization throws unknownConverterId",
+          "grade": "critical",
+          "score": 2,
+          "verified": "Confirmed at Converters.java:948-989; line range cited exactly; correctly separates pre-existing Path gap from PR-introduced File/URI gap."
+        },
+        {
+          "point": "URI converter should wrap IllegalArgumentException with existing uriSyntaxInvalid message, following UUID/InetAddress pattern",
+          "grade": "good",
+          "score": 1,
+          "verified": "Confirmed: uriSyntaxInvalid(@Cause Throwable, String) exists at _private/ConfigMessages.java:122-123 with message 'URI Syntax invalid %s'; UUID_CONVERTER (malformedUUID) and INET_ADDRESS_CONVERTER (unknownHost) do wrap exceptions exactly as described."
+        },
+        {
+          "point": "Nit: FILE_CONVERTER preserves whitespace unlike URI_CONVERTER; consistent with PATH_CONVERTER but flag for awareness",
+          "grade": "good",
+          "score": 1,
+          "verified": "Confirmed; the test indeed asserts new File(\" test\") preserves the leading space. Matches the human reviewer's trimming concern."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Serialization blocker in Ser.readResolve (not in human reference)",
+        "uriSyntaxInvalid error-wrapping suggestion with verified existing message id (not in human reference)"
+      ],
+      "net": 4
+    }
+  },
+  "absence_fabrications": {
+    "v4": 0,
+    "v5": 0
+  },
+  "qualitative": "Both candidates found the one real blocker — Ser.readResolve ends at id 17 so the new File/URI converters (ids 19/20) fail deserialization — and both correctly distinguished the pre-existing id-18 (Path) gap from the PR-introduced one, with accurate exception types and line references. v5 is the stronger review: it adds a fully verified, actionable suggestion to wrap URI.create failures with the existing uriSyntaxInvalid message (correct file, correct lines 122-123, correct precedent in UUID/InetAddress converters), which v4 lacks. Both cover the human reviewer's trimming concern via the File-vs-URI trimming inconsistency nit, and neither fabricated any absence claims or false facts. v4 is accurate but thinner; v5 exceeds the human reference on two points with zero noise."
+}

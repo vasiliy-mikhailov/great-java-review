@@ -1,0 +1,94 @@
+{
+  "pr": 6015,
+  "own_review": [
+    {"point": "Removal of public overloads reload(String,Boolean), reload(String,Boolean,Boolean), reload(String,Boolean,Boolean,Long) from DomainLifecycleUtil is a breaking API change in the published wildfly-core-testsuite-shared artifact consumed by downstream testsuites (e.g. wildfly/wildfly); all in-repo callers are migrated but external consumers can break at compile time. Deprecate-then-remove would be safer.", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "New public reload(String, ReloadParameters) dereferences parameters without a null check (parameters.adminOnly etc.) — NPE if null is passed; old overloads tolerated nulls. Should null-check or default to new ReloadParameters().", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "setTimeout javadoc says 'in milliseconds' but the value is actually used as SECONDS: awaitHostController/awaitServers compute deadline = start + timeout * 1000. The PR copies a pre-existing wrong-units doc into the new API (and AdminOnlyModeTestCase passes 300L believing ms = 300 seconds).", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "Invalid javadoc reference {@link WildFlyManagedConfiguration.startupTimeoutInSeconds} in setTimeout — dot instead of #, and no such field/method (it is getStartupTimeoutInSeconds()); produces broken javadoc.", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "Javadoc of ReloadParameters setters should document defaults/semantics (e.g. restartServers defaults to true matching the management op default, waitForServers defaults true, adminOnly false) — without this the defaults are invisible to callers (human reviewer's point).", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "Inconsistent migration: AdminOnlyModeTestCase replaces reloadAdminOnly(\"primary\") with the verbose builder even though reloadAdminOnly is retained, while SecondaryReconnectTestCase:139 still calls reloadAdminOnly(\"primary\") — pick one style.", "file": "testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/secondaryreconnect/SecondaryReconnectTestCase.java", "severity": "normal"},
+    {"point": "ReloadParameters fields are package-private; should be private (outer class can still access private members of a nested class). Minor.", "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java", "severity": "normal"},
+    {"point": "Verified no semantic change for migrated call sites: server-side default of restart-servers in HostProcessReloadHandler is TRUE, so builder default restartServers=true matches the old behavior where null omitted the attribute.", "file": "host-controller/src/main/java/org/jboss/as/domain/controller/operations/HostProcessReloadHandler.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "Old overloads should be @Deprecated, callers have no signal", "verdict": "wrong", "why": "False premise: the three reload(...) overloads are deleted by the PR, not left undeprecated; only reloadAdminOnly survives"},
+        {"point": "SecondaryReconnectTestCase 139/147 still on old API, verify migrated", "verdict": "good", "why": "Line 147 is in fact migrated, but the actionable kernel is real: line 139 reloadAdminOnly remains unmigrated (inconsistency)"},
+        {"point": "HcExtension passes address.toString() (PathAddress) as host name", "verdict": "good", "why": "Verified: PathAddress.toString() returns toModelNode().toString() (DMR text), not a host name — real latent bug on a line the PR rewrites"},
+        {"point": "Use static import of ReloadParameters to reduce verbosity", "verdict": "trivial", "why": "Pure style suggestion"},
+        {"point": "Builder clearly expresses intent vs ambiguous booleans", "verdict": "trivial", "why": "Praise/restating the diff"},
+        {"point": "Ensure ReloadParameters is public static with chaining setters", "verdict": "trivial", "why": "It is, per the diff; verification ask, not a finding"}
+      ],
+      "missed": [
+        "Javadoc completeness/defaults semantics of ReloadParameters (human's point)",
+        "Breaking removal of public overloads from published testsuite-shared artifact (downstream consumers)",
+        "NPE if null ReloadParameters passed to new public reload",
+        "Javadoc bugs: timeout documented as milliseconds but used as seconds, plus broken {@link WildFlyManagedConfiguration.startupTimeoutInSeconds}"
+      ],
+      "exceeds": ["HcExtensionAndSubsystemManagementTestCase passes PathAddress.toString() (DMR string) where a plain host name is expected — verified real latent bug neither the human nor my initial review caught"],
+      "net": -3
+    },
+    "v2": {
+      "points": [
+        {"point": "Naming aligns with existing ServerReload.Parameters convention", "verdict": "trivial", "why": "Verified accurate (ServerReload.java:203) but it is praise/context, not a finding"},
+        {"point": "Add @SuppressWarnings(\"unused\") on setters", "verdict": "trivial", "why": "Marginal IDE-noise suggestion"},
+        {"point": "Verify whether old methods should be @Deprecated", "verdict": "trivial", "why": "Hedged; premise mostly false since the reload overloads are removed by the PR"},
+        {"point": "Style nit on parameters reassignment qualification", "verdict": "trivial", "why": "Vague style remark"},
+        {"point": "Inline single-flag builder into the call", "verdict": "trivial", "why": "Self-described subjective style"},
+        {"point": "Add comment explaining why restartServers=false in DC failover", "verdict": "trivial", "why": "Generic documentation advice"},
+        {"point": "HcExtension migration not shown in diff, verify; address is PathAddress.toString()", "verdict": "trivial", "why": "The real PR does migrate it (candidate saw truncated diff); PathAddress observation only framed as a justification, not a bug"},
+        {"point": "SecondaryReconnect reloadAdminOnly and reload(primary,null,false) should be migrated", "verdict": "good", "why": "Line 147 is actually migrated, but line 139 reloadAdminOnly genuinely remains — real consistency point"},
+        {"point": "Consider sensible defaults especially waitForServers", "verdict": "trivial", "why": "ReloadParameters already defaults waitForServers/restartServers to true; hedged speculation from unseen code"}
+      ],
+      "missed": [
+        "Javadoc completeness/defaults semantics of ReloadParameters (human's point)",
+        "Breaking removal of public overloads from published testsuite-shared artifact",
+        "NPE if null ReloadParameters passed to new public reload",
+        "Javadoc bugs: wrong milliseconds units and broken {@link} in setTimeout"
+      ],
+      "exceeds": [],
+      "net": -3
+    },
+    "v3": {
+      "points": [
+        {"point": "SecondaryReconnect 139+147 NOT migrated, will fail to compile if old signatures removed", "verdict": "trivial", "why": "139 kernel true, but 147 IS migrated and there is no compile risk (reloadAdminOnly is kept) — true and false halves cancel"},
+        {"point": "OutboundLdapConnectionTestCase:149 NOT migrated", "verdict": "wrong", "why": "False: the PR migrates it to setWaitForServers(false)"},
+        {"point": "HcExtension builder should include .setRestartServers(false)", "verdict": "trivial", "why": "The diff already does exactly that; advice based on truncated input"},
+        {"point": "Declare parameters final to prevent state leakage", "verdict": "trivial", "why": "Vague style advice; variables are deliberately reassigned"},
+        {"point": "300L migration correctly omits setRestartServers, preserving semantics", "verdict": "trivial", "why": "Praise/restating"},
+        {"point": "DomainControllerMigration migration correct and equivalent", "verdict": "trivial", "why": "Praise/restating"},
+        {"point": "SimpleDomainControllerMigration migration correct", "verdict": "trivial", "why": "Praise/restating"},
+        {"point": "ReadOnlyModeTestCase 72/79 and HostReloadProxyTestCase use simple reload, unmigrated", "verdict": "trivial", "why": "Verified accurate, but those use the single-arg reload(host) the PR keeps — no action needed, as v3 itself admits"},
+        {"point": "HttpManagementConstantHeadersTestCase:275 NOT migrated", "verdict": "wrong", "why": "False: the PR migrates it to the builder"}
+      ],
+      "missed": [
+        "Javadoc completeness/defaults semantics of ReloadParameters (human's point)",
+        "Breaking removal of public overloads from published testsuite-shared artifact",
+        "NPE if null ReloadParameters passed to new public reload",
+        "Javadoc bugs: wrong milliseconds units and broken {@link} in setTimeout"
+      ],
+      "exceeds": [],
+      "net": -6
+    },
+    "v4": {
+      "points": [
+        {"point": "Old public overloads REMOVED rather than deprecated — breaking API change for external users of the test utility", "verdict": "good", "why": "Verified: 3 public reload overloads deleted from published wildfly-core-testsuite-shared; matches my API-break finding (list slightly over-broad: reloadAdminOnly is actually kept)"},
+        {"point": "Verify ReloadParameters is public static; confirm reload null-checks parameters", "verdict": "trivial", "why": "Verification asks; the null-check concern is real (code does NPE) but not asserted, and the claimed delegation to the old private 5-arg method is false"},
+        {"point": "Use final on parameters where not reassigned", "verdict": "trivial", "why": "Style advice"},
+        {"point": "IgnoredResourcesProfileCloneTestCase reloadSecondary NOT migrated", "verdict": "wrong", "why": "False: the PR migrates it to the builder"},
+        {"point": "IgnoredResourcesTestCase setup/tearDown reloads NOT migrated", "verdict": "wrong", "why": "False: the PR migrates both call sites"},
+        {"point": "Builder could be bare new ReloadParameters() since all defaults are false/null", "verdict": "wrong", "why": "False and harmful: defaults are restartServers=true and waitForServers=true; following this would change test semantics"},
+        {"point": "HttpManagementConstantHeadersTestCase reload() NOT migrated", "verdict": "wrong", "why": "False: the PR migrates it"}
+      ],
+      "missed": [
+        "Javadoc completeness/defaults semantics of ReloadParameters (human's point)",
+        "Javadoc bugs: wrong milliseconds units and broken {@link} in setTimeout",
+        "reloadAdminOnly still used unmigrated at SecondaryReconnectTestCase:139 (inconsistent with AdminOnlyModeTestCase churn)"
+      ],
+      "exceeds": [],
+      "net": -6
+    }
+  },
+  "qualitative": "All four candidates clearly reviewed a truncated diff and hallucinated 'this listed file was NOT migrated' findings to varying degrees; the actual PR migrates every multi-arg reload call site in the repo. v1 is the best: it hedged its truncation-induced claims and produced the single standout finding of the set — HcExtensionAndSubsystemManagementTestCase passes PathAddress.toString() (a DMR string, verified via PathAddress.toString() -> toModelNode().toString()) where a plain host name is expected, a real latent bug neither the human nor my own first pass caught. v2 is harmless but almost entirely style chatter and praise, salvaged only by the SecondaryReconnect consistency point. v4 made the most important architectural observation (removal of public overloads from the published testsuite-shared artifact is a breaking change) but drowned it in four confidently false 'not migrated' claims plus an actively harmful 'defaults are false/null' assertion that would change test semantics if followed. v3 asserted non-migration most aggressively (including a fabricated compile-failure scenario) and contributed mostly praise otherwise. Nobody caught the human's javadoc-semantics concern, the milliseconds-vs-seconds timeout documentation bug, the broken {@link WildFlyManagedConfiguration.startupTimeoutInSeconds} reference, or the NPE on a null ReloadParameters."
+}

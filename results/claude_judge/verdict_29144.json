@@ -1,0 +1,79 @@
+{
+  "pr": 29144,
+  "own_review": [
+    {"point": "getFileScanPartitionSpec uses requireNonNull(spec, \"Table specs doesn't contain specId: \" + specId): requireNonNull/NPE is misused for an internal-state assertion (Trino convention is checkState/verifyNotNull), and the message string is eagerly concatenated on every call in a hot per-file loop -- avoidable allocation in a performance PR", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java:1335-1340", "severity": "normal"},
+    {"point": "New getFileScanPartitionSpec method is inserted between the two readerForManifest overloads, splitting an overload group (convention nit)", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java:1335", "severity": "normal"},
+    {"point": "getFileScanPartitionSpec is now invoked up to 4 times for the same task along one path (processFileScanTask, pruneFileScanTask, noDataColumnsProjected, toIcebergSplit); the spec could be resolved once per task, e.g. carried in FileScanTaskWithDomain", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java", "severity": "normal"},
+    {"point": "Optimization is incomplete: TableChangesSplitSource still calls task.spec() per task (lines 154, 172) and re-serializes it via PartitionSpecParser.toJson -- same expensive parse left unaddressed", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/functions/tablechanges/TableChangesSplitSource.java:154", "severity": "normal"},
+    {"point": "In processFileScanTask the map lookup is done just to compare spec.specId() with currentSpecId; wholeFileTask.file().specId() is available directly without any lookup", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java:410", "severity": "normal"},
+    {"point": "New theoretical failure mode: old task.spec() parsed the spec JSON carried by the task and could not fail on a missing id; new code throws NPE if table specs map lacks the file's specId (cannot happen with well-formed metadata since specs are never removed; defensive message is fine)", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java:1339", "severity": "normal"},
+    {"point": "Verified safe: specsById field already exists in IcebergSplitSource (line 178); all callers of the removed getPartitionKeys(FileScanTask) and createStructLikeWrapper(FileScanTask)/createStructLikeWrapper(StructType,...) overloads are updated in this PR (no test callers); fileScanTask.partition() is a default method returning file().partition(), so the getPartitionKeys rewrite is behavior-preserving", "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "getPartitionKeys(fileScanTask.partition(), with trailing comma is a compilation error", "verdict": "wrong", "why": "Artifact of truncated input; actual PR code is getPartitionKeys(fileScanTask.partition(), partitionSpec) -- compiles fine"},
+        {"point": "Old createStructLikeWrapper(FileScanTask) overload still exists and PartitionsTable:181 still calls it", "verdict": "wrong", "why": "PR removes that overload and updates PartitionsTable to the new two-arg form"},
+        {"point": "Single-arg getPartitionKeys(FileScanTask) should be removed / callers migrated", "verdict": "wrong", "why": "PR already removes it and migrates the only caller; claim that it remains is false"},
+        {"point": "PartitionsTable:181,186 may still incur JSON parsing; verify it was updated", "verdict": "trivial", "why": "Hedged 'verify' with no assertion; the PR did update both call sites"},
+        {"point": "FilesTablePageSource was already optimized; consider removing it from the PR", "verdict": "wrong", "why": "The file change is required by the createStructLikeWrapper signature change; it belongs in the PR"},
+        {"point": "Verify getFileScanPartitionSpec uses specsById.get(file().specId()) with proper null handling, e.g. verifyNotNull", "verdict": "good", "why": "Matches the actual impl shape and aligns with the human's checkState-instead-of-requireNonNull comment"}
+      ],
+      "missed": [
+        "Unnecessary null-check shape: requireNonNull misuse incl. eager message concatenation in hot loop (human: file cannot be null / remove that check)",
+        "TableChangesSplitSource still calls task.spec() per task -- optimization incomplete"
+      ],
+      "exceeds": [],
+      "net": -5
+    },
+    "v2": {
+      "points": [
+        {"point": "noDataColumnsProjected, toIcebergSplit:739 and getPartitionBlockValues:754 still call spec(), ~60% unoptimized", "verdict": "wrong", "why": "All three sites are updated by the PR; claim is false against the actual diff"},
+        {"point": "Old createStructLikeWrapper(FileScanTask) overload still exists, deprecate it", "verdict": "wrong", "why": "PR removes the overload"},
+        {"point": "Single-arg getPartitionKeys still exists, deprecate it", "verdict": "wrong", "why": "PR removes it"},
+        {"point": "PartitionsTable:186 acceptDataFile still calls spec(); confirm whether updated", "verdict": "wrong", "why": "PR updates it to pass the looked-up spec; the assertion is false"},
+        {"point": "Verify getFileScanPartitionSpec edge cases (null map, missing id, fallback)", "verdict": "trivial", "why": "Vague verification request; impl already null-checks via requireNonNull"},
+        {"point": "Use tableHandle.getPartitionSpecJsons() instead of icebergTable.specs() to reduce metastore pressure", "verdict": "wrong", "why": "Those are JSON strings requiring parsing (defeats the PR's purpose) and specs() is in-memory metadata, no metastore call"}
+      ],
+      "missed": [
+        "checkState/verifyNotNull instead of requireNonNull for guaranteed-present spec (human point)",
+        "Unnecessary null check on file / eager message concat in hot loop (human point)",
+        "TableChangesSplitSource still calls task.spec() per task -- optimization incomplete"
+      ],
+      "exceeds": [],
+      "net": -8
+    },
+    "v3": {
+      "points": [
+        {"point": "Verify getFileScanPartitionSpec handles null lookup; NPE possible downstream", "verdict": "trivial", "why": "Hedged verify; impl already guards with requireNonNull so no downstream NPE on .specId()"},
+        {"point": "noDataColumnsProjected still calls fileScanTask.spec() and was not changed by this PR", "verdict": "wrong", "why": "The PR changes it to getFileScanPartitionSpec(fileScanTask, specsById)"},
+        {"point": "PartitionsTable:186 still calls spec(), appears missed", "verdict": "wrong", "why": "PR updates it; assertion false"},
+        {"point": "Diff line truncated; verify replacement is getPartitionKeys(fileScanTask.partition(), partitionSpec)", "verdict": "trivial", "why": "Correctly intuits the real code but is a meta-comment about truncation, not a finding"},
+        {"point": "Old createStructLikeWrapper(FileScanTask) overload not removed by this PR", "verdict": "wrong", "why": "PR removes it"}
+      ],
+      "missed": [
+        "checkState/verifyNotNull instead of requireNonNull for guaranteed-present spec (human point)",
+        "Unnecessary null check on file / eager message concat in hot loop (human point)",
+        "TableChangesSplitSource still calls task.spec() per task -- optimization incomplete"
+      ],
+      "exceeds": [],
+      "net": -6
+    },
+    "v4": {
+      "points": [
+        {"point": "PartitionsTable still calls fileScanTask.spec() twice (181, 186) -- missed optimization", "verdict": "wrong", "why": "PR updates both call sites in PartitionsTable; confidently asserted and false"},
+        {"point": "Verify getFileScanPartitionSpec handles null; add defensive fallback to fileScanTask.spec()", "verdict": "trivial", "why": "Hedged; the suggested silent fallback contradicts fail-fast convention and the human's checkState preference"},
+        {"point": "Verify getPartitionKeys signature change is consistent; grep overloads", "verdict": "trivial", "why": "Pure verification hedge, no issue identified; the change is consistent"},
+        {"point": "Old single-arg createStructLikeWrapper still calls spec(); deprecate it", "verdict": "wrong", "why": "PR removes the overload"}
+      ],
+      "missed": [
+        "checkState/verifyNotNull instead of requireNonNull for guaranteed-present spec (human point)",
+        "Unnecessary null check on file / eager message concat in hot loop (human point)",
+        "TableChangesSplitSource still calls task.spec() per task -- optimization incomplete"
+      ],
+      "exceeds": [],
+      "net": -5
+    }
+  },
+  "qualitative": "All four candidates were crippled by the truncated diff in their input and, instead of hedging, mostly asserted that code the PR actually changed (PartitionsTable, noDataColumnsProjected, toIcebergSplit, the removed single-arg overloads) was left unoptimized -- fabrications against the real diff. v1 is the most useful despite heavy fabrication because its null-handling point (use verifyNotNull on the specsById lookup) lands closest to the human's actual review (use checkState, drop the redundant file null check), though it also invented a compilation error and wrongly told the author to drop FilesTablePageSource from the PR. v4 fabricated the least by volume (two false points, two empty hedges) and ties v1 on net, but contributed nothing real and even suggested a silent task.spec() fallback that contradicts fail-fast conventions. v3 hedged more gracefully (it correctly guessed the truncated getPartitionKeys line) but still asserted three false 'still calls spec()' claims. v2 is worst: it confidently enumerated specific line numbers (739, 754, 489) as unoptimized when all were fixed, and added a confused suggestion to use partitionSpecJsons from the table handle, which would reintroduce the very JSON parsing the PR removes. Nobody found the points the human made (checkState over requireNonNull, redundant null check) as verified findings, and nobody noticed the genuinely remaining task.spec() calls in TableChangesSplitSource."
+}

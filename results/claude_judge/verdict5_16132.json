@@ -1,0 +1,60 @@
+{
+  "pr": 16132,
+  "own_review": [
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 392,
+      "issue": "New guard in verifyRemoteLogTopicConfigs uses `topicConfig.contains(TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG)`. On java.util.Properties (Hashtable), contains() checks VALUES, not keys; every sibling check in this method uses containsKey(). The condition is therefore always false and the disable-policy assertion is silently skipped — the new integration test verifies nothing about the policy actually landing in LogConfig.",
+      "severity": "medium"
+    },
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 159,
+      "issue": "Test name testCreateRemoteTopicWithDisablePolicyRetain is misleading: the CsvSource covers both retain and delete policies.",
+      "severity": "low"
+    },
+    {
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java",
+      "line": 324,
+      "issue": "remote.log.disable.policy is accepted on any topic with no validation tying it to remote storage (settable when remote.storage.enable=false or when tiered storage is system-disabled), and nothing consumes remoteLogDisablePolicy() yet — tiered-storage disablement is still unsupported (remote.storage.enable doc: 'You can not disable this config once it is enabled'), so the config is a documented no-op until follow-up KIP-950 work lands. Worth an explicit note in the doc string or KIP.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "CRITICAL: missing .define() for the new config", "grade": "wrong", "score": -1, "note": "Absence-fabrication: the full diff adds the .define(...in(retain,delete)...) at LogConfig.java lines 324-329."},
+        {"point": "Missing from CONFIGS_WITH_NO_SERVER_DEFAULTS", "grade": "wrong", "score": -1, "note": "Absence-fabrication: the full diff adds REMOTE_LOG_DISABLE_POLICY_CONFIG to that set."},
+        {"point": "Missing DEFAULT_REMOTE_LOG_DISABLE_POLICY constant", "grade": "trivial", "score": 0, "note": "Literally true (PR inlines TopicConfig.REMOTE_LOG_DISABLE_POLICY_RETAIN as the default instead of a DEFAULT_ constant), but framed on the false premise that the define is absent; pure style nit."},
+        {"point": "RemoteLogConfig.toString() not updated", "grade": "wrong", "score": -1, "note": "Absence-fabrication (hedged): the full diff does update toString() with remoteLogDisablePolicy."},
+        {"point": "Missing remoteLogDisablePolicy() public accessor", "grade": "wrong", "score": -1, "note": "Absence-fabrication: the full diff adds the accessor at LogConfig.java:511 (this is exactly the human reviewer's request, already satisfied in the final diff)."},
+        {"point": "Doc clarity: disablement not yet supported, practical applicability limited in this release", "grade": "good", "score": 1, "note": "Verified: base TopicConfig doc says remote.storage.enable cannot be disabled once enabled; the new policy is currently inert."}
+      ],
+      "missed": [
+        "contains() vs containsKey() bug making the new verification in RemoteTopicCrudTest vacuous",
+        "misleading test name testCreateRemoteTopicWithDisablePolicyRetain covering both policies"
+      ],
+      "exceeds": [],
+      "net": -5
+    },
+    "v5": {
+      "points": [
+        {"point": "Misleading test name testCreateRemoteTopicWithDisablePolicyRetain (tests both retain and delete)", "grade": "good", "score": 1, "note": "Verified against the diff; matches my own finding."},
+        {"point": "Naming inconsistency: remote.storage.enable vs remote.log.disable.policy prefixes", "grade": "good", "score": 1, "note": "Verified: TopicConfig.REMOTE_LOG_STORAGE_ENABLE_CONFIG is literally 'remote.storage.enable'; fair KIP-level consistency observation neither human nor I raised."},
+        {"point": "Invalid value 'true' in assertPropertyInvalid is unexplained", "grade": "trivial", "score": 0, "note": "Real but inconsequential test-data style nit."},
+        {"point": "RemoteLogConfig getString / no broker-level default, relies on ConfigDef default", "grade": "trivial", "score": 0, "note": "Accurate description of the design, no actionable defect."},
+        {"point": ".equals() vs assertEquals consistency in verifyRemoteLogTopicConfigs; 'the logic is correct'", "grade": "trivial", "score": 0, "note": "Style nit; ironically asserts the logic is correct while overlooking that the contains() guard never fires, but the point itself makes no false absence claim."}
+      ],
+      "missed": [
+        "contains() vs containsKey() bug making the new verification in RemoteTopicCrudTest vacuous",
+        "policy is currently a no-op: no validation tying it to remote storage and disablement is not yet supported"
+      ],
+      "exceeds": [
+        "Config-name prefix inconsistency (remote.storage.enable vs remote.log.disable.policy) — verified finding absent from both the human reference and my own review"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {"v4": 4, "v5": 0},
+  "qualitative": "The human reference's single point (add a remoteLogDisablePolicy() accessor) is already satisfied in the final diff, so this PR mostly tests whether candidates fabricate. v4 collapses: four of its six points claim pieces are missing (.define, CONFIGS_WITH_NO_SERVER_DEFAULTS entry, toString update, accessor) that the complete PR plainly contains — classic truncation-induced absence-fabrication — leaving only one genuinely good observation about the config being inert while disablement is unsupported. v5 is factually clean with two verified, useful points (misleading test name; remote.storage vs remote.log naming divergence, which exceeds both the human and my review) plus three harmless trivia. Both candidates missed the one real bug in the PR: the new verifyRemoteLogTopicConfigs guard uses Properties.contains (value lookup) instead of containsKey, so the integration test's policy assertion never executes. v5 is clearly the better review; v4 would actively mislead an author."
+}

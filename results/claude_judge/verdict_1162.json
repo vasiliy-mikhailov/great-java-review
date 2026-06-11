@@ -1,0 +1,63 @@
+{
+  "pr": 1162,
+  "own_review": [
+    {"point": "Expected violations hardcode the full English message text instead of using getCheckMessage(MSG_KEY, \"&&\", line, col) like test() and all 53 other test files in the repo; breaks the single-source-of-truth convention if messages.properties changes", "file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java:74-87", "severity": "normal"},
+    {"point": "The rewrite guts the file's purpose: InputLogicConditionNeedOptimizationCheck2.java was added in commit df7fe8c0 as the regression test for the #922 NPE fix in getOperands (parenthesized pattern definitions containing &&). The old `(Integer i) && i == 0` case syntax is JDK 17/18 preview that Java 21 removed; the correct Java 21 modernization is `when` guards (e.g. `case Integer i when i == 0 && cond():`), which would keep LAND tokens in pattern/case context. Replacing everything with plain if-statements removes pattern-context coverage and duplicates what InputLogicConditionNeedOptimizationCheck.java already covers", "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "severity": "critical"},
+    {"point": "Method names typeGuardAfterParenthesizedTrue* are now misleading: after the rewrite there are no parenthesized type guards in those methods", "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "severity": "normal"},
+    {"point": "New expected violations (e.g. 41:49, 43:56/66) flag idiomatic `o instanceof Integer i && i == 0`, which cannot be reordered because the pattern variable is only in scope after instanceof — the check has no pattern-variable awareness (needOptimization, lines 85-102); also the rewritten input drops the `// violation` marker comments the old file had on violation lines", "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "severity": "normal"},
+    {"point": "Stray extra blank line added at end of the test class (the `+` after the closing brace)", "file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java", "severity": "normal"},
+    {"point": "Inconsistent rewrite style: switchExpression1 ends with `default -> \"any\"` while switchExpression2 keeps `case Object x -> \"any\"`", "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Pattern guard test coverage removed entirely; new ifs duplicate base test coverage", "verdict": "critical", "why": "Verified: file is the only pattern-guard input, added as #922 NPE regression; LAND/LOR in pattern context no longer exercised"},
+        {"point": "Recommends `case Integer i && i == 0:` as 'Java 21 final syntax'", "verdict": "wrong", "why": "That syntax is JDK 17/18 preview and invalid in Java 21; the final syntax is `case Integer i when i == 0:`"},
+        {"point": "Misleading method names referencing 'Parenthesized' syntax that no longer exists", "verdict": "good", "why": "Verified against rewritten input"},
+        {"point": "`o instanceof Integer i && i == 0` is correct Java 21 instanceof form", "verdict": "trivial", "why": "Restates what the PR already did in its if-statements; adds no actionable change"},
+        {"point": "Truncated diff — ensure new cases at 87/89/112 exercise unique branches", "verdict": "trivial", "why": "Hedge/verification request, not a finding"},
+        {"point": "Trailing blank line added at end of test file", "verdict": "good", "why": "Verified in diff (+ blank line after closing brace); minor but real style defect"}
+      ],
+      "missed": [
+        "Hardcoded full message strings instead of getCheckMessage(MSG_KEY,...) convention used by test() and all other tests",
+        "New expected violations enshrine flagging of idiomatic non-reorderable pattern-matching code, and `// violation` marker comments were dropped from the input"
+      ],
+      "exceeds": [],
+      "net": 1
+    },
+    "v3": {
+      "points": [
+        {"point": "Hardcoded message strings vs getCheckMessage(MSG_KEY,...) convention in test()", "verdict": "good", "why": "Verified: every other expected array in the repo (53 files) uses getCheckMessage; most concrete actionable defect"},
+        {"point": "Pattern guard coverage removed; restore or document", "verdict": "critical", "why": "Verified regression of the file's reason to exist (#922 NPE regression input)"},
+        {"point": "Pattern guards are 'JEP 441, Java 22+ preview, not older Java'", "verdict": "wrong", "why": "JEP 441 finalized pattern switch in Java 21 with `when` guards; the removed `&&`-guard syntax is JDK 17/18 preview (JEP 406/420) — older, as the PR says"},
+        {"point": "New violations are false positives for pattern matching since pattern variable cannot be moved before instanceof", "verdict": "good", "why": "Verified against needOptimization() — no pattern-variable awareness; sharp insight about what the test now enshrines"},
+        {"point": "Redundant `yield \"any\"` duplicating `default -> \"any\"` in switchExpression1", "verdict": "good", "why": "Verified in diff; minor but real clarity issue in the rewritten input"}
+      ],
+      "missed": [
+        "Misleading typeGuardAfterParenthesizedTrue* method names after the rewrite",
+        "Stray trailing blank line added at end of the test file"
+      ],
+      "exceeds": [
+        "Redundant duplicate 'any' yield in the rewritten switch expression (verified, neither human nor own review had it)"
+      ],
+      "net": 2
+    },
+    "v4": {
+      "points": [
+        {"point": "Pattern guard test coverage removed; check processes LITERAL_INSTANCEOF uniformly so old cases were meaningful", "verdict": "critical", "why": "Verified regression; correctly ties to branchContains/no special pattern handling"},
+        {"point": "PR description 'misleading' because diff removes Java 21 pattern guard constructs", "verdict": "wrong", "why": "Rests on false premise that `(Integer i) && i == 0` case guards are valid Java 21 — they are removed preview syntax, so the PR's direction is partly justified (should be `when` guards)"},
+        {"point": "Old violation semantics (instanceof ... && (o = i) != null) preserved but not in pattern-guard context", "verdict": "trivial", "why": "Restates the coverage-regression point; also misattributes the trigger to the assignment rather than instanceof in the first operand"},
+        {"point": "Method names typeGuardAfterParenthesizedTrue* misleading after rewrite, rename", "verdict": "good", "why": "Verified against rewritten input"},
+        {"point": "Verify expected line numbers 41/43/87/89/112 are accurate after restructuring", "verdict": "trivial", "why": "Generic hedge; tests would fail loudly if wrong, no concrete defect"}
+      ],
+      "missed": [
+        "Hardcoded full message strings instead of getCheckMessage(MSG_KEY,...) convention",
+        "New violations enshrine false-positive flagging of non-reorderable pattern-matching code / dropped `// violation` comments",
+        "Stray trailing blank line added at end of the test file"
+      ],
+      "exceeds": [],
+      "net": -1
+    }
+  },
+  "qualitative": "v3 is the best review: it is the only one to catch the getCheckMessage convention violation (the most certain, immediately actionable defect), it nails the coverage regression, and it adds a genuinely sharp verified insight that the new expected violations bake in false positives on non-reorderable pattern-matching code — though it mislabels the removed syntax as 'Java 22+ JEP 441 preview'. v2 gets the central regression right and uniquely spots the trailing blank line, but actively recommends invalid Java 21 syntax (`case Integer i && i == 0:` — the real Java 21 form is a `when` guard), which would send the author in a wrong direction. v4 is the weakest: it makes the regression point well but builds its second point on the false premise that the old preview guards are valid Java 21, pads with hedgy 'verify line numbers' filler, and misses the message-convention issue entirely. Characteristic across all three: none knew the correct Java 21 `when`-guard replacement, and all anchored the regression finding correctly to the check's LAND/LOR handling. The human reference comment ('remove all changes from non Test and non Input') does not map to the two visible changed files (both test/input) and was not counted against candidates."
+}

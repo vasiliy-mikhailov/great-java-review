@@ -1,0 +1,73 @@
+{
+  "pr": 25868,
+  "own_review": [
+    {"point": "FunctionArchive constructor now does file I/O eagerly (full-file MD5 of every NAR) and throws UncheckedIOException; searchForFunctions at startup pays this cost for every archive even if reload is never called. MD5 could be computed lazily or only on reload.", "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionArchive.java", "severity": "normal"},
+    {"point": "FunctionsManager.reloadFunctions() is not synchronized; two concurrent REST reloadBuiltinFunctions calls share the same `previous` map -> double-close of changed archives and the losing thread's newly created map/instances leak (possibly with opened classloaders). volatile only fixes visibility, not atomicity. Pre-existing pattern (ConnectorsManager has the same flaw) but worth flagging.", "file": "pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java", "severity": "normal"},
+    {"point": "Duplicate function names across two NAR files: remaining.remove(name) fires on the first hit, the second NAR's next.put(name,...) overwrites a possibly reused (open) prev instance which then lands in neither `next` nor `toClose` -> never closed, classloader leak. Edge case also latent in ConnectorUtils.reloadConnectors.", "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java", "severity": "normal"},
+    {"point": "computeArchiveMd5Hex/calculateMd5Hex duplicate ConnectorUtils' identical helpers; reloadFunctions + ReloadFunctionsResult are a near-verbatim copy of reloadConnectors + ReloadConnectorsResult. Shared helper should be extracted (this is the human reviewer's point too).", "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java", "severity": "normal"},
+    {"point": "On reload, a transient parse/IO failure for an existing archive (catch Throwable) evicts and closes the healthy previous instance, making the function disappear; keeping prev on failure would be more robust (matches old full-reload behavior, so minor).", "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java", "severity": "normal"},
+    {"point": "Full-file MD5 of every NAR on every reload is O(total NAR bytes); size+mtime check could short-circuit. Mirrors the connector precedent so acceptable, but worth noting.", "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java", "severity": "normal"},
+    {"point": "New tests create temp directories and NAR files without any cleanup (@AfterMethod / deleteOnExit missing); no test for the 'new NAR added between reloads' scenario.", "file": "pulsar-functions/utils/src/test/java/org/apache/pulsar/functions/utils/functions/FunctionUtilsReloadTest.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "volatile on functions correct, consistent with ConnectorsManager", "verdict": "trivial", "why": "Praise/restating the diff; no action."},
+        {"point": "Reload replaces map atomically and closes only changed/removed", "verdict": "trivial", "why": "Restates what the PR does."},
+        {"point": "isEnableClassloading extraction is good DRY", "verdict": "trivial", "why": "Praise."},
+        {"point": "PR 'should add' archiveMd5Hex computed at construction", "verdict": "trivial", "why": "The PR already does exactly this (constructor computes MD5); prescriptive restatement of truncated-diff content."},
+        {"point": "reloadFunctions 'should implement' the ConnectorUtils.reloadConnectors algorithm", "verdict": "trivial", "why": "The PR already implements it verbatim; restatement, not a finding."},
+        {"point": "'Ensure' record mirrors ReloadConnectorsResult", "verdict": "trivial", "why": "Already true in the diff; restatement."},
+        {"point": "'Verify' test FunctionDefinition sets functionClass", "verdict": "trivial", "why": "sampleDefinition() already sets it; verification note with no issue."},
+        {"point": "Test coverage list incl. missing 'new NAR added' case and concurrent reload test", "verdict": "good", "why": "Verified gap: neither test file covers a newly added NAR; concurrent-reload test is a reasonable actionable ask."}
+      ],
+      "missed": [
+        "MD5 helper / reload logic duplication with ConnectorUtils should be extracted to a shared utility (human's point)",
+        "reloadFunctions not synchronized: concurrent reloads double-close and leak the losing thread's archives",
+        "Duplicate function names across NARs leak an open prev FunctionArchive (neither in next nor toClose)",
+        "Eager full-file MD5 in FunctionArchive constructor adds startup I/O and UncheckedIOException from a constructor"
+      ],
+      "exceeds": ["Noted the missing 'new NAR added between reloads' test scenario, which neither the human nor my review listed explicitly"],
+      "net": -3
+    },
+    "v3": {
+      "points": [
+        {"point": "volatile correct, 'immutable TreeMap replacement semantics'", "verdict": "trivial", "why": "Praise; also slightly off (maps are mutable TreeMaps, addFunction mutates them)."},
+        {"point": "reloadFunctions delegation passes this.functions correctly", "verdict": "trivial", "why": "Restates the diff."},
+        {"point": "closeFunctions(Collection) overload is clean", "verdict": "trivial", "why": "Praise."},
+        {"point": "isEnableClassloading helper is a good refactor", "verdict": "trivial", "why": "Praise."},
+        {"point": "'Must add' archiveMd5Hex field/getter/constructor overload mirroring Connector", "verdict": "trivial", "why": "PR already contains exactly this; prescriptive restatement."},
+        {"point": "'Must replicate' ConnectorUtils.reloadConnectors algorithm", "verdict": "trivial", "why": "Already implemented verbatim in the diff."},
+        {"point": "'Must be a record' matching ReloadConnectorsResult", "verdict": "trivial", "why": "Already true; restatement."},
+        {"point": "writeMinimalNar helper is solid", "verdict": "trivial", "why": "Praise."}
+      ],
+      "missed": [
+        "MD5 helper / reload logic duplication with ConnectorUtils should be extracted to a shared utility (human's point)",
+        "reloadFunctions not synchronized: concurrent reloads double-close and leak the losing thread's archives",
+        "Duplicate function names across NARs leak an open prev FunctionArchive",
+        "Eager full-file MD5 in FunctionArchive constructor adds startup I/O and UncheckedIOException from a constructor"
+      ],
+      "exceeds": [],
+      "net": -4
+    },
+    "v4": {
+      "points": [
+        {"point": "volatile correct; 'no additional synchronization needed'", "verdict": "trivial", "why": "Praise; the no-sync claim glosses over the concurrent-reload race but isn't a fabrication about the code."},
+        {"point": "reloadFunctions delegates and closes only functionsToClose, fixing the old close-all behavior", "verdict": "trivial", "why": "Accurate restatement of the diff."},
+        {"point": "closeFunctions overload refactoring is clean", "verdict": "trivial", "why": "Praise."},
+        {"point": "@UtilityClass: 'if the MD5 helper is non-static, compilation will fail'", "verdict": "wrong", "why": "False: Lombok @UtilityClass automatically makes all members static; nothing fails to compile."},
+        {"point": "Reuse ConnectorUtils.computeArchiveMd5Hex or extract shared MD5 logic instead of duplicating", "verdict": "good", "why": "Verified: FunctionUtils duplicates ConnectorUtils' computeArchiveMd5Hex/calculateMd5Hex line-for-line; matches the human reviewer's only substantive point."},
+        {"point": "archiveMd5Hex should be computed at construction, not lazily", "verdict": "trivial", "why": "PR already does this; restatement (and the 'O(1) reload comparison' rationale is off — reload re-hashes the file every time)."},
+        {"point": "Tests cover the four scenarios; add a concurrent-reload test for lost updates under the volatile swap", "verdict": "good", "why": "Coverage claim is accurate and the concurrent-reload lost-update test is an actionable, real risk (reload is unsynchronized)."}
+      ],
+      "missed": [
+        "reloadFunctions not synchronized: concurrent reloads double-close changed archives and leak the loser's new instances (only hinted via a test suggestion while asserting no sync is needed)",
+        "Duplicate function names across NARs leak an open prev FunctionArchive",
+        "Eager full-file MD5 in FunctionArchive constructor adds startup I/O and UncheckedIOException from a constructor"
+      ],
+      "exceeds": [],
+      "net": -2
+    }
+  },
+  "qualitative": "All three candidates were clearly written from the truncated diff: most of their points are prescriptive 'should/must mirror the connector implementation' statements that merely restate what the PR already contains verbatim, plus praise for the volatile/overload/helper refactors. v4 is the best: it uniquely lands the human reviewer's only substantive point (the MD5 helper duplicated from ConnectorUtils should be shared) and its concurrent-reload-test suggestion brushes a real unsynchronized-reload race, though it also fabricates a Lombok @UtilityClass compilation-failure claim and asserts no extra synchronization is needed. v2 adds one genuinely useful test-gap observation (no 'new NAR added' case) but is otherwise restatement. v3 is the weakest — pure restatement and praise with zero actionable findings. None of the candidates caught the duplicate-function-name archive leak, the eager constructor I/O / UncheckedIOException, or directly flagged the concurrent-reload double-close/leak."
+}

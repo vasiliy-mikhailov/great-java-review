@@ -1,0 +1,119 @@
+{
+  "pr": 7002,
+  "own_review": [
+    {
+      "loc": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:120-142",
+      "issue": "KDoc for the new DurationUnit methods still references [TimeUnit.SECONDS]; TimeUnit is JVM-only and not importable in commonMain, so the doc link cannot resolve on non-JVM targets. Should reference DurationUnit.SECONDS.",
+      "severity": "minor"
+    },
+    {
+      "loc": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt:153-186",
+      "issue": "API doubling: JVM now carries both TimeUnit and DurationUnit overloads of maxAge/maxStale/minFresh with duplicated KDoc. Long-term multiplatform API design concern (this is the maintainer's actual objection); a kotlin.time.Duration-based API or a deprecation plan would avoid permanent duplication.",
+      "severity": "medium/design"
+    },
+    {
+      "loc": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:~167",
+      "issue": "FORCE_CACHE remains commented out in the expect companion even though maxStale(Int, DurationUnit) is now available in common code, so it could be promoted to all platforms (verified: only jvmMain defines FORCE_CACHE).",
+      "severity": "minor"
+    },
+    {
+      "loc": "okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt:64-69",
+      "issue": "commonClampToInt clamps only the upper bound; safe because all callers require(x >= 0) and Duration of non-negative input yields non-negative seconds. Behavior identical to the old private clampToInt; Duration saturation also preserves old TimeUnit.toSeconds overflow semantics. No bug.",
+      "severity": "info"
+    },
+    {
+      "loc": "okhttp/src/commonTest/kotlin/okhttp3/CacheControlTest.kt:50-52",
+      "issue": "Common tests only exercise DurationUnit.SECONDS with tiny values; the new toDuration().inWholeSeconds conversion and clamping path has no common-test coverage with non-second units (JVM-only CacheControlJvmTest covers DAYS/MILLISECONDS via the TimeUnit path).",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {
+          "point": "KDoc still references [TimeUnit.SECONDS], should be DurationUnit.SECONDS",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified; matches my finding."
+        },
+        {
+          "point": "commonClampToInt lower bound: add explanatory comment",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Acknowledges code is correct; comment-only nitpick."
+        },
+        {
+          "point": "Add edge-case tests (clamping, negative, Int.MAX_VALUE)",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Coverage suggestion is legitimate, but sub-claim (c) that Int.MAX_VALUE SECONDS 'overflows Long in toDuration()' is false - Duration handles it via millis representation and saturation; no Long overflow."
+        },
+        {
+          "point": "FORCE_CACHE still commented out in expect; could be uncommented now that maxStale is multiplatform",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: expect companion has it commented, only jvmMain:181-184 defines it."
+        },
+        {
+          "point": "TimeUnit/DurationUnit overload coexistence; consider @Deprecated on TimeUnit variants per existing convention",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified the @JvmName(\"-deprecated_...\") convention exists in the file; substantively engages the method-doubling problem the human reviewer raised."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "KDoc TimeUnit->DurationUnit fix",
+        "FORCE_CACHE promotion opportunity"
+      ],
+      "net": 3
+    },
+    "v5": {
+      "points": [
+        {
+          "point": "KDoc [TimeUnit.SECONDS] unresolvable in commonMain on non-JVM targets; change to DurationUnit.SECONDS",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified; most precise statement of the issue among candidates."
+        },
+        {
+          "point": "Common test only covers DurationUnit.SECONDS; JVM tests cover DAYS/MILLISECONDS but no non-JVM equivalent; add MINUTES/HOURS conversion test",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: CacheControlJvmTest.kt:174,184,204 cover TimeUnit.DAYS and MILLISECONDS; the absence claim is true."
+        },
+        {
+          "point": "commonClampToInt lacks underflow branch; rename or add Int.MIN_VALUE branch",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Self-acknowledged as unreachable; naming nitpick."
+        },
+        {
+          "point": "Verify decompiled bytecode resolves Integer.MAX_VALUE equivalently to Int.MAX_VALUE (they are the same, so this is fine)",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Vacuous self-answering point; noise but not false."
+        },
+        {
+          "point": "KDoc could note value is interpreted in the given DurationUnit before conversion",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Doc polish nitpick."
+        }
+      ],
+      "missed": [
+        "Human's core point: the API doubling problem - JVM is stuck with both TimeUnit and DurationUnit method sets and multiplatform callers face an awkward split; v5 mentions the coexistence only descriptively, never raises it as a concern."
+      ],
+      "exceeds": [
+        "KDoc TimeUnit->DurationUnit fix with multiplatform-resolution reasoning",
+        "Cross-checked JVM vs common test coverage gap"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v4": 0,
+    "v5": 0
+  },
+  "qualitative": "This PR is clean: it un-comments the expect declarations for maxAge/maxStale/minFresh using DurationUnit, shares the conversion logic in common code, and preserves JVM TimeUnit overloads; I found no correctness bugs, so grading hinges on doc/design/test observations. v4 is the stronger review here: it lands three verified substantive points (broken TimeUnit KDoc reference, the FORCE_CACHE promotion opportunity, and the overload-doubling/deprecation question that mirrors the human maintainer's only comment), marred by one false technical sub-claim about Long overflow in toDuration. v5 opens with the two best-articulated points (the KDoc multiplatform-resolution issue and a verified test-coverage gap, with accurate claims about CacheControlJvmTest) but pads the rest with vacuous nitpicks and, unlike v4, never engages the method-doubling design concern that was the human reviewer's entire feedback, costing it a miss. Neither candidate fabricated absences; all checkable claims in both reviews were accurate except v4's overflow remark. Net: v4 = 3, v5 = 1."
+}

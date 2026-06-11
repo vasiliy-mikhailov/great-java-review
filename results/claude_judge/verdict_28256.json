@@ -1,0 +1,68 @@
+{
+  "pr": 28256,
+  "own_review": [
+    {"point": "Behavioral regression: with IS_NOT_DISTINCT_FROM constant inference, equi-join keys bound to constants are eliminated from join conditions; queries like testInnerJoinWithJoinConditionPushDown can no longer be planned as Broadcast/Shuffled-Hash/SortMerge joins and now throw TableException 'Cannot generate a valid execution plan' (new overrides in BroadcastHashJoinTest/ShuffledHashJoinTest/SortMergeJoinTest.scala). Previously-working queries hard-fail for users with table.exec.disabled-operators=NestedLoopJoin, or silently degrade to NestedLoopJoin. PR description does not mention this user-facing impact.", "file": "flink-table/flink-table-planner/src/test/scala/org/apache/flink/table/planner/plan/batch/sql/join/BroadcastHashJoinTest.scala:128", "severity": "critical"},
+    {"point": "Streaming plan regressions visible in JoinTest.xml: join input spec degrades from JoinKeyContainsUniqueKey to NoUniqueKey (larger join state, weaker changelog semantics), and one plan becomes where=[true] with Exchange(distribution=[single]) on both sides, i.e. a parallelism-1 cross join.", "file": "flink-table/flink-table-planner/src/test/resources/org/apache/flink/table/planner/plan/stream/sql/join/JoinTest.xml:430", "severity": "normal"},
+    {"point": "DecimalITCase testJoin1-7: removing TABLE_EXEC_DISABLED_OPERATORS='HashJoin, NestedLoopJoin' silently drops the SortMergeJoin coverage for decimal-key joins that the setting existed to force (it had to be removed because those joins can no longer be planned as SortMergeJoin after constant inference).", "file": "flink-table/flink-table-planner/src/test/scala/org/apache/flink/table/planner/runtime/batch/table/DecimalITCase.scala:181", "severity": "normal"},
+    {"point": "Stale class Javadoc: header still says the class was copied because IS NOT DISTINCT FROM constant inference 'clashes with filter push down', which this PR re-enables; only the CALCITE-6764 backport remains as a modification. Also the updated range 'Line 2489~2494' is off by one (markers at 2489-2493).", "file": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:77", "severity": "normal"},
+    {"point": "Stale comment in DynamicFunctionPlanTestBase.testAggregateReduceConstants2 claims SUBSTR(CAST(LOCALTIME AS VARCHAR),1,2) 'will never be inferred as constant' - the new batch plan now infers exactly that (hh dropped from groupBy, LOCALTIME re-evaluated in a post-aggregate Calc). Re-evaluating a dynamic function in a different operator is only safe because batch evaluates time functions at query start; streaming behavior should be explicitly verified.", "file": "flink-table/flink-table-planner/src/test/java/org/apache/flink/table/planner/plan/common/DynamicFunctionPlanTestBase.java:69", "severity": "normal"},
+    {"point": "No new test exercises an explicit IS NOT DISTINCT FROM predicate; all changes are golden-plan updates for '=' queries (which hit the new path only via RelMdPredicates.eqConstant generating INDF for nullable columns). A direct test of the changed code path, and a regression test demonstrating the original filter-push-down clash is fixed, are missing.", "file": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:401", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Class javadoc explains why RexUtil was copied", "verdict": "trivial", "why": "Restates existing context, no issue raised"},
+        {"point": "Describes the removed FLINK modification at lines 404-406", "verdict": "trivial", "why": "Restates the diff"},
+        {"point": "RelMdPredicates.eqConstant generates IS_NOT_DISTINCT_FROM for nullable columns, so inference was disabled for system-generated predicates", "verdict": "good", "why": "Verified (RelMdPredicates.java:225-233); correctly explains why plain '=' queries are affected"},
+        {"point": "No direct Flink callers of predicateConstants", "verdict": "trivial", "why": "Informational, not actionable"},
+        {"point": "FlinkFilterJoinRule.SUITABLE_FILTER_TO_PUSH excludes IS_NOT_DISTINCT_FROM", "verdict": "trivial", "why": "Verified true (FlinkFilterJoinRule.java:89-100) but used only to support the safety verdict"},
+        {"point": "Verdict: safe low-risk; 'test changes show improved plans', 'no new tests added, existing tests pass'", "verdict": "wrong", "why": "False: three planner tests were overridden to EXPECT TableException (planning failure) and DecimalITCase dropped forced-SortMergeJoin config; new test overrides were added"}
+      ],
+      "missed": [
+        "Central regression: constant inference erases equi-join keys so hash/sort-merge joins fail to plan, NestedLoopJoin fallback (human's main point)",
+        "Stale class Javadoc about why the class was copied",
+        "DecimalITCase loses SortMergeJoin decimal-join coverage",
+        "Stream plans degrade to NoUniqueKey / single-distribution cross join",
+        "Stale 'will never be inferred as constant' comment + LOCALTIME re-evaluation risk",
+        "No explicit IS NOT DISTINCT FROM test added"
+      ],
+      "exceeds": ["RelMdPredicates.eqConstant mechanism (why '=' queries on nullable columns hit the new path)"],
+      "net": -6
+    },
+    "v3": {
+      "points": [
+        {"point": "Class-level Javadoc is now stale, suggests rewording", "verdict": "good", "why": "Verified: first paragraph still claims the INDF/push-down clash motivates the fork"},
+        {"point": "Add inline comment explaining INDF safety vs EQUALS (null literal handled via IS_NULL branch)", "verdict": "good", "why": "Reasoning verified against gatherConstraints (IS_NULL case at RexUtil.java:411); actionable doc suggestion"},
+        {"point": "RelMdPredicates.eqConstant generates INDF for nullable expressions; verify interaction with push-down, add targeted test", "verdict": "good", "why": "Verified (lines 225-233); identifies the actual trigger mechanism"},
+        {"point": "No IS NOT DISTINCT FROM queries in tests; add dedicated INDF constant-inference test", "verdict": "good", "why": "Verified: no new explicit INDF test in PR"},
+        {"point": "DynamicFunctionPlanTest groupBy collapse is significant; verify non-deterministic LOCALTIME handled correctly", "verdict": "good", "why": "Real risk: dynamic function now inferred constant and re-evaluated post-aggregate"},
+        {"point": "testRemoveHashShuffle_HashJoin_FOJ shows FullOuterJoin plan shifting to constant projection", "verdict": "wrong", "why": "Fabricated: the FOJ test case is unchanged; the two changed RemoveShuffleTest cases are _ROJ (RightOuterJoin) at diff hunks 490/1158"},
+        {"point": "FlinkAggregateExpandDistinctAggregatesRule uses INDF in distinct-agg expansion; suggest COUNT(DISTINCT nullable) test", "verdict": "good", "why": "Verified (line 872); plausible interaction surface"}
+      ],
+      "missed": [
+        "Central regression: equi-join keys eliminated, hash/sort-merge join planning now fails (new TableException overrides) with NestedLoopJoin fallback",
+        "Stream plans degrade to NoUniqueKey / single-distribution cross join",
+        "DecimalITCase: removal of disabled-operators config loses SortMergeJoin decimal coverage (v3 commented on the file but misread what changed)"
+      ],
+      "exceeds": ["RelMdPredicates.eqConstant mechanism", "FlinkAggregateExpandDistinctAggregatesRule INDF interaction"],
+      "net": 2
+    },
+    "v4": {
+      "points": [
+        {"point": "Stale class comment; update with CALCITE-5336 resolution and Calcite 1.37.0 minimum version", "verdict": "good", "why": "Verified stale; calcite.version 1.37.0 confirmed at flink-table/pom.xml:82"},
+        {"point": "Header should also reference CALCITE-5336 next to CALCITE-6764", "verdict": "trivial", "why": "Sub-point of the previous doc fix"},
+        {"point": "Change is correct; INDF equivalent to EQUALS for constant inference with non-null literal", "verdict": "trivial", "why": "Praise/analysis restating the change"},
+        {"point": "Add dedicated unit test validating predicateConstants for INDF; existing INDF tests cover joins not inference", "verdict": "good", "why": "Valid gap; cited WindowJoinITCase/MultiJoinTestPrograms verified (IntervalJoinITCase citation not supported, minor)"},
+        {"point": "XML plan changes look semantically correct, e.g. 'removing deterministic expressions from group-by'", "verdict": "wrong", "why": "Mischaracterizes the example: hh is SUBSTR(CAST(LOCALTIME...)), a dynamic/non-deterministic function - that is precisely the risk DynamicFunctionPlanTest exists for; also blesses plans while missing the planning-failure regression"}
+      ],
+      "missed": [
+        "Central regression: equi-join keys eliminated, hash/sort-merge join planning now fails (new TableException overrides) with NestedLoopJoin fallback",
+        "Stream plans degrade to NoUniqueKey / single-distribution cross join",
+        "DecimalITCase loses SortMergeJoin decimal-join coverage"
+      ],
+      "exceeds": [],
+      "net": -2
+    }
+  },
+  "qualitative": "v3 is clearly the best: it found the stale fork Javadoc, the missing explicit IS NOT DISTINCT FROM test, the RelMdPredicates.eqConstant trigger mechanism, and at least asked the right correctness question about LOCALTIME in DynamicFunctionPlanTest, though it fabricated one specific (claiming the unchanged FOJ test case changed). Strikingly, all three candidates missed the single point the human reviewer made and the diff loudly advertises: constant inference now erases equi-join keys, so hash/sort-merge joins can no longer be planned for such queries - three test overrides were added expecting 'Cannot generate a valid execution plan' and DecimalITCase had to drop its forced-SortMergeJoin config. v2 is the worst offender: it declared the PR 'safe, low-risk' and claimed test changes 'show improved plans' and that 'no new tests were added', directly contradicting the regression-acknowledging test changes in the diff. v4 sits in between with solid documentation points but it blessed the plan changes as 'removing deterministic expressions' when the expression in question (LOCALTIME) is dynamic, inverting the actual risk. None of the candidates noticed the streaming-side degradation to NoUniqueKey join specs and single-parallelism exchanges."
+}

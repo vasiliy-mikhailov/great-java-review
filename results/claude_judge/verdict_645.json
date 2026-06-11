@@ -1,0 +1,76 @@
+{
+  "pr": 645,
+  "own_review": [
+    {"point": "Docs claim constructors are checked ('This check reads method & constructor names' in checkstyle-metadata.properties; isForbiddenMethod javadoc says 'method/constructor call') but only TokenTypes.METHOD_CALL is registered — LITERAL_NEW, CTOR_CALL, SUPER_CTOR_CALL and METHOD_REF are never visited; doc/behavior mismatch", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "Argument counting via dot.getNextSibling().getChildCount(TokenTypes.EXPR) undercounts: verified with checkstyle 8.8 AST that a LAMBDA argument is a direct ELIST child (not wrapped in EXPR), so forEach(x -> ...) counts 0 args and foo(1, x->x, ref) counts 2 — forbidden methods taking lambda args are matched against the wrong count", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "critical"},
+    {"point": "IntRange javadoc is stale/wrong: fields are primitive int but comments say 'No lower limit when null' and constructor params documented 'null is equivalent to 0/infinity' — null is impossible for int", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "setArgumentCount mutates state before validation completes: this.argumentCount is assigned first and argumentCountRanges.clear() runs before parsing every token, so an invalid later token (e.g. '2, badStart-badEnd') leaves the check in a partially-updated state; validate fully, then swap", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "IntRange.from declares throws CheckstyleException but a dash-free non-numeric token ('badArgCount') or out-of-int value escapes as raw NumberFormatException from Integer.parseInt — inconsistent error contract (only works because beanutils/reflection wraps any exception into 'Cannot set property')", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "Missing message key forbid.certain.method", "verdict": "wrong", "why": "The diff adds forbid.certain.method to messages.properties (+1 line)"},
+        {"point": "Check registers EXPR instead of METHOD_CALL", "verdict": "wrong", "why": "getRequiredTokens() returns METHOD_CALL; no EXPR/getNextSubTreeNode anywhere in the check"},
+        {"point": "Range parser should validate min<=max", "verdict": "wrong", "why": "IntRange.from already throws 'Lower limit ... larger than the upper limit' and testRangeWithBadBoundsForArgumentCount covers it"},
+        {"point": "Constructor detection via LITERAL_NEW reuses 'method' message", "verdict": "wrong", "why": "There is no LITERAL_NEW handling in the check; fabricated premise"},
+        {"point": "Default ^$/0- forbids nothing, description should clarify", "verdict": "trivial", "why": "metadata.properties already says 'When blank or unspecified, all the methods will be allowed'"},
+        {"point": "Add tests for nested-context method calls", "verdict": "trivial", "why": "Generic test advice premised on the fabricated EXPR claim"},
+        {"point": "Verify null methodName handled gracefully", "verdict": "trivial", "why": "Speculative 'verify' advice; testNullMethodNameRegex already exists"}
+      ],
+      "missed": ["constructor doc/behavior mismatch (as a real point)", "lambda argument undercount in EXPR counting", "stale IntRange null javadoc on primitive ints", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": [],
+      "net": -9
+    },
+    "v2": {
+      "points": [
+        {"point": "BLOCKER Utils.parseIntegerInterval() does not exist", "verdict": "wrong", "why": "The check never calls it; parsing is done by the PR's own IntRange.from"},
+        {"point": "BLOCKER IntegerInterval class does not exist", "verdict": "wrong", "why": "Code uses inner static class IntRange defined in this PR; no IntegerInterval reference"},
+        {"point": "BLOCKER missing forbid.certain.method key", "verdict": "wrong", "why": "Key is added in messages.properties in this diff"},
+        {"point": "Missing Sonar rule entry", "verdict": "wrong", "why": "checkstyle-extensions.xml gains a full <rule> block for the check in this diff"},
+        {"point": "Unused import ArrayList", "verdict": "wrong", "why": "Used: new ArrayList<>(Collections.singletonList(...))"},
+        {"point": "Unused import Matcher", "verdict": "wrong", "why": "Used: final Matcher matcher = RANGE_PATTERN.matcher(range)"},
+        {"point": "Unused import CheckstyleException", "verdict": "wrong", "why": "Thrown/declared by setArgumentCount and IntRange.from"},
+        {"point": "Default 0- contradicts 'only method name used' description", "verdict": "trivial", "why": "0- matches every count, which is exactly 'only name matters'; pedantic wording quibble"},
+        {"point": "Test coverage gap for range parsing edge cases", "verdict": "wrong", "why": "Tests cover single value, bounded, both unbounded forms, multi-range, and malformed inputs"},
+        {"point": "Test regex metacharacter behavior", "verdict": "trivial", "why": "Vague suggestion; regex alternation already exercised"},
+        {"point": "Test qualified calls System.exit/obj.method", "verdict": "trivial", "why": "Input file and tests already cover System.exit, INSTANCE.exit2(), bare method()"},
+        {"point": "Reuse existing arg-counting helpers", "verdict": "trivial", "why": "Vague refactor advice with no concrete defect"}
+      ],
+      "missed": ["constructor doc/behavior mismatch", "lambda argument undercount", "stale IntRange null javadoc", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": [],
+      "net": -13
+    },
+    "v3": {
+      "points": [
+        {"point": "CRITICAL missing message key", "verdict": "wrong", "why": "Key is added in messages.properties in this diff"},
+        {"point": "Pattern compiled eagerly in visitToken", "verdict": "wrong", "why": "Pattern is compiled in setMethodName via CommonUtils.createPattern, matching repo convention"},
+        {"point": "Unused import Utils", "verdict": "wrong", "why": "Utils.reportInvalidToken is called in the switch default branch"},
+        {"point": "Missing Sonar plugin entry", "verdict": "wrong", "why": "The diff adds the <rule> entry to checkstyle-extensions.xml"},
+        {"point": "Missing @Override annotations", "verdict": "wrong", "why": "@Override is present on all four overridden methods"},
+        {"point": "checkArgumentCount parses ints without try-catch; 'abc-xyz' throws NFE at runtime", "verdict": "wrong", "why": "No checkArgumentCount method exists; 'abc-xyz' fails RANGE_PATTERN and yields CheckstyleException at config time (only dash-free non-numerics hit NFE, still config-time)"},
+        {"point": "Missing test for invalid configuration", "verdict": "wrong", "why": "Six testBadRange*/testUnboundedRange tests assert CheckstyleException with messages"},
+        {"point": "Javadoc mentions constructors but only METHOD_CALL registered; clarify or add CTOR_CALL", "verdict": "good", "why": "Verified doc/behavior mismatch (eclipse desc and isForbiddenMethod javadoc vs registered tokens)"}
+      ],
+      "missed": ["lambda argument undercount", "stale IntRange null javadoc", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": [],
+      "net": -10
+    },
+    "v4": {
+      "points": [
+        {"point": "CRITICAL Utils.parseArgumentCount() does not exist", "verdict": "wrong", "why": "The check never calls such a method; parsing is in IntRange.from"},
+        {"point": "Claims constructor support but only METHOD_CALL registered", "verdict": "good", "why": "Verified: 'method & constructor names' in docs vs METHOD_CALL-only token registration"},
+        {"point": "Missing message key forbid.certain.method", "verdict": "wrong", "why": "Key is added in messages.properties in this diff"},
+        {"point": "Setters lack null/empty guards", "verdict": "trivial", "why": "Speculative; null already surfaces as config-time CheckstyleException with a dedicated test, empty is documented behavior"},
+        {"point": "Test getCheckMessage passes one arg vs log's two", "verdict": "wrong", "why": "log passes four args and every test passes four matching the four {n} placeholders"},
+        {"point": "Missing getDefaultTokens()/getAcceptableTokens()", "verdict": "wrong", "why": "Both are defined, delegating to getRequiredTokens()"},
+        {"point": "sevntu-checks.xml methodName=assert(True|False) is a risky default for users", "verdict": "wrong", "why": "sevntu-checks.xml is the repo's self-check config, not a shipped default; the check's real default is ^$"},
+        {"point": "Description formatting defects in metadata.properties (stray '<br/><br/>.' etc.)", "verdict": "good", "why": "Verified: desc contains '</dl><br/><br/>. Argument count' with a dangling period and odd <dl><li> markup"}
+      ],
+      "missed": ["lambda argument undercount", "stale IntRange null javadoc", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": ["metadata.properties description formatting defect (stray period after <br/><br/>, <dl> containing <li>) — real cosmetic issue neither human nor own review listed"],
+      "net": -7
+    }
+  },
+  "qualitative": "The human reviewer approved with no findings, so almost everything here had to be verified directly against the diff — and all four candidates fabricated heavily, apparently reviewing an imagined version of the PR. Three of four (v1, v2/v3 partly) invented the same phantom blocker (missing forbid.certain.method key) even though the diff plainly adds it, and v2/v4 invented nonexistent helper APIs (parseIntegerInterval, parseArgumentCount, IntegerInterval) while v2 also declared three used imports unused and the present Sonar entry missing. v4 is the least bad: it found the one genuine doc/behavior mismatch (constructors claimed but only METHOD_CALL registered) and a real, verifiable description-formatting defect that exceeds both the human and my review, against five fabrications. v3 also caught the constructor mismatch but everything else it said was false; v1 and v2 contributed zero true findings. No candidate found the genuine correctness bug — lambda arguments are not wrapped in EXPR in the checkstyle AST, so getChildCount(TokenTypes.EXPR) undercounts arguments — nor the stale IntRange null-javadoc or the partial-state setter."
+}

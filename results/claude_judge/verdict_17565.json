@@ -1,0 +1,65 @@
+{
+  "pr": 17565,
+  "own_review": [
+    {"point": "bundledSignatures = ['jdk-unsafe'] is unversioned; it resolves from targetCompatibility, which Kafka never sets (it uses options.release = minJavaVersion), so the signature set silently follows whatever JDK runs the build instead of the supported baseline (11). Should pin 'jdk-unsafe-11' or set targetCompatibility; on JDKs unknown to forbidden-apis 3.8 the task degrades/skips.", "file": "build.gradle:801", "severity": "normal"},
+    {"point": "ignoreFailures = true is hardcoded, so the check can never fail; combined with test.dependsOn('forbiddenApisMain') it adds analysis time to every test run with zero enforcement and no follow-up path. Build convention elsewhere is userIgnoreFailures (line 77) or false (spotbugs, line 803).", "file": "build.gradle:800-803", "severity": "normal"},
+    {"point": "forbiddenApisTest is not wired, inconsistent with checkstyleMain+checkstyleTest on the same line; also the plugin auto-attaches its tasks to `check`, making the test.dependsOn wiring partially redundant.", "file": "build.gradle:803", "severity": "normal"},
+    {"point": "Applied to all subprojects unconditionally: it will scan Scala-compiled classes of :core (the build deliberately excludes core from jacoco 'since its a scala project'; scalac emits default-charset/locale calls causing false positives) and generated code (**/generated/** is excluded from spotless/checkstyle/rat but not here).", "file": "build.gradle:796-800", "severity": "normal"},
+    {"point": "Plugin declared in plugins{} without `apply false` (so applied to the root project, which has no java plugin) and then re-applied via `apply plugin:` in subprojects; spotbugs/scoverage/shadow use `apply false` for this pattern.", "file": "build.gradle:46", "severity": "normal"},
+    {"point": "Diff strips the trailing newline at end of build.gradle — gratuitous noise, should be restored.", "file": "build.gradle:3859", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "forbiddenApisMain wiring consistent with spotbugs; Kafka chains to test not check", "verdict": "trivial", "why": "Restates diff and existing conventions, no issue raised"},
+        {"point": ":core sets java.srcDirs=[] so forbiddenApisMain is effectively a no-op for :core", "verdict": "wrong", "why": "forbidden-apis analyzes sourceSet output class files; core's joint-compiled Scala+Java classes land in main output and ARE scanned"},
+        {"point": "forbiddenApisTest not wired; consider whether test code should be scanned", "verdict": "good", "why": "Real inconsistency vs checkstyleMain+checkstyleTest, actionable"},
+        {"point": "ignoreFailures=true needs a follow-up JIRA to remove once violations fixed", "verdict": "good", "why": "Engages the real enforcement gap (matches human's ignoreFailures discussion)"},
+        {"point": "Consider additional bundled signatures (jdk-system-out, jdk-deprecated)", "verdict": "trivial", "why": "Out of scope; PR explicitly limited to jdk-unsafe"},
+        {"point": "Plugin version 3.8 should move to gradle/dependencies.gradle like versions.spotbugs", "verdict": "wrong", "why": "All plugins{} block versions are inline (spotbugs '6.0.25' line 42); versions.spotbugs is the tool version, not the plugin version — no inconsistency exists"},
+        {"point": "Missing trailing newline at EOF", "verdict": "good", "why": "Real, verified in diff"}
+      ],
+      "missed": ["unpinned jdk-unsafe / targetCompatibility never set so signatures follow build JDK", "Scala :core and **/generated/** classes scanned with no exclusion (actively claimed the opposite for core)", "plugins{} declaration without apply false applies to root project"],
+      "exceeds": [],
+      "net": -2
+    },
+    "v2": {
+      "points": [
+        {"point": "forbiddenApisTest omission consistent with spotbugs, no change needed", "verdict": "trivial", "why": "Accurate observation but explicitly raises no issue"},
+        {"point": "ignoreFailures=true discovery pass; file follow-up JIRA to flip to false", "verdict": "good", "why": "Engages enforcement gap, actionable"},
+        {"point": "Wiki-link comment is placed before the checkstyle description block and should be moved next to forbiddenApis{}", "verdict": "wrong", "why": "In the diff the comment already sits immediately above apply plugin/forbiddenApis{}, after the checkstyle configure blocks"},
+        {"point": "Consider failOnMissingClasses=false and a suppression mechanism", "verdict": "good", "why": "Real plugin option (default true) that fails on unloadable classpath classes across modules; concrete hardening"},
+        {"point": "Trailing newline removed at EOF, restore it", "verdict": "good", "why": "Real, verified"},
+        {"point": "Plugin declared without apply false but applied in subprojects; use apply false like spotbugs", "verdict": "good", "why": "Verified: spotbugs/scoverage/shadow use apply false; root project gets plugin needlessly"}
+      ],
+      "missed": ["unpinned jdk-unsafe / targetCompatibility never set so signatures follow build JDK", "Scala :core false positives and **/generated/** classes scanned with no exclusion"],
+      "exceeds": ["failOnMissingClasses hardening — real default-true plugin behavior neither human nor own review raised"],
+      "net": 1
+    },
+    "v3": {
+      "points": [
+        {"point": "Missing newline at EOF", "verdict": "good", "why": "Real, verified"},
+        {"point": "forbiddenApisTest not wired; follow-up to scan tests later since jdk-unsafe is relevant there", "verdict": "good", "why": "Real inconsistency, actionable suggestion"},
+        {"point": "Investigation revealed 4 main-source usages jdk-unsafe may flag (ByteBufferUnmapper sun.misc.Unsafe, LoggingSignalHandler sun.misc.Signal, KerberosError sun.security.krb5, KafkaLog4jAppender System.setProperty)", "verdict": "wrong", "why": "Files exist but all use reflective Class.forName / System.setProperty — none are covered by the jdk-unsafe bundle (default locale/charset/timezone APIs) and reflective string refs are invisible to bytecode signature checks"},
+        {"point": "Applies to :core (Scala) and :connect; class-file based so should work but verify on Scala-compiled classes in CI", "verdict": "good", "why": "Correct mechanics and flags the real Scala-bytecode risk"},
+        {"point": "Add failOnMissingClasses=false explicitly to avoid noisy failures across modules", "verdict": "good", "why": "Real plugin option, concrete hardening"},
+        {"point": "Only jdk-unsafe configured; keep scope but plan for other signatures", "verdict": "trivial", "why": "Explicitly recommends no change; vague follow-up"}
+      ],
+      "missed": ["unpinned jdk-unsafe / targetCompatibility never set so signatures follow build JDK", "plugins{} declaration without apply false applies to root project"],
+      "exceeds": ["failOnMissingClasses hardening — real default-true plugin behavior neither human nor own review raised"],
+      "net": 1
+    },
+    "v4": {
+      "points": [
+        {"point": "Only forbiddenApisMain wired, deviating from checkstyle (both) though matching spotbugs; add clarifying comment", "verdict": "good", "why": "Accurately identifies the main/test inconsistency with a concrete (if small) fix"},
+        {"point": "ignoreFailures=true should become false later; add comment referencing KAFKA-17798", "verdict": "good", "why": "Engages enforcement gap with concrete traceability suggestion"},
+        {"point": "Applying to all subprojects is correct; core's joint-compiled bytecode is properly inspected", "verdict": "trivial", "why": "Factually accurate affirmation (unlike v1) but raises no issue and dismisses the Scala false-positive risk"},
+        {"point": "Trailing newline removed at EOF, restore", "verdict": "good", "why": "Real, verified"}
+      ],
+      "missed": ["unpinned jdk-unsafe / targetCompatibility never set so signatures follow build JDK", "Scala :core false positives and **/generated/** classes scanned with no exclusion", "plugins{} declaration without apply false applies to root project"],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "qualitative": "v2 and v3 tie as best (net +1) but for different reasons: v2 is the most disciplined — it uniquely caught the missing `apply false` on the plugin declaration and the failOnMissingClasses hardening, with only one fabrication (misplacing where the wiki-link comment sits in the diff); v3 dug deepest into the repo and correctly engaged the Scala :core risk, but fabricated its headline 'investigation' claim that four reflective sun.misc/System.setProperty usages would be flagged by jdk-unsafe, which misunderstands both the signature bundle and bytecode-level checking. v1 is weakest (-2): two confident false claims (':core is a no-op' — backwards, the plugin scans compiled classes; and a nonexistent plugin-version-centralization convention). v4 is clean and accurate but shallow — four points, half affirmation, no finding beyond the obvious. Nobody caught the most substantive issue: the unversioned jdk-unsafe signature binds to an unset targetCompatibility, so the check silently varies with the build JDK instead of the JDK 11 baseline; nobody flagged generated-code exclusions either."
+}

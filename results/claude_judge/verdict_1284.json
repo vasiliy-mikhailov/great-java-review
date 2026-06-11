@@ -1,0 +1,90 @@
+{
+  "pr": 1284,
+  "own_review": [
+    {
+      "point": "Ser.readResolve() (Converters.java ~948-988) only switches over ids 0-17; the PR adds FILE_CONVERTER (id 19) and URI_CONVERTER (id 20) as Serializable BuiltInConverters whose writeReplace() emits Ser(id), so deserializing them hits the default branch and throws InvalidObjectException via ConfigMessages.msg.unknownConverterId. PATH_CONVERTER (id 18) has the same pre-existing gap; the PR perpetuates the bug instead of fixing it.",
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "severity": "critical"
+    },
+    {
+      "point": "documentation/src/main/docs/config/getting-started.md lists the built-in converters (including java.nio.file.Path) but is not updated to mention java.io.File and java.net.URI.",
+      "file": "documentation/src/main/docs/config/getting-started.md",
+      "severity": "normal"
+    },
+    {
+      "point": "Trimming inconsistency / behavior change: URI_CONVERTER wraps with newTrimmingConverter (previously the implicit ConstructorConverter would throw IllegalArgumentException-wrapped URISyntaxException for ' http://localhost'), while FILE_CONVERTER does not trim (consistent with PATH_CONVERTER but inconsistent with Boolean/numeric/InetAddress/Pattern converters). Tests lock in this asymmetry; worth an explicit decision on whether File should trim too.",
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {
+          "point": "Ser.readResolve missing cases 18/19/20 causing deserialization failure",
+          "verdict": "critical",
+          "why": "Verified: switch ends at case 17, default throws unknownConverterId; BuiltInConverter is Serializable with writeReplace -> Ser(id)."
+        },
+        {
+          "point": "File converter lacks trimming, inconsistent with most converters; consider trimming",
+          "verdict": "good",
+          "why": "Verified real inconsistency and actionable; aligns with human reviewer's suggestion to follow the trimming pattern."
+        },
+        {
+          "point": "URI converter trims whitespace, 'good choice'",
+          "verdict": "trivial",
+          "why": "Praise/restating the diff, not actionable."
+        }
+      ],
+      "missed": [
+        "Docs (getting-started.md built-in converter list) not updated for File and URI"
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v3": {
+      "points": [
+        {
+          "point": "Ser.readResolve missing cases for ids 18, 19, 20",
+          "verdict": "critical",
+          "why": "Verified blocker, same as v2/v4; correct fix proposed."
+        },
+        {
+          "point": "File/Path skip trimming while URI trims; design is sound and tests validate it",
+          "verdict": "trivial",
+          "why": "Accurate description but explicitly non-actionable endorsement of the diff."
+        },
+        {
+          "point": "Tests are well-structured with good coverage",
+          "verdict": "trivial",
+          "why": "Pure praise."
+        }
+      ],
+      "missed": [
+        "Docs (getting-started.md built-in converter list) not updated for File and URI"
+      ],
+      "exceeds": [],
+      "net": 1
+    },
+    "v4": {
+      "points": [
+        {
+          "point": "Critical: Ser.readResolve missing serialization cases for ids 18/19/20",
+          "verdict": "critical",
+          "why": "Verified blocker; correctly notes id 18 is a pre-existing gap and gives the exact fix."
+        },
+        {
+          "point": "Consider trimming for File converter for consistency",
+          "verdict": "good",
+          "why": "Real, actionable, matches the human reviewer's trimming-pattern suggestion; fairly notes Path also doesn't trim."
+        }
+      ],
+      "missed": [
+        "Docs (getting-started.md built-in converter list) not updated for File and URI"
+      ],
+      "exceeds": [],
+      "net": 2
+    }
+  },
+  "qualitative": "All three versions found the single genuinely critical issue: BuiltInConverter is Serializable via Ser(id), and the Ser.readResolve switch tops out at id 17, so the new File (19) and URI (20) converters — like the pre-existing Path (18) — blow up on deserialization with unknownConverterId. v2 and v4 tie for best: both pair the critical serialization finding with the actionable File-trimming inconsistency that echoes the human reviewer's comment, with v4 being the most concise and v2 padding with one praise point. v3 is weakest — after the serialization finding, its remaining two points are non-actionable endorsements of the diff and the tests. Nobody fabricated anything; all line references and behavior claims check out against the code. The shared miss is the documentation: getting-started.md enumerates the built-in converters (including Path) and should gain File and URI entries."
+}

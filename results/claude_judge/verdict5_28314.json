@@ -1,0 +1,104 @@
+{
+  "pr": 28314,
+  "own_review": [
+    {
+      "point": "New runtime package is misspelled: io.quarkus.opentelemetry.runtime.tracing.intrumentation (missing 's', should be 'instrumentation') across 14 relocated runtime classes ({grpc,vertx,restclient,reactivemessaging} subpackages); inconsistent with the correctly spelled test package deployment.instrumentation introduced in the same PR. Since the whole point of the PR is package naming, this should be fixed now; otherwise it requires a second breaking rename later (the typo in fact shipped).",
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/",
+      "severity": "critical"
+    },
+    {
+      "point": "GrpcOpenTelemetryTest moved to deployment.instrumentation now needs ~20 explicit imports of generated gRPC/proto classes from the parent deployment package; the proto files' java_package option (verified: 'io.quarkus.opentelemetry.deployment' in src/test/proto/hello.proto:4 and streaming.proto:4) should be aligned with the new package layout instead (this is the human reviewer's concrete point).",
+      "file": "extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/instrumentation/GrpcOpenTelemetryTest.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Moving public runtime classes (OpenTelemetryConfig, TracerConfig, TracerRuntimeConfig, TracerProducer, OpenTelemetryClientFilter, vertx/grpc tracers) to new packages is source-breaking for any user code importing them; PR has no breaking-change/migration note. Verified self-contained inside the repo (no other java/yaml/properties references to the old package names outside the renamed files). Also TracerRuntimeConfig.resourceAttributes visibility widened package-private -> public (forced by cross-package access from TracerRecorder.java:119), so not strictly a 'pure refactor'.",
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/config/TracerRuntimeConfig.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Verified non-issues: TracerProcessor is updated in the same PR to static-import QuarkusClassLoader.isClassPresentAtRuntime (both call sites at lines 62/84 updated, no remaining callers of the removed OpenTelemetryProcessor.isClassPresent); all test files referencing helpers moved to deployment.common got import updates (TracerRouterUT only hits the /tracer URL, imports nothing moved); old files are removed via git renames; WithSpanInterceptor was already in tracing/cdi at base.",
+      "file": "extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/tracing/TracerProcessor.java",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {
+          "point": "COMPILATION ERROR: TracerProcessor static-imports deleted isClassPresent (lines 62/84 still call it)",
+          "verdict": "wrong",
+          "why": "Fabricated: the same PR replaces the static import with QuarkusClassLoader.isClassPresentAtRuntime and updates both call sites (diff hunks at TracerProcessor.java:3, :62, :84)."
+        },
+        {
+          "point": "COMPILATION ERROR: ReactiveMessagingTracingDecorator still declares old package; intrumentation package does not exist",
+          "verdict": "wrong",
+          "why": "Fabricated: the PR git-renames the file and updates its package declaration to the new (misspelled) intrumentation.reactivemessaging package."
+        },
+        {
+          "point": "COMPILATION ERROR on restclient import to non-existent intrumentation.restclient package",
+          "verdict": "wrong",
+          "why": "Fabricated: OpenTelemetryClientFilter is renamed into that package in this same PR; no compile error."
+        },
+        {
+          "point": "intrumentation is misspelled (raised inside point 3)",
+          "verdict": "good",
+          "why": "Real typo in the new public package name, present in 14 runtime files and inconsistent with the correctly spelled test package; correctly identified despite the wrong 'missing e' detail (it is a missing 's')."
+        },
+        {
+          "point": "NonAppEndpointsEqualRootPath not matched by Maven Surefire default includes",
+          "verdict": "good",
+          "why": "Verified: class has @Test and QuarkusUnitTest extension but no *Test suffix, so default surefire patterns skip it; legitimate to raise while the PR touches the file."
+        }
+      ],
+      "missed": [
+        "Align gRPC proto java_package with new test package layout (human point; the ~20 generated-class imports in GrpcOpenTelemetryTest)",
+        "Public package moves are source-breaking for user code; no migration/breaking-change note (incl. resourceAttributes visibility widening)"
+      ],
+      "exceeds": [
+        "NonAppEndpointsEqualRootPath naming/surefire finding (verified real; neither human nor own review prioritized it)"
+      ],
+      "net": -3
+    },
+    "v5": {
+      "points": [
+        {
+          "point": "BLOCKER: 'intrumentation' typo across all new instrumentation subpackages (grpc, vertx, reactivemessaging, restclient), 25+ locations",
+          "verdict": "good",
+          "why": "Verified real and correctly framed as a naming bug, not a fabricated compile error; the single most valuable finding (human missed it; typo actually shipped). Scope description accurate; minor slip saying missing 'e' instead of missing 's'."
+        },
+        {
+          "point": "Unnoted visibility change: TracerRuntimeConfig.resourceAttributes made public",
+          "verdict": "good",
+          "why": "Verified: field was package-private at base, public after the move; required because TracerRecorder.java:119 now accesses it cross-package. The stated 'SmallRye Config reflection' rationale is slightly off, but the finding and the ask (confirm deliberate) are sound."
+        },
+        {
+          "point": "Package naming diverges from claimed Micrometer alignment (Micrometer uses 'binder', not 'instrumentation')",
+          "verdict": "good",
+          "why": "Verified: micrometer runtime has binder.{grpc,vertx,kafka,...}; matches the human reviewer's own 'binder vs intrumenter was a general comment' remark, i.e., the real review raised exactly this."
+        },
+        {
+          "point": "isClassPresent helper removed; TracerProcessor uses isClassPresentAtRuntime directly — clean simplification",
+          "verdict": "trivial",
+          "why": "Accurate observation (and the inverse of v4's fabrication), but purely informational praise with no action."
+        },
+        {
+          "point": "WithSpanInterceptor 'remains in the base tracing package' while TracerProducer moved to tracing/cdi — inconsistency",
+          "verdict": "wrong",
+          "why": "False: WithSpanInterceptor was already in io.quarkus.opentelemetry.runtime.tracing.cdi at the base commit (only its static import changed in this PR); the claimed inconsistency does not exist and the point contradicts itself."
+        }
+      ],
+      "missed": [
+        "Align gRPC proto java_package with new test package layout (human's concrete point; the ~20 generated-class imports in GrpcOpenTelemetryTest)",
+        "Public package moves are source-breaking for user code; no migration/breaking-change note"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v4": 3,
+    "v5": 1
+  },
+  "qualitative": "v5, judging the full diff, avoids all three of v4's fabricated 'COMPILATION ERROR' claims and leads with the one finding that matters most: the misspelled 'intrumentation' package, correctly framed as a pervasive naming bug rather than a compile break. It adds two more verified, useful points (the resourceAttributes visibility widening and the binder-vs-instrumentation divergence from Micrometer — the latter mirroring the human reviewer's actual comment), but it still invents one false inconsistency, claiming WithSpanInterceptor remains in the base tracing package when it was already in tracing/cdi at base. v4 is dominated by three confident absence-fabrications inherited from the truncated diff, redeemed only by the embedded typo catch and a genuinely good surefire/naming find on NonAppEndpointsEqualRootPath that v5 (and the human) lack. Both versions miss the human's concrete ask to align the gRPC proto java_package with the new test layout and neither notes the user-facing source-breaking nature of moving public runtime classes. Net, v5 is a clear step up: more verified substance, one fabrication instead of three."
+}

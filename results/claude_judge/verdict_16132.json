@@ -1,0 +1,80 @@
+{
+  "pr": 16132,
+  "own_review": [
+    {
+      "point": "verifyRemoteLogTopicConfigs uses topicConfig.contains(REMOTE_LOG_DISABLE_POLICY_CONFIG); java.util.Properties.contains() checks VALUES, not keys (all surrounding checks use containsKey). The new verification branch therefore never executes and the integration test silently verifies nothing about the policy.",
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala:392",
+      "severity": "critical"
+    },
+    {
+      "point": "The new config is defined, documented publicly and exposed via remoteLogDisablePolicy(), but nothing in main code reads it (only toString and the getter). A user-visible topic config with zero behavior ships in generated docs; worth flagging the rollout plan (mark internal / land with the enforcement logic).",
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:511",
+      "severity": "normal"
+    },
+    {
+      "point": "Test name testCreateRemoteTopicWithDisablePolicyRetain is misleading: the CsvSource covers both retain and delete.",
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala:160",
+      "severity": "normal"
+    },
+    {
+      "point": "No validation ties the policy to remote storage: validateTopicLogConfigValues only validates remote configs when remote.log.storage.enable=true, so remote.log.disable.policy is silently accepted on non-tiered topics and on clusters with tiered storage system-disabled; unlike the sibling remote configs the .define() default (retain) is also inlined rather than a DEFAULT_* constant.",
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:604-614",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "CRITICAL: config never .define()d in CONFIG block, getString will throw", "verdict": "wrong", "why": "False — merged commit defines it with in(retain,delete) validator at LogConfig.java:327-329; claimed missing only because diff truncated"},
+        {"point": "CRITICAL: no DEFAULT_REMOTE_LOG_DISABLE_POLICY constant, no default decided", "verdict": "wrong", "why": "Default 'retain' is supplied inline in .define(); no runtime bug, framing as critical is false"},
+        {"point": "Missing remoteLogDisablePolicy() accessor that the test calls", "verdict": "good", "why": "Matches the human reviewer's actual comment on the PR (getter was added in response); coherent vs visible diff"},
+        {"point": "remoteLogDisablePolicy missing from RemoteLogConfig.toString()", "verdict": "wrong", "why": "toString() was updated in the commit (LogConfig.java:131); asserted missing without verification"},
+        {"point": "Missing from CONFIGS_WITH_NO_SERVER_DEFAULTS", "verdict": "wrong", "why": "Commit adds it to the set (LogConfig.java:206); asserted current set lacks it"},
+        {"point": "LogConfigTest invalid values 'true'/'0' not domain-relevant", "verdict": "trivial", "why": "Values still exercise the in() validator correctly; pure style nit"}
+      ],
+      "missed": [
+        "Properties.contains vs containsKey bug makes the new verification in RemoteTopicCrudTest a no-op",
+        "Config is publicly documented but completely unused by any broker logic",
+        "Misleading test name testCreateRemoteTopicWithDisablePolicyRetain covers both policies"
+      ],
+      "exceeds": [],
+      "net": -6
+    },
+    "v3": {
+      "points": [
+        {"point": "CONFIGS_WITH_NO_SERVER_DEFAULTS must include new config — 'diff truncated, please verify'", "verdict": "trivial", "why": "Hedged checklist item; the commit already does it, no issue found"},
+        {"point": "RemoteLogConfig.toString() not updated — 'please verify'", "verdict": "trivial", "why": "It was updated in the commit; hedged so not counted wrong, but no real finding"},
+        {"point": ".define() with in() validator required — cannot verify due to truncation", "verdict": "trivial", "why": "Present in the commit exactly as described; restates a requirement, finds nothing"},
+        {"point": "DEFAULT_REMOTE_LOG_DISABLE_POLICY constant 'required'", "verdict": "trivial", "why": "Not required — default is inlined in .define(); at best a tiny consistency nit"},
+        {"point": "Misleading test name testCreateRemoteTopicWithDisablePolicyRetain tests both policies", "verdict": "good", "why": "Verified real; matches my finding, concrete rename suggested"},
+        {"point": "'not_a_number' copy-pasted into STRING config invalid-value test", "verdict": "trivial", "why": "Test still valid for an in() validator; cosmetic"}
+      ],
+      "missed": [
+        "Human point: add remoteLogDisablePolicy() accessor (the one actual reviewer comment)",
+        "Properties.contains vs containsKey bug makes the new verification in RemoteTopicCrudTest a no-op",
+        "Config is publicly documented but completely unused by any broker logic"
+      ],
+      "exceeds": [],
+      "net": -2
+    },
+    "v4": {
+      "points": [
+        {"point": "CRITICAL: missing .define() — 'must be added'", "verdict": "wrong", "why": "Present in the commit (LogConfig.java:327-329); despite a truncation aside, asserts a blocker that does not exist"},
+        {"point": "Must be added to CONFIGS_WITH_NO_SERVER_DEFAULTS or LogConfigTest fails", "verdict": "wrong", "why": "Commit adds it (LogConfig.java:206); asserted missing; the test-failure mechanism cited is accurate but premise false"},
+        {"point": "Missing DEFAULT_REMOTE_LOG_DISABLE_POLICY constant", "verdict": "trivial", "why": "True that no constant exists, but default is inlined in .define(); consistency nit only"},
+        {"point": "toString() not updated (hedged 'may be in truncated portion')", "verdict": "trivial", "why": "It was updated; hedged, no finding"},
+        {"point": "Missing remoteLogDisablePolicy() public accessor that the test calls", "verdict": "good", "why": "Matches the human reviewer's actual PR comment; hedged as 'not visible in diff'"},
+        {"point": "Doc/applicability: remote storage cannot currently be disabled once enabled, so this config has no effect in this release; doc should say so", "verdict": "good", "why": "Verified — TopicConfig.java:84 doc says 'You can not disable this config once it is enabled'; captures the dead-config concern"}
+      ],
+      "missed": [
+        "Properties.contains vs containsKey bug makes the new verification in RemoteTopicCrudTest a no-op",
+        "Misleading test name testCreateRemoteTopicWithDisablePolicyRetain covers both policies"
+      ],
+      "exceeds": [
+        "Grounded the no-effect concern in the existing REMOTE_LOG_STORAGE_ENABLE doc ('cannot disable once enabled'), which neither human nor my review cited explicitly"
+      ],
+      "net": -2
+    }
+  },
+  "qualitative": "All three candidates were dominated by the truncation trap: the cut-off LogConfig.java diff actually contains the .define() with in() validator, the CONFIGS_WITH_NO_SERVER_DEFAULTS entry, the toString() update and the accessor, yet v2 asserted five 'critical bugs' about them flatly (4 wrong), v4 asserted two as blockers, and v3 hedged everything with 'please verify' which avoided fabrication but produced near-zero substance. v4 is the best: it kept hedges on most unverifiable items, matched the human reviewer's one real comment (missing accessor), and uniquely grounded the most important conceptual issue — that remote storage disablement is not yet possible so the new config is inert in this release — in the actual REMOTE_LOG_STORAGE_ENABLE doc text. v3 is competent but shallow, contributing only the misleading-test-name nit. Nobody caught the one genuine code bug in the visible part of the diff: RemoteTopicCrudTest uses Properties.contains (a value lookup) instead of containsKey, so the new policy verification never executes."
+}

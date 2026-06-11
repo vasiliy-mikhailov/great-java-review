@@ -1,0 +1,41 @@
+{
+  "pr": 727,
+  "own_review": [
+    {"file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java", "line": 111, "issue": "Unguarded shell.getData() in the new condition `shell.getData().getClass().getName().startsWith(WIZARD_CLASSNAME_TEMPLATE)` inside the global SWT.Paint display filter. The filter fires for every paint event of every shell in the workbench; shells not created via JFace Window (tooltips, progress popups, native shells) have null data, so this throws NPE inside the UI event loop, which can destabilize the test run. Needs a null guard.", "severity": "blocker"},
+    {"file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java", "line": 54, "issue": "WIZARD_CLASSNAME_TEMPLATE = \"org.eclipse.ltk.internal.ui.refactoring.Refactoring\" depends on Eclipse LTK internal package/class naming (non-API); the prefix match can silently stop matching after an Eclipse release, making the filter never fire and the test fail obscurely. Also the constant name says TEMPLATE but it is used as a class-name prefix.", "severity": "medium"},
+    {"file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java", "line": 112, "issue": "getButtons(c) is computed eagerly (full widget-tree walk, allocates a HashSet) on every qualifying paint event, before the shell-title check; the old hasButton short-circuited and only ran inside a matched title branch. Negligible in practice for a test, but this runs in a hot paint filter.", "severity": "low"},
+    {"file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java", "line": 88, "issue": "Fixed sleep bumped 2000ms -> 5000ms as a flakiness band-aid; adds 3s wall-clock to every run and is the longest sleep in the suite (TestAngular uses 4000ms). A readiness poll would be more robust.", "severity": "low"},
+    {"file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java", "line": 164, "issue": "`static private` modifier order is unconventional (private static); applies to getButtons, pressOk, pressCancel.", "severity": "trivial"},
+    {"file": "pom.xml", "line": 169, "issue": "download-maven-plugin 1.6.1 -> 1.6.7 bump is unrelated to the test fix in the PR title; should be mentioned in the description or split out.", "severity": "low"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "TestJsTs.java:110 NPE on unguarded shell.getData() in global SWT.Paint filter, with correct mechanism (filter fires for all painted composites, many shells have no data) and correct fix", "grade": "critical", "score": 2},
+        {"point": "TestJsTs.java:54 fragile dependency on Eclipse internal LTK class name; suggests keeping shell-text as primary filter", "grade": "good", "score": 1},
+        {"point": "TestJsTs.java:89 sleep 2000->5000 unexplained, test slower, suggests readiness check", "grade": "good", "score": 1},
+        {"point": "TestJsTs.java:163-175 getButtons collects all buttons vs short-circuit hasButton; efficiency note, functionally correct", "grade": "trivial", "score": 0},
+        {"point": "TestJsTs.java static helpers 'unnecessary, adds no value' - static for stateless private helpers is a defensible/standard style; opinionated nit, not a defect", "grade": "trivial", "score": 0},
+        {"point": "pom.xml:169 unrelated plugin version bump should be split out", "grade": "good", "score": 1}
+      ],
+      "missed": [],
+      "exceeds": ["NPE blocker at shell.getData() (not in human reference)", "internal-API fragility of WIZARD_CLASSNAME_TEMPLATE"],
+      "net": 5
+    },
+    "v5": {
+      "points": [
+        {"point": "TestJsTs.java:111 NPE on unguarded shell.getData() in SWT.Paint filter; exact line, correct mechanism and fix", "grade": "critical", "score": 2},
+        {"point": "TestJsTs.java:88 sleep 2000->5000 now longest in suite, cross-referenced TestAngular's 4000ms (verified true: TestAngular.java:54,76)", "grade": "good", "score": 1},
+        {"point": "TestJsTs.java:54 internal LTK API dependency, balanced assessment, suggests fragility comment", "grade": "good", "score": 1},
+        {"point": "pom.xml:169 unrelated download-maven-plugin bump, suggests split or description update", "grade": "good", "score": 1},
+        {"point": "TestJsTs.java:164 'static private' vs 'private static' ordering nit", "grade": "trivial", "score": 0}
+      ],
+      "missed": [],
+      "exceeds": ["NPE blocker at shell.getData() (not in human reference)", "verified cross-file sleep comparison against TestAngular", "internal-API fragility"],
+      "net": 5
+    }
+  },
+  "absence_fabrications": {"v4": 0, "v5": 0},
+  "notes": "The single human reference point targets org.eclipse.wildwebdeveloper/META-INF/MANIFEST.MF (lsp4e 0.13.8 bump), which is NOT present in the final 2-file diff given to candidates (base manifest has 0.13.6; the change was evidently dropped before merge). It is therefore inapplicable and not counted as 'missed' for either candidate; counting it would subtract 1 from both nets equally.",
+  "qualitative": "Both candidates found the one real blocker - the unguarded shell.getData() NPE inside the global SWT.Paint filter - with the correct mechanism and fix; v5 cited the exact line (111) while v4 was one line off. Every factual claim in both reviews verified against the repo, including v5's cross-file check that TestAngular's 4000ms is the next-longest sleep, and v4's claim that the static helpers have no external callers; zero absence-fabrications on either side. v4 is broader (6 points) but pads with a weak opinion against static private helpers, while v5 is tighter, with precise line numbers and evidence-backed comparisons. The human reference's only comment concerns a MANIFEST.MF change absent from the final diff, so both candidates substantially exceed the reference. Net result is a tie at +5, with v5 slightly preferable on precision and signal-to-noise."
+}

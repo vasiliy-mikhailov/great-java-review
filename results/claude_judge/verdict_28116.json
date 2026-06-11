@@ -1,0 +1,69 @@
+{
+  "pr": 28116,
+  "own_review": [
+    {
+      "point": "Speculative/dormant API: the new 8-arg overload has zero production callers using non-default flags. The sole caller (ShowCreateMaterializedTableOperation.java:62) uses the 6-arg path, and no config option or SQL surface is wired to reach includeFreshness/includeRefreshMode=false, so the feature is unreachable in-tree despite the PR's stated 'deployments' use case.",
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Round-trip fidelity: suppressing FRESHNESS/REFRESH_MODE makes SHOW CREATE output lossy. The grammar allows omitting both clauses (parserImpls.ftl, bracketed optionals) and AbstractCreateMaterializedTableConverter falls back to session defaults (materialized-table.default-freshness.*) / derived refresh mode, so re-executing the rendered DDL can create a table with different freshness/refresh semantics than the original. This behavioral caveat should be documented on the new overload.",
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "severity": "normal"
+    },
+    {
+      "point": "The new overload's Javadoc is a copy-paste of the 6-arg one ('Show create materialized table statement only for materialized tables.') with no @param documentation explaining what includeFreshness/includeRefreshMode do or when to use them.",
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "severity": "normal"
+    },
+    {
+      "point": "API ergonomics: the 8-arg signature now carries four positional booleans (isTemporary, createOrAlter, includeFreshness, includeRefreshMode); call sites like '... false, false, ..., true, true' are error-prone. An options/enum-set parameter would be safer.",
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "severity": "normal"
+    },
+    {
+      "point": "PR description inaccuracy: claims the change 'is already covered by existing tests' while the new flag behavior is only covered by the newly added test; the description is also truncated mid-sentence in the API-impact section.",
+      "file": "PR description",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "8-arg overload has no Javadoc", "verdict": "wrong", "why": "Diff explicitly adds '/** Show create materialized table statement only for materialized tables. */' above the 8-arg method; the real gap is missing @param docs, not absent Javadoc"},
+        {"point": "Conditionals correctly avoid trailing blank lines", "verdict": "trivial", "why": "Accurate but pure praise/restating of the diff"},
+        {"point": "New parameterized test covers all 4 combos, good design", "verdict": "trivial", "why": "Praise"},
+        {"point": "Existing 6-arg tests exercise backward compatibility", "verdict": "trivial", "why": "Restates PR description"},
+        {"point": "Sole production caller uses 6-arg overload; no config knob wires the flags; feature dormant until adopted", "verdict": "good", "why": "Verified: ShowCreateMaterializedTableOperation.java:62 is the only caller; matches my dormant-API finding (cited path has a stray '-uber' but the point is real)"},
+        {"point": "Flag pattern has no precedent among other buildShowCreate*Row methods", "verdict": "trivial", "why": "Accurate (all five other builders have single signatures) but explicitly non-actionable ('this is fine')"}
+      ],
+      "missed": ["Round-trip fidelity: omitted FRESHNESS/REFRESH_MODE means re-running the output applies session defaults and reproduces a different table"],
+      "exceeds": [],
+      "net": -1
+    },
+    "v3": {
+      "points": [
+        {"point": "New 8-arg overload is missing Javadoc", "verdict": "wrong", "why": "False premise: the diff adds the copied one-line Javadoc above the 8-arg method; only @param docs are missing"},
+        {"point": "No corresponding flag for START_MODE; asymmetry vs the stated platform-suppression use case", "verdict": "good", "why": "Verified: extractStartMode is emitted unconditionally at line 177; legitimate design gap given the PR rationale"},
+        {"point": "Both-false output goes straight from START_MODE to AS, valid SQL, no empty lines", "verdict": "trivial", "why": "Accurate observation/praise"},
+        {"point": "CsvSource test comprehensively covers all flag combinations", "verdict": "trivial", "why": "Praise"}
+      ],
+      "missed": ["Dormant/unreachable API: no production caller or config passes non-default flags", "Round-trip fidelity: suppressed clauses make the rendered DDL non-faithful (defaults applied on re-execution)"],
+      "exceeds": ["START_MODE asymmetry point (verified; neither human nor my review raised it)"],
+      "net": -2
+    },
+    "v4": {
+      "points": [
+        {"point": "Lacks Javadoc/@param for the two new boolean parameters", "verdict": "good", "why": "Accurate and actionable; the copied Javadoc documents neither flag"},
+        {"point": "8-arg overload is package-private, should be public", "verdict": "wrong", "why": "Fabricated: the diff declares it 'public static String buildShowCreateMaterializedTableRow(...)'"},
+        {"point": "Both flags false leaves an extra blank line between START_MODE and AS", "verdict": "wrong", "why": "False: extractStartMode appends one trailing \\n and 'AS ' follows immediately; the PR's own false/false test (which v4 praises) asserts no blank line"},
+        {"point": "Good use of CsvSource for four combinations", "verdict": "trivial", "why": "Praise"},
+        {"point": "Conditional emission pattern clean, no issues", "verdict": "trivial", "why": "Praise"}
+      ],
+      "missed": ["Dormant/unreachable API: no production caller or config passes non-default flags (mentioned descriptively in summary but never raised as an issue)", "Round-trip fidelity: suppressed clauses make the rendered DDL non-faithful (defaults applied on re-execution)"],
+      "exceeds": [],
+      "net": -3
+    }
+  },
+  "qualitative": "v2 is the best of a weak field: it is the only candidate to flag the real substantive issue that the new flags are unreachable (sole caller ShowCreateMaterializedTableOperation uses the 6-arg path and nothing wires the feature), and it makes no behavioral fabrications, though it pads heavily with praise and falsely claims the 8-arg overload lacks Javadoc. v3 contributes the one genuinely novel verified point (START_MODE has no suppression flag despite the same platform-fixed rationale) but repeats the false 'missing Javadoc' premise and misses the dormant-API issue entirely. v4 is the weakest: two outright fabrications contradicted by the diff itself (claims the 8-arg overload is package-private when it is declared public, and predicts a blank line between START_MODE and AS that the very test it praises disproves). All three missed the round-trip fidelity concern: with FRESHNESS/REFRESH_MODE suppressed, re-executing the SHOW CREATE output silently applies materialized-table.default-freshness.* defaults and can reproduce a semantically different table. The human reference's only ask (a ShowCreateUtilTest test) is already satisfied by the diff, so it generated no misses."
+}

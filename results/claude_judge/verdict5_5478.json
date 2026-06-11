@@ -1,0 +1,69 @@
+{
+  "pr": 5478,
+  "own_review": [
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java", "line": "fail() (~94-110 of new file)", "issue": "Missing CAS-retry loop: fail() does a single entries.get + entries.remove(address, tail). If a concurrent selectFor CAS-replaces the entry (new waiter chained) between the get and the remove, the remove fails and the method silently returns. No waiter is ever failed, and since the in-flight resolution is finished, the stale WaiterEntry remains in the map permanently — every future select on that address chains onto it and hangs forever. succeed() and selectFor() both retry in while(true) loops; fail() uniquely does not.", "severity": "critical"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java", "line": "registrationsUpdated() (~207-214 of new file)", "issue": "Reachable UnsupportedOperationException(\"Is this case valid ?\") when a registration update arrives while resolution is in flight (entry instanceof WaiterEntry). wantsUpdatesFor() returns entries.containsKey(address), which is true while a WaiterEntry is pending, so cluster managers WILL deliver updates in this window; the transient WaiterEntry.NOOP placed during broadcast hits the same path. The exception propagates into the cluster-manager notification thread and the update is dropped. Test testRegistrationUpdateBeforeGetResolution codifies the exception instead of fixing it.", "severity": "critical"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java", "line": "class-level", "issue": "registrationsLost() is no longer overridden. The old DefaultNodeSelector implemented it (Selectors.dataLost(): clears cached selectors, completes pending promises). The new impl inherits the no-op default from RegistrationListener, so after cluster data loss the cached SelectorEntry keeps routing to potentially dead nodes indefinitely.", "severity": "high"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java", "line": "~219-240", "issue": "Thread-model change: completion callbacks (sendToNode/sendToNodes) previously ran on the caller context via ctx.promise()/Serializer; now they run on whatever thread completes resolution (e.g. the cluster-manager thread), relying on downstream connection-holder thread safety.", "severity": "medium"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/Serializer.java", "line": "deleted", "issue": "Lost close-hook semantics: the old Serializer failed pending tasks with 'Context is closing' on deployment close; the new design has no cancellation, so pending waiters survive context/verticle close.", "severity": "medium"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java", "line": "fail()", "issue": "fail() broadcasts failures in reverse-arrival (LIFO) order via tail.prev, inconsistent with succeed()/broadcastToWaiters which restores FIFO arrival order — at odds with the PR's stated ordering goal.", "severity": "low"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java", "line": "succeed()/registrationsUpdated()", "issue": "Leftover development artifacts as production exception messages: 'Does this case make sense' and 'Is this case valid ?'.", "severity": "low"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java", "line": "javadoc of selectForSend/selectForPublish", "issue": "Stale javadoc still references Promise#tryComplete/Promise#tryFail although the parameter is now Completable, whose succeed()/fail() are documented to throw IllegalStateException when already completed.", "severity": "low"},
+    {"file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java", "line": "init()", "issue": "Breaking SPI change: NodeSelector moved from io.vertx.core.spi.cluster.impl into the internal eventbus.impl.clustered package (exported only to tests in module-info) and init(Vertx, ClusterManager) became init(ClusteredNode), dropping access to the Vertx instance — breaks external custom node selectors and cluster-manager integrations (e.g. vertx-hazelcast).", "severity": "medium"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "Breaking API change: Completable instead of Promise breaks custom NodeSelector implementations", "grade": "good", "score": 1, "note": "Real and relevant SPI break, accurately described."},
+        {"point": "Missing backward-compat adapter; VertxBootstrapImpl.clusterNodeSelector() still accepts old Promise-based NodeSelector; users get runtime failures", "grade": "wrong", "score": -1, "note": "False: VertxBootstrapImpl is updated in this very diff to import/use the new NodeSelector; there is no old/new split needing an adapter."},
+        {"point": "Thread safety: 'the diff doesn't show the Entry class implementation — verify synchronization'", "grade": "wrong", "score": -1, "note": "The full diff contains the complete Entry/WaiterEntry/SelectorEntry implementation. Claiming it is absent is an absence-fabrication; the point is a hedged non-finding."},
+        {"point": "ClusteredNode vs ClusterManager ambiguity: 'verify ClusteredNode extends ClusterManager'; 'VertxImpl.initClustered() passes this (VertxImpl) as the ClusteredNode'", "grade": "wrong", "score": -1, "note": "Inheritance is stated backwards (ClusterManager extends ClusteredNode, visible in diff), and initClustered passes clusterManager, not VertxImpl — fabricated detail."},
+        {"point": "Removed Serializer ordering guarantee — verify edge cases, potential memory leak if CM response never arrives", "grade": "trivial", "score": 0, "note": "Hedged checklist speculation; gestures near real risks but identifies no concrete mechanism."},
+        {"point": "Removed import may affect tests; ensure test files are updated", "grade": "wrong", "score": -1, "note": "All referenced tests are updated within this PR; claims the updates are absent."},
+        {"point": "New selector package duplicates existing io.vertx.core.spi.cluster.impl.selector implementations", "grade": "wrong", "score": -1, "note": "Fabricated: the files are git renames/moves; the old package is deleted in the diff, no duplication exists."},
+        {"point": "Module exports: new selector package may need explicit export; verify test compilation", "grade": "wrong", "score": -1, "note": "The diff explicitly replaces the export with 'exports io.vertx.core.eventbus.impl.clustered.selector to io.vertx.core.tests' — concern is contradicted by the diff."}
+      ],
+      "missed": [
+        "fail() missing CAS-retry loop -> permanent waiter hang (critical)",
+        "reachable UnsupportedOperationException in registrationsUpdated() during in-flight resolution (critical)",
+        "registrationsLost() no longer overridden -> stale selectors after cluster data loss",
+        "completion callbacks moved off the caller context onto the cluster-manager thread",
+        "lost Serializer close-hook cancellation ('Context is closing')"
+      ],
+      "exceeds": [
+        "Breaking Completable/Promise SPI change (beyond the human reference, which only discussed test adequacy)"
+      ],
+      "net": -10
+    },
+    "v5": {
+      "points": [
+        {"point": "broadcastToWaiters collects the NOOP sentinel and calls NOOP.complete — harmless but wasteful; suggest early traversal stop", "grade": "trivial", "score": 0, "note": "Verified correct reading of the code, but self-described harmless; no functional impact."},
+        {"point": "TOCTOU in succeed(): concurrent registrationsUpdated could install a SelectorEntry and trigger the UnsupportedOperationException", "grade": "wrong", "score": -1, "note": "Mechanism is false: registrationsUpdated cannot install a SelectorEntry while a WaiterEntry is present — it throws on WaiterEntry and only replaces existing SelectorEntries; only succeed() itself installs SelectorEntry for a pending chain, so the UOE in succeed() is unreachable via this race. Adjacent to a real problem but the claimed scenario is fabricated."},
+        {"point": "fail() broadcasts failures in reverse-arrival order, inconsistent with succeed()'s FIFO broadcast", "grade": "good", "score": 1, "note": "Verified: tail.prev walk is LIFO; directly relevant to the PR's ordering guarantee."},
+        {"point": "init(Vertx, ClusterManager) -> init(ClusteredNode) is a breaking SPI change; implementations lose Vertx access", "grade": "good", "score": 1, "note": "Verified real and well-articulated."},
+        {"point": "Javadoc still references Promise#tryComplete/tryFail; Completable.succeed()/fail() throw IllegalStateException when already completed — behavioral change", "grade": "good", "score": 1, "note": "Verified: javadoc in diff still cites tryComplete/tryFail; Completable javadoc in repo documents the IllegalStateException semantics."},
+        {"point": "FakeClusterManager setter named like a getter (getRegistrationsLatency(long))", "grade": "trivial", "score": 0, "note": "Real but cosmetic, in test code."},
+        {"point": "registrationsUpdated throws UnsupportedOperationException while entry is still a WaiterEntry — updates arriving before getRegistrations resolves are dropped; reconsider strategy", "grade": "critical", "score": 2, "note": "This is one of the two real concurrency bugs: the UOE path is reachable in production because wantsUpdatesFor() returns true for in-flight addresses. v5 identifies the trigger window and the dropped-update consequence, though it frames it softly as 'by design'."},
+        {"point": "Moving getNodeId/getNodes/getNodeInfo/getRegistrations to ClusteredNode impacts external cluster managers (vertx-hazelcast); coordinate release", "grade": "trivial", "score": 0, "note": "Accurate but a coordination remark largely overlapping the SPI-break point."}
+      ],
+      "missed": [
+        "fail() missing CAS-retry loop -> permanent waiter hang (critical; v5 reviewed fail() for ordering but missed the single-shot CAS giving up)",
+        "registrationsLost() no longer overridden -> stale selectors after cluster data loss",
+        "completion callbacks moved off the caller context onto the cluster-manager thread",
+        "lost Serializer close-hook cancellation ('Context is closing')"
+      ],
+      "exceeds": [
+        "Reachable UOE in registrationsUpdated during in-flight resolution (real bug, matches prior analysis)",
+        "fail() reverse-order failure broadcast",
+        "Stale Promise#tryComplete javadoc plus Completable throwing semantics",
+        "NOOP sentinel traversal insight showing genuine understanding of the lock-free design"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v4": 4,
+    "v5": 0
+  },
+  "qualitative": "v4 reads like a review of a diff it never saw: five of its eight points rest on false premises about what the PR does or does not contain (claims the Entry classes are not shown, tests not updated, old selector package still present and duplicated, module export missing, bootstrap not migrated), plus a fabricated detail about VertxImpl passing itself as ClusteredNode — only the Completable SPI-break point survives verification. v5 demonstrates genuine comprehension of the lock-free waiter-chain design (NOOP sentinel traversal, FIFO vs LIFO broadcast, Completable throwing semantics) and finds one of the two real concurrency bugs — the reachable UnsupportedOperationException in registrationsUpdated during in-flight resolution — though it under-sells it as 'by design' and its other concurrency claim (SelectorEntry appearing concurrently in succeed) describes an unreachable race. Both candidates miss the worst bug, the missing CAS-retry in fail() that permanently hangs an address, and both miss the registrationsLost() regression. The human reference contained only a discussion of test adequacy, so both candidates exceed it on substance, but v5 is the only one whose findings are predominantly real."
+}

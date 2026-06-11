@@ -1,0 +1,65 @@
+{
+  "pr": 7002,
+  "own_review": [
+    {"point": "Stale KDoc: commonMain Builder docs for maxAge/maxStale/minFresh still reference [TimeUnit.SECONDS], which does not exist/resolve in common code (broken Dokka links on non-JVM); should be DurationUnit.SECONDS", "file": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:120-139", "severity": "normal"},
+    {"point": "API duplication / design: JVM now exposes both maxAge(Int, TimeUnit) and actual maxAge(Int, DurationUnit) with no deprecation or migration guidance (the human reviewer's 'stuck doubling our methods' concern); idiomatic multiplatform API would be maxAge(kotlin.time.Duration) instead of Int+DurationUnit", "file": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt:148-165", "severity": "normal"},
+    {"point": "commonClampToInt is a generic Long->Int clamp placed in -CacheControlCommon.kt rather than -UtilCommon.kt, where the analogous toNonNegativeInt clamping helper already lives", "file": "okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt:63-68", "severity": "normal"},
+    {"point": "Test gap: commonTest only exercises DurationUnit.SECONDS (identity case); no common-path test for unit conversion (e.g. MINUTES->60s), saturation/clamp to Int.MAX_VALUE, or negative rejection through the new toDuration().inWholeSeconds path (JVM tests only cover the TimeUnit overload)", "file": "okhttp/src/commonTest/kotlin/okhttp3/CacheControlTest.kt:50-52", "severity": "normal"},
+    {"point": "Missed follow-up: FORCE_CACHE remains commented out in commonMain even though its only dependency (maxStale) is now available in common; it could be uncommented/commonized", "file": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:~168", "severity": "normal"},
+    {"point": "Verified correct: behavior parity with old JVM impl (truncation, Duration saturation handles overflow, require>=0 preserved); DurationUnit is a distinct enum in Kotlin 1.6.10 so no JVM overload signature clash; TimeUnit overloads retained so no source/binary break", "file": "okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt:46-61", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Dual TimeUnit/DurationUnit overloads on JVM with no deprecation, split API surface", "verdict": "good", "why": "Verified: both overloads coexist undeprecated; matches the human reviewer's central 'doubling our methods' concern"},
+        {"point": "FORCE_CACHE constant still built with legacy TimeUnit overload, update for consistency", "verdict": "good", "why": "Verified at jvmMain CacheControl.kt:183 (.maxStale(Integer.MAX_VALUE, TimeUnit.SECONDS)); concrete actionable consistency fix"},
+        {"point": "KDoc on expect declaration still references TimeUnit.SECONDS instead of DurationUnit", "verdict": "good", "why": "Verified: commonMain KDoc keeps [TimeUnit.SECONDS], a broken reference in common code"},
+        {"point": "commonClampToInt lacks lower-bound clamp, suggest defense-in-depth", "verdict": "trivial", "why": "Self-acknowledged as acceptable; require(>=0) guards all callers, no real issue"},
+        {"point": "JVM tests only exercise TimeUnit overloads; add DurationUnit variant tests", "verdict": "good", "why": "Verified: CacheControlJvmTest.kt uses only TimeUnit; new common path under-tested"},
+        {"point": "commonTest only tests DurationUnit.SECONDS identity; add a conversion-unit test", "verdict": "good", "why": "Verified real coverage gap in the new cross-platform conversion logic"},
+        {"point": "Cache.kt KDoc examples reference TimeUnit overloads, update if deprecating", "verdict": "good", "why": "Verified: Cache.kt lines 98 and 133 use .maxAge(0, TimeUnit.SECONDS) / .maxStale(365, TimeUnit.DAYS)"}
+      ],
+      "missed": [
+        "Idiomatic multiplatform design alternative: maxAge(kotlin.time.Duration) instead of Int+DurationUnit",
+        "FORCE_CACHE could now be uncommented/commonized in commonMain since maxStale is available in common"
+      ],
+      "exceeds": [
+        "Cache.kt KDoc examples still showing TimeUnit usage (verified, neither human nor judge found)",
+        "FORCE_CACHE companion constant built via legacy TimeUnit overload (verified, neither human nor judge found)"
+      ],
+      "net": 4
+    },
+    "v3": {
+      "points": [
+        {"point": "KDoc still references TimeUnit.SECONDS, should be DurationUnit.SECONDS", "verdict": "good", "why": "Verified stale/broken doc reference in commonMain"},
+        {"point": "commonClampToInt doesn't guard negatives, 'would silently wrap to positive Int'", "verdict": "trivial", "why": "Callers guard with require(>=0); the wrap-to-positive claim is imprecise (small negatives stay negative), purely defensive musing"},
+        {"point": "JVM retains both overloads correctly - good", "verdict": "trivial", "why": "Praise/restating the diff, no action"},
+        {"point": "Verify non-JVM actual implementations are included (diff truncated)", "verdict": "trivial", "why": "Hedge, not a finding; the nonJvm actuals ARE in the commit (verified via git), so nothing actionable"},
+        {"point": "Possible overflow with NANOSECONDS in toDuration().inWholeSeconds, safe due to clamp, add comment", "verdict": "trivial", "why": "Duration saturates rather than overflows; concedes result is safe, suggestion is only a comment"}
+      ],
+      "missed": [
+        "Dual TimeUnit/DurationUnit API surface on JVM with no deprecation (the human's main point)",
+        "Test coverage gap: only DurationUnit.SECONDS exercised, no conversion/clamp/negative tests for the new common path",
+        "FORCE_CACHE could now be commonized since maxStale is common",
+        "Idiomatic kotlin.time.Duration-based API design alternative"
+      ],
+      "exceeds": [],
+      "net": -3
+    },
+    "v4": {
+      "points": [
+        {"point": "KDoc for all three methods still references [TimeUnit.SECONDS], update to DurationUnit", "verdict": "good", "why": "Verified stale/broken doc reference in commonMain"},
+        {"point": "commonClampToInt clamps only upper bound, add explanatory comment", "verdict": "trivial", "why": "Correctly notes it is safe; only suggests a comment, no real issue"},
+        {"point": "Tests use only small SECONDS values; add clamping, negative-throw, and large-value edge cases", "verdict": "good", "why": "Verified real coverage gap; sub-claim (c) that Int.MAX_VALUE seconds 'overflows Long in toDuration()' is wrong (fits comfortably, Duration saturates anyway), but the core test-gap point stands"},
+        {"point": "FORCE_CACHE still commented out in expect declaration; now uncommentable since maxStale is multiplatform", "verdict": "good", "why": "Verified: commonMain has FORCE_CACHE commented out, only JVM defines it (jvmMain:181); maxStale dependency now satisfied in common"},
+        {"point": "TimeUnit and DurationUnit overloads coexist; consider @Deprecated on TimeUnit variants per file convention", "verdict": "good", "why": "Verified dual API surface; matches human's 'doubling our methods' concern and cites the file's actual deprecation convention"}
+      ],
+      "missed": [
+        "Idiomatic multiplatform design alternative: maxAge(kotlin.time.Duration) instead of Int+DurationUnit"
+      ],
+      "exceeds": [],
+      "net": 3
+    }
+  },
+  "qualitative": "v2 is the best review: it makes the human's central point (dual TimeUnit/DurationUnit API surface with no deprecation), catches the stale KDoc and both test-coverage gaps, and adds two verified findings nobody else had (Cache.kt KDoc examples and the FORCE_CACHE constant still using the legacy overload). v4 is a close second with a tighter, fully accurate set: it uniquely connects the now-common maxStale to the still-commented FORCE_CACHE in commonMain and grounds its deprecation suggestion in the file's existing convention, though one test sub-claim about Long overflow in toDuration() is wrong. v3 is clearly the weakest: it finds only the KDoc issue, pads with praise and an unactionable 'verify the truncated diff' hedge, mischaracterizes both clamping (wrap-to-positive) and Duration overflow (it saturates), and completely misses the human's dual-API concern. Characteristic across all three: none questioned the Int+DurationUnit shape itself versus an idiomatic kotlin.time.Duration parameter, and none had false positives serious enough to score wrong."
+}

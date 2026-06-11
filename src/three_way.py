@@ -21,7 +21,6 @@ from agent_poc_batch import base_sha, ensure_repo  # noqa: E402
 from agent_review import diff_only_review  # noqa: E402
 from oh_delegate import mr_code_review, oh_review_delegate  # noqa: E402
 from paired_compare import _wait_for_endpoint  # noqa: E402
-import point_judge_grounded as g  # noqa: E402
 import token_meter as tm  # noqa: E402
 tm.install()
 
@@ -84,15 +83,6 @@ def _gen(label, fn, d, pi, tp, attempts=3):
         print(f"    {label} attempt {a+1}/{attempts} empty/short "
               f"(len={len(rv.strip()) if rv else 0}, {sec}s) — retry", flush=True)
     return rv or "", sec, tok
-
-
-def _judge(d, pi, human, cand, tp=None, attempts=3):
-    for _ in range(attempts):
-        res = g.grounded_judge(d, pi, human, cand, trace_path=tp)
-        if res:
-            return res
-        print("      judge parse-fail, retry…", flush=True)
-    return None
 
 
 def main():

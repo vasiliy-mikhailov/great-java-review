@@ -1,0 +1,60 @@
+{
+  "pr": 727,
+  "own_review": [
+    {"point": "NPE risk: shell.getData().getClass() is called without a null check; the SWT.Paint display filter fires for composites in ANY shell (tooltips, content-assist popups, progress shells) whose getData() is often null, so the listener can throw NPE and destabilize/crash the test", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:111", "severity": "critical"},
+    {"point": "Guard couples the test to Eclipse LTK INTERNAL class names (org.eclipse.ltk.internal.ui.refactoring.Refactoring*), fragile across platform versions; additionally the 'Refactoring' error dialog may not be an LTK Refactoring* class (could be a JFace MessageDialog/ErrorDialog), in which case the errorDialogOkPressed branch becomes unreachable", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:111", "severity": "normal"},
+    {"point": "Sleep bumped 2000->5000ms is a band-aid that masks flakiness and slows the test; polling for LS readiness via waitForCondition would be more robust", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:89", "severity": "normal"},
+    {"point": "pom.xml download-maven-plugin 1.6.1->1.6.7 bump is unrelated to the test fix described in the PR title (scope creep), though harmless", "file": "pom.xml:169", "severity": "normal"},
+    {"point": "WIZARD_CLASSNAME_TEMPLATE is misnamed - it is a class-name prefix, not a template; minor naming nit", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:54", "severity": "normal"},
+    {"point": "'static private' modifier order is unconventional; Java convention is 'private static'", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:164", "severity": "normal"},
+    {"point": "getButtons(c) is computed eagerly on every paint event even when the shell title does not match, losing the old early-exit behavior of hasButton; negligible for a test", "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:113", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "NPE if shell.getData() returns null", "verdict": "critical", "why": "Verified: filter fires for all shells; null data shells (tooltips/popups) would NPE inside the display filter"},
+        {"point": "WIZARD_CLASSNAME_TEMPLATE references internal LTK package, fragile across Eclipse versions", "verdict": "good", "why": "Verified: org.eclipse.ltk.internal.* is non-API and version-fragile"},
+        {"point": "Stricter shell filter may skip legitimate dialogs whose getData() class differs", "verdict": "good", "why": "Real risk: the 'Refactoring' error dialog may not be an LTK Refactoring* class, making that branch unreachable"},
+        {"point": "Consolidate pressOk/pressCancel duplicated reflection into one helper", "verdict": "good", "why": "Verified duplication; concrete actionable DRY cleanup"},
+        {"point": "pom plugin bump reasonable, confirm changelog", "verdict": "trivial", "why": "Restates the change with generic advice; misses the scope-creep angle"}
+      ],
+      "missed": [
+        "Sleep increase 2000->5000ms is a band-aid; should poll for LS readiness instead",
+        "Human point: MANIFEST.MF version bump question (file not in provided diff; counted uniformly)"
+      ],
+      "exceeds": [],
+      "net": 3
+    },
+    "v3": {
+      "points": [
+        {"point": "NPE if shell.getData() returns null, transient shells may lack data", "verdict": "critical", "why": "Verified real; correct reasoning about transient shells firing Paint events"},
+        {"point": "Increased sleep masks underlying issue; use wait-for-condition pattern", "verdict": "good", "why": "Verified: hardcoded 5s sleep remains fragile on CI; actionable alternative given"},
+        {"point": "getButtons allocates a HashSet on every call", "verdict": "trivial", "why": "Self-admittedly negligible in a test; suggested 'fix' is muddled"},
+        {"point": "Mnemonic '&' in BUTTON_CONTINUE/BUTTON_BACK constants could break if Eclipse changes mnemonic handling", "verdict": "trivial", "why": "Pre-existing string literals merely moved to constants; speculative FYI, no real action"},
+        {"point": "pom plugin bump benign, LGTM", "verdict": "trivial", "why": "Praise/restating; misses scope-creep angle"}
+      ],
+      "missed": [
+        "Fragile dependency on internal LTK class-name prefix (org.eclipse.ltk.internal.*) and risk the new filter excludes legitimate dialogs",
+        "Human point: MANIFEST.MF version bump question (file not in provided diff; counted uniformly)"
+      ],
+      "exceeds": [],
+      "net": 1
+    },
+    "v4": {
+      "points": [
+        {"point": "NPE when shell.getData() is null; Paint filter fires on ALL composites, many shells have no data", "verdict": "critical", "why": "Verified real; most precise explanation of why null data occurs"},
+        {"point": "Internal LTK class-name dependency fragile; keep shell-text check primary, class check secondary with null safety", "verdict": "good", "why": "Verified non-API dependency; concrete remediation proposed"},
+        {"point": "Sleep 2000->5000 makes test 150% slower; use readiness check instead", "verdict": "good", "why": "Verified band-aid; actionable (though a comment about LS init already exists, it does not justify the increase)"},
+        {"point": "getButtons loses short-circuit of hasButton", "verdict": "trivial", "why": "True but negligible for a test; v4 itself says keep as-is for readability"},
+        {"point": "Making private helpers static adds no value and reduces consistency", "verdict": "trivial", "why": "Pure style opinion; static private helpers are harmless (the real nit is 'static private' modifier order, which v4 did not make)"},
+        {"point": "pom plugin bump unrelated to test fix, should be separate PR", "verdict": "good", "why": "Verified scope creep: pluginManagement bump in root pom is unrelated to the test fix"}
+      ],
+      "missed": [
+        "Human point: MANIFEST.MF version bump question (file not in provided diff; counted uniformly)"
+      ],
+      "exceeds": [],
+      "net": 4
+    }
+  },
+  "qualitative": "All three candidates caught the single most important defect — the unguarded shell.getData() NPE inside a global SWT.Paint filter — which neither the human reference nor a careless reader would flag. v4 is the best overall: it uniquely covered all three substantive axes (NPE with the most accurate mechanism explanation, internal-LTK-API fragility with a concrete primary/secondary remediation, and the unrelated pom.xml scope creep), missing only the human's MANIFEST.MF point which was not present in the provided diff. v2 is a close second with the strongest treatment of the dialog-filter restrictiveness risk and a legitimate DRY suggestion for pressOk/pressCancel, but it missed the sleep band-aid entirely. v3 is the weakest: it missed the internal-API fragility — the core design risk of the PR — and padded its review with speculative filler (mnemonic characters, HashSet allocation). No candidate fabricated anything; the characteristic weakness across all three is filler points about negligible test-code efficiency and benign version bumps. The human reference point targets a MANIFEST.MF change absent from the diff given to candidates, so it was counted as missed uniformly and does not affect ranking."
+}

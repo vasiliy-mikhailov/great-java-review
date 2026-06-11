@@ -1,0 +1,58 @@
+{
+  "pr": 374,
+  "own_review": [
+    {"point": "`sudo apt-get install rpmbuild` is a non-existent Debian/Ubuntu package; the correct package is `rpm` (which provides /usr/bin/rpmbuild). Factual error in the new docs.", "file": "docs/contrib/env.md", "severity": "normal"},
+    {"point": "New '## Building' heading is added but no actual build commands are documented (e.g. `mvn clean install`, and `mvn install -P rpm` to actually produce the RPM despite listing rpmbuild as a prerequisite); the heading also sweeps existing fork/clone/upstream setup steps under 'Building'.", "file": "docs/contrib/env.md", "severity": "normal"},
+    {"point": "Distro thrift packages (Ubuntu thrift-compiler, EPEL thrift) frequently are not 0.9.3, while rubix-spi/pom.xml hardcodes /usr/local/bin/thrift and libthrift 0.9.3 and the Dockerfile builds thrift 0.9.3 from source; docs should recommend verifying `thrift --version` / prefer source install matching the build's pinned version.", "file": "docs/contrib/env.md", "severity": "normal"},
+    {"point": "Minor wording: 'by following below steps' is awkward grammar.", "file": "docs/contrib/env.md", "severity": "normal"},
+    {"point": "Verified-correct context: the jdk.tools:jdk.tools:jar:1.6 error in the doc is REAL — it comes transitively from hadoop-annotations 2.6.0 (root pom.xml:53 pins hadoop 2.6.0), which declares a system-scoped dependency on tools.jar; '1.6' is the artifact version Hadoop pins, unrelated to the project's Java level.", "file": "pom.xml", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "tools.jar/jdk.tools claim 'not substantiated', suggest removing the warning", "verdict": "wrong", "why": "It IS substantiated: hadoop-annotations 2.6.0 (hadoop pinned at pom.xml:53) declares system-scoped jdk.tools:jdk.tools:jar:1.6; the quoted error is the real transitive failure on JDK>8"},
+        {"point": "'## Building' heading misplaced over fork/clone/remote setup content; rename and reserve Building for actual build commands", "verdict": "good", "why": "Matches my finding; heading covers setup steps, no build command documented"},
+        {"point": "rpmbuild prerequisite valid but doc never says RPM build needs the rpm Maven profile (mvn package -Prpm)", "verdict": "good", "why": "Verified: rpm-maven-plugin lives in rubix-rpm/pom.xml under profile id 'rpm'"},
+        {"point": "Thrift instructions accurate, version/path match pom and Dockerfile", "verdict": "trivial", "why": "Praise/restating, no action"}
+      ],
+      "missed": [
+        "Thrift version-match concern (human): distro package likely != 0.9.3; build/deploy must use same version, docker build image compiles 0.9.3 from source",
+        "`apt-get install rpmbuild` is a non-existent Debian package (should be `rpm`)"
+      ],
+      "exceeds": [],
+      "net": -1
+    },
+    "v3": {
+      "points": [
+        {"point": "Thrift version 0.9.3 and /usr/local/bin/thrift path confirmed by rubix-spi/pom.xml", "verdict": "trivial", "why": "Verification praise, no actionable change"},
+        {"point": "tools.jar warning attributed to Mockito 2.18.3 triggering jdk.tools resolution failures", "verdict": "wrong", "why": "Fabricated cause: Mockito has no jdk.tools dependency; the real source is hadoop-annotations 2.6.0's system-scoped jdk.tools:1.6"},
+        {"point": "rpmbuild only needed for the rubix-rpm module / rpm profile, not standard builds — say so", "verdict": "good", "why": "Verified: rpm-maven-plugin is inside profile 'rpm' in rubix-rpm/pom.xml"},
+        {"point": "Pre-existing grammar error 'environment that support' -> 'supports'", "verdict": "good", "why": "Real subject-verb error in the file, reasonable to fix in a docs PR"},
+        {"point": "Document available Maven profiles and how to invoke (mvn install -Prpm) to make Building section actionable", "verdict": "good", "why": "Matches my finding: Building section has no build commands"}
+      ],
+      "missed": [
+        "Thrift version-match concern (human): distro thrift likely != 0.9.3, deploy/build version alignment",
+        "`apt-get install rpmbuild` is a non-existent Debian package (should be `rpm`)"
+      ],
+      "exceeds": [
+        "Pre-existing 'that support' grammar fix — neither human nor I flagged it; verified real"
+      ],
+      "net": 0
+    },
+    "v4": {
+      "points": [
+        {"point": "Error message references jar:1.6 but project uses Java 1.8; change doc to jar:1.8 or generic", "verdict": "wrong", "why": "1.6 is the artifact version hadoop-annotations 2.6.0 actually pins; the quoted error is the literal real error — 'fixing' it to 1.8 would make the doc false"},
+        {"point": "Reword 'match the version you are going to deploy on' to 'match the version configured in the project build (0.9.3)'", "verdict": "good", "why": "Accurate: rubix-spi/pom.xml pins libthrift 0.9.3; compiler must match the build's pinned version"},
+        {"point": "Debian thrift-compiler may install a version != 0.9.3; add `thrift --version` check or recommend source install", "verdict": "good", "why": "Matches my finding and the human's version-mismatch concern; Dockerfile builds 0.9.3 from source"},
+        {"point": "RubiX vs Rubix spelling inconsistency", "verdict": "trivial", "why": "Real but cosmetic nit in pre-existing text"}
+      ],
+      "missed": [
+        "Building section documents no build commands and omits the rpm Maven profile needed to actually generate the RPM",
+        "`apt-get install rpmbuild` is a non-existent Debian package (should be `rpm`)"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "qualitative": "v3 and v4 tie on net but v4 is the best review in substance: it is the only candidate that engages with the human reviewer's actual concern (thrift compiler version drift vs the pinned 0.9.3) and gives two concrete, correct doc improvements, marred by one confident fabrication (claiming the jdk.tools '1.6' in the error should be '1.8'). v3 earns its score on the rpm-profile and build-command points plus a real grammar catch, but invents a false root cause (Mockito) for the tools.jar issue. v2 is weakest: its lead finding tells the author to delete a warning that is verifiably real (hadoop-annotations 2.6.0's system-scoped jdk.tools dependency), though its Building-heading and rpm-profile points are solid. Characteristically, all three candidates fumbled the same spot — the jdk.tools/tools.jar claim — each in a different wrong direction because none traced the transitive hadoop dependency, and none caught the genuinely broken `apt-get install rpmbuild` command (no such Debian package)."
+}

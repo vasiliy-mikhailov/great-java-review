@@ -1,0 +1,48 @@
+{
+  "pr": 659,
+  "own_review": [
+    {"loc": ".github/workflows/build.yml:138-141", "issue": "No readiness gate between starting the Quarkus server (nohup ... &) and running 'npx @modelcontextprotocol/conformance'; connection-refused flakes possible. Additionally ConformanceServer.registerDynamicFeatures() registers dynamic tool/resource/prompt only 2s after startup, so a run that connects immediately may not see them — the whole sequence is timing-dependent with no curl/health wait.", "severity": "medium"},
+    {"loc": ".github/workflows/build.yml:143-146", "issue": "'Stop test server' step lacks always(); the implicit success() condition means the step is skipped whenever the conformance-test step fails, so the explicit 'outcome == success' check is redundant and the server is never killed on failure. Harmless on ephemeral runners but the cleanup intent is not met.", "severity": "low"},
+    {"loc": ".github/workflows/build.yml:141", "issue": "'npx @modelcontextprotocol/conformance' is version-unpinned; new releases of the conformance suite can break CI non-deterministically (matches the maintainer's own note to pin once a stable release exists).", "severity": "low"},
+    {"loc": "conformance/pom.xml:50-55,76-110", "issue": "Dead archetype scaffolding: quarkus-junit5 test dep, surefire/failsafe config, native profile and native-image-agent goal — the module has no tests and CI never builds it native.", "severity": "trivial"},
+    {"loc": "conformance/src/main/resources/application.properties:6", "issue": "CORS origin 'http://::1' (unbracketed IPv6) is not a valid Origin value and can never match; redundant with 'http://[::1]'.", "severity": "trivial"},
+    {"loc": "conformance/src/main/java/io/quarkiverse/mcp/conformance/ConformanceServer.java", "issue": "Verified clean: all ElicitationRequest schema constructors (StringSchema 6/7-arg, IntegerSchema/NumberSchema/EnumSchema/SingleSelectEnumSchema 6-arg, BooleanSchema 4-arg, MultiSelectEnumSchema 8-arg) match base-repo records; ProgressTracker.advance is additive so 0+50+50 == setTotal(100); ResourceManager.getResource/sendUpdateAndForget, newTool/newResource/newPrompt builders all exist; 999-SNAPSHOT matches root pom version and CI installs root first.", "severity": "info"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "Quarkus platform 3.32.1 vs parent 3.27.2 / samples 3.27.0 inconsistency", "grade": "trivial", "note": "Facts verified accurate, but samples already diverge from parent and a newer platform for a standalone test app is a deliberate choice; consistency nit only."},
+        {"point": "999-SNAPSHOT limits standalone usability; samples pin released 1.10.0", "grade": "trivial", "note": "Facts accurate (samples do use 1.10.0), but pinning a release would defeat the purpose — the conformance server must exercise the in-repo SNAPSHOT."},
+        {"point": "No server readiness check before running conformance tests", "grade": "good", "note": "Verified: nohup & returns immediately, npx runs next with no wait; real flake risk."},
+        {"point": "Stop test server should use if: always(); server not killed when tests fail", "grade": "good", "note": "Verified: implicit success() skips the step on test failure."},
+        {"point": "Unnecessary native-image-agent goal", "grade": "trivial", "note": "Standard Quarkus archetype config; pom also has a native profile, so 'no indication of needing native' is overstated; harmless either way."},
+        {"point": "quarkus-scheduler dependency purpose unclear; if no @Scheduled methods exist, remove", "grade": "wrong", "note": "The PR contains @Scheduled(every = \"3s\") updateWatchedResource() in ConformanceServer.java — the dependency is clearly used; truncation-induced absence claim."},
+        {"point": "Node 24 may not yet be LTS; consider 22 LTS", "grade": "wrong", "note": "False: Node 24 entered Active LTS in October 2025; the conformance suite requires Node >= 24 per the PR comment, so downgrading to 22 would break it."}
+      ],
+      "missed": [
+        "Unpinned @modelcontextprotocol/conformance npx version (human's only point; maintainer explicitly weighed pinning)"
+      ],
+      "exceeds": [],
+      "net": -1
+    },
+    "v5": {
+      "points": [
+        {"point": "Server cleanup skipped when tests fail; use if: always()", "grade": "good", "note": "Verified real."},
+        {"point": "No readiness check before conformance run, compounded by 2s-delayed dynamic registration", "grade": "good", "note": "Verified real; correctly ties the registerDynamicFeatures 2s window to the missing readiness gate."},
+        {"point": "Node 24 'is not yet a stable LTS release'", "grade": "wrong", "note": "False: Node 24 has been Active LTS since October 2025; setup-node resolves it fine, and the suite requires >= 24."},
+        {"point": "Module excluded from parent reactor; suggest README", "grade": "trivial", "note": "Accurate (verified root pom modules), but samples follow the same standalone pattern; doc-only suggestion."},
+        {"point": "ProgressTracker advance additive-vs-absolute hedge", "grade": "trivial", "note": "I verified advance() is additive ('Advance the progress by the specified value'), so the code is fine exactly as the point itself concedes; pure hedge, no defect."},
+        {"point": "All ElicitationRequest schema constructors verified to compile", "grade": "trivial", "note": "Accurate verification statement, not a finding."},
+        {"point": "Dynamic resource name vs setUri semantics verification", "grade": "trivial", "note": "newResource(name) + setUri(uri) is exactly the documented API; no defect, hedged verify note."},
+        {"point": "CORS origins lack ports; Origin http://localhost:3000 would be rejected", "grade": "trivial", "note": "Mechanically accurate about Quarkus exact-match CORS, but speculative whether the Node conformance runner sends an Origin header at all; the author chose port-less origins deliberately."}
+      ],
+      "missed": [
+        "Unpinned @modelcontextprotocol/conformance npx version (human's only point)"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {"v4": 1, "v5": 0},
+  "qualitative": "This PR adds new standalone files only, so there was little room for hard bugs; the human's single comment is about leaving the npx conformance package unpinned, which both candidates missed. Both candidates correctly found the two genuine CI issues (no readiness wait before the conformance run, and cleanup skipped on test failure), and both fabricated the same stale-knowledge claim that Node 24 is not LTS. v4's truncated-diff handicap shows: it speculated that quarkus-scheduler might be unused when the full PR plainly contains a @Scheduled method (its one absence-fabrication), and padded with consistency nits whose suggestions (pin a released mcp-server version) would defeat the module's purpose. v5 verified APIs against the repo accurately and added useful nuance (the 2s dynamic-registration window compounding the readiness gap), but diluted its review with several no-defect 'verify' hedges; net it still edges out v4."
+}

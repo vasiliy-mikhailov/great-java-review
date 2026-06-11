@@ -1,0 +1,93 @@
+{
+  "pr": 1264,
+  "own_review": [
+    {"point": "polyglot-common bumped to 0.4.9-SNAPSHOT, an unreleased version that depends on the unmerged upstream PR takari/polyglot-maven#242; the dependency is unresolvable and the PR cannot be merged/released as-is (author admits it)", "file": "tycho-extras/tycho-pomless/pom.xml:50", "severity": "critical"},
+    {"point": "Correctness of the IS_FIRST scan depends entirely on the NEW polyglot behavior (try mappings in priority order, stop at first locatePom hit); with released 0.4.8 semantics (all mappings probed for every dir) the aggregator scan would fire on the first probed directory regardless of its type, potentially generating pom.tycho inside bundle/target dirs", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java", "severity": "critical"},
+    {"point": "ThreadLocal state leak: IS_FIRST.set(false) happens unconditionally, but IS_FIRST.remove() only runs inside 'if (subFolders != null)'; if dir.listFiles() returns null (not a directory / IO error) or the scan loop throws, the thread-local stays false forever and all subsequent aggregator directories on that thread are silently never scanned; remove() must be in a finally block", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:~70-90", "severity": "normal"},
+    {"point": "Behavior regression: nested aggregator directories (e.g. releng/products where products is itself only an aggregator) were previously detected via COMMON_NAMES at any depth; now nested folders are never scanned (IS_FIRST=false in recursive calls), so such modules are silently dropped from the build", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java", "severity": "normal"},
+    {"point": "Removal of the documented tycho.pomless.aggregator.names system property is a breaking change that is silently ignored if users still set it; no RELEASE_NOTES.md entry, although the repo convention documents such removals (cf. tycho.pomless.testbundle removal entry)", "file": "RELEASE_NOTES.md", "severity": "normal"},
+    {"point": "Flaky integration test: assertMentionedDirectories asserts exact list equality ['target','otherFolder','target'] for skipped dirs, but their order comes from File.listFiles() which has no ordering guarantee (filesystem-dependent)", "file": "tycho-its/src/test/java/org/eclipse/tycho/test/buildextension/PomlessTest.java:~140", "severity": "normal"},
+    {"point": "Static ThreadLocal as a recursion guard is fragile design; an explicit reentrancy flag/parameter would be clearer and not risk cross-invocation leakage in long-lived JVMs", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java", "severity": "normal"},
+    {"point": "Unrelated test weakening: testPomlessTestPluginDetection goal changed from 'test' to 'compile', so test-plugin execution is no longer exercised (the removed verifyTextInLog(\"\") was a no-op)", "file": "tycho-its/src/test/java/org/eclipse/tycho/test/buildextension/PomlessTest.java", "severity": "normal"},
+    {"point": "Removing the getPriority() default from public AbstractTychoMapping is source-incompatible for any external subclass of this public extension class", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/AbstractTychoMapping.java", "severity": "normal"},
+    {"point": "Path.of(location) can throw unchecked InvalidPathException for unusual location strings; also inconsistent: TychoTargetMapping/TychoRepositoryMapping still use String.endsWith", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:55", "severity": "normal"},
+    {"point": "Typos: 'that the the pom.xml reader' in TychoFeatureMapping priority comment; 'scaned' variable in PomlessTest; 'structre' in test data", "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoFeatureMapping.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "Compilation error: TychoBundleMapping does not override getPriority()", "verdict": "wrong", "why": "The diff explicitly adds getPriority() returning +2 to TychoBundleMapping"},
+        {"point": "Feature/Repository/Target all inherit priority 1 from AbstractXMLTychoMapping, contradicting the PR description", "verdict": "wrong", "why": "The diff adds distinct overrides: Feature +1, Repository -1, Target -2"},
+        {"point": "ThreadLocal leak: remove() only inside 'if (subFolders != null)'; listFiles()==null leaves it false forever; use try/finally", "verdict": "good", "why": "Exactly the real leak path, correct mechanism and correct fix"},
+        {"point": "maven.config still contains -Dtycho.pomless.aggregator.names line; remove it", "verdict": "wrong", "why": "The PR diff already removes that exact line from .mvn/maven.config"},
+        {"point": "Blocking SNAPSHOT dependency polyglot-common 0.4.9-SNAPSHOT, cannot merge until released", "verdict": "critical", "why": "Verified merge/release blocker; depends on unmerged upstream PR"}
+      ],
+      "missed": [
+        "nested aggregator directories regression (silently dropped modules)",
+        "removed property is a breaking change with no RELEASE_NOTES.md entry",
+        "order-dependent (flaky) assertMentionedDirectories IT assertion",
+        "human's root cause: polyglot XmlMapping.accept() matches any *.xml (feature.xml) so feature priority must beat it"
+      ],
+      "exceeds": [],
+      "net": -4
+    },
+    "v2": {
+      "points": [
+        {"point": "IS_FIRST only removed when !modules.isEmpty(); empty-modules first scan leaks false permanently", "verdict": "wrong", "why": "remove() is placed after the for-loop BEFORE the modules.isEmpty() check; the empty-modules path does reset; the real leak is subFolders==null"},
+        {"point": "No reset when getPrimaryArtifact returns null; reset in finally or session-scoped state", "verdict": "good", "why": "The finally-based reset is the correct fix for the genuine subFolders==null/exception leak path"},
+        {"point": "IS_FIRST not thread-safe under -T; concurrent scans and races on pom.tycho", "verdict": "trivial", "why": "Speculative: module/pom discovery happens during single-threaded reactor graph building; ThreadLocal per-thread behavior is by design"},
+        {"point": "Bundle falls back to Mapping interface default priority, possibly below Feature's inherited 1", "verdict": "wrong", "why": "The diff adds explicit getPriority()=+2 to TychoBundleMapping and distinct overrides to the XML mappings"},
+        {"point": "Removed constant; config line removed in this PR; verify no other references to the property", "verdict": "trivial", "why": "Vague 'verify elsewhere' advice; no concrete issue (no other references exist)"},
+        {"point": "Path.of(location).endsWith is more robust; ensure location never null", "verdict": "trivial", "why": "Praise of the diff; accept() already null-checks location before isValidLocation"},
+        {"point": "polyglot-common 0.4.9-SNAPSHOT unreleased, upstream PR must be merged; blocking dependency", "verdict": "critical", "why": "Verified merge/release blocker"}
+      ],
+      "missed": [
+        "nested aggregator directories regression (silently dropped modules)",
+        "removed property is a breaking change with no RELEASE_NOTES.md entry",
+        "order-dependent (flaky) assertMentionedDirectories IT assertion",
+        "human's root cause: polyglot XmlMapping.accept() matches any *.xml (feature.xml) so feature priority must beat it"
+      ],
+      "exceeds": [],
+      "net": -3
+    },
+    "v3": {
+      "points": [
+        {"point": "IS_FIRST pattern broken: remove() reinitializes to true, defeating scan-once purpose", "verdict": "wrong", "why": "Misreads intent: the flag is a recursion guard during one scan; resetting to true afterwards is exactly the intended behavior (each aggregator dir must be scanned)"},
+        {"point": "TychoBundleMapping has no getPriority() override; possible compile error or wrong default", "verdict": "wrong", "why": "The diff adds getPriority()=+2 to TychoBundleMapping"},
+        {"point": "Feature/Repository/Target inherit identical priority 1; ordering undefined", "verdict": "wrong", "why": "The diff adds distinct overrides +1/-1/-2 to those three mappings"},
+        {"point": "maven.config still contains the stale -Dtycho.pomless.aggregator.names line; remove it", "verdict": "wrong", "why": "The PR diff already removes that line"},
+        {"point": "SNAPSHOT dependency on unreleased polyglot-common; will fail to resolve until upstream PR is released", "verdict": "critical", "why": "Verified merge/release blocker"}
+      ],
+      "missed": [
+        "ThreadLocal leak on subFolders==null/exception path (remove() not in finally)",
+        "nested aggregator directories regression (silently dropped modules)",
+        "removed property is a breaking change with no RELEASE_NOTES.md entry",
+        "order-dependent (flaky) assertMentionedDirectories IT assertion",
+        "human's root cause: polyglot XmlMapping.accept() matches any *.xml (feature.xml) so feature priority must beat it"
+      ],
+      "exceeds": [],
+      "net": -7
+    },
+    "v4": {
+      "points": [
+        {"point": "CRITICAL: IS_FIRST only allows the FIRST aggregator directory ever encountered to be scanned; fundamental logic error", "verdict": "wrong", "why": "IS_FIRST.remove() after the scan loop resets it to true, so each subsequent aggregator dir is scanned; the PR's own IT asserts two aggregators are scanned"},
+        {"point": "Leak when modules is empty: remove() only inside if(!modules.isEmpty())", "verdict": "wrong", "why": "remove() is before the modules.isEmpty() check; the empty case does reset; real leak is subFolders==null"},
+        {"point": "ThreadLocal under -T: threads scan 'their own first aggregators', non-deterministic, multiple pom.tycho files", "verdict": "wrong", "why": "Built on the false 'only first scanned' premise; discovery is single-threaded and per-dir pom.tycho content does not vary by thread"},
+        {"point": "Test has three aggregator dirs but IS_FIRST allows one; test will likely fail", "verdict": "wrong", "why": "False: bundles-2 has an explicit pom.xml, and the reset makes both real aggregators scan; the IT passes by design"},
+        {"point": "Priority inversion: Bundle loses explicit priority, falls below XML mappings' 1", "verdict": "wrong", "why": "The diff adds getPriority()=+2 to TychoBundleMapping and distinct overrides to Feature/Repository/Target"},
+        {"point": "Path.of(...).endsWith fixes false-match (mypom.tycho); add a unit test for it", "verdict": "good", "why": "Correctly identifies the semantic change and asks for concrete test coverage of it"}
+      ],
+      "missed": [
+        "SNAPSHOT/unreleased polyglot-common dependency is a merge blocker (not mentioned at all)",
+        "ThreadLocal leak on subFolders==null/exception path (their leak claim has the wrong mechanism)",
+        "nested aggregator directories regression (silently dropped modules)",
+        "removed property is a breaking change with no RELEASE_NOTES.md entry",
+        "order-dependent (flaky) assertMentionedDirectories IT assertion",
+        "human's root cause: polyglot XmlMapping.accept() matches any *.xml (feature.xml) so feature priority must beat it"
+      ],
+      "exceeds": [],
+      "net": -10
+    }
+  },
+  "qualitative": "v2 is the best of a weak field: it flags the SNAPSHOT-dependency merge blocker and gives the correct fix (reset the ThreadLocal in finally) for the genuine state-leak, with only two fabrications. v1 is close behind — it is the only candidate to describe the real leak mechanism (listFiles()==null) precisely and also flags the blocker, but it fabricates three claims (missing Bundle getPriority 'compilation error', non-distinct XML priorities, stale maven.config line) that are flatly contradicted by the actual diff, which adds those overrides and removes that line. v3 repeats all three of those fabrications plus a fourth (claiming the remove()-resets-to-true behavior 'defeats' the design, when it is the intended recursion-guard reset), salvaged only by the blocker point. v4 is worst: its entire review is built on misreading the IS_FIRST lifecycle ('only the first aggregator is ever scanned'), cascades that error into four follow-on points, and completely misses the SNAPSHOT blocker. No candidate caught the nested-aggregator regression, the missing RELEASE_NOTES entry for the removed tycho.pomless.aggregator.names property, the order-dependent IT assertion, or the human's root-cause analysis of polyglot's XmlMapping.accept() matching feature.xml."
+}

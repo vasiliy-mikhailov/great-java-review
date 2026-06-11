@@ -1,0 +1,41 @@
+{
+  "pr": 645,
+  "own_review": [
+    {"point": "Docs claim constructors are checked ('This check reads method & constructor names' in checkstyle-metadata.properties; isForbiddenMethod javadoc says 'method/constructor call') but only TokenTypes.METHOD_CALL is registered — LITERAL_NEW, CTOR_CALL, SUPER_CTOR_CALL and METHOD_REF are never visited; doc/behavior mismatch", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "Argument counting via dot.getNextSibling().getChildCount(TokenTypes.EXPR) undercounts: in the checkstyle AST a LAMBDA argument is a direct ELIST child (not wrapped in EXPR), so forEach(x -> ...) counts 0 args — forbidden methods taking lambda args are matched against the wrong count. Note the obvious 'fix' of raw ELIST.getChildCount() would be worse: ELIST children include COMMA tokens, so asList(1,2) would count 3", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "critical"},
+    {"point": "IntRange javadoc is stale/wrong: fields are primitive int but comments say 'No lower limit when null' and constructor params documented 'null is equivalent to 0/infinity' — null is impossible for int; also typo 'vaild ranges'", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "setArgumentCount mutates state before validation completes: this.argumentCount is assigned first and argumentCountRanges.clear() runs before parsing every token, so an invalid later token (e.g. '2, badStart-badEnd') leaves the check in a partially-updated state; validate fully, then swap", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"},
+    {"point": "IntRange.from declares throws CheckstyleException but a dash-free non-numeric token ('badArgCount') or out-of-int value escapes as raw NumberFormatException from Integer.parseInt — inconsistent error contract (only works because reflection/beanutils wraps any exception into 'Cannot set property')", "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java", "severity": "normal"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "CRITICAL Utils.parseArgumentCount() does not exist, compilation failure", "verdict": "wrong", "why": "The check never calls such a method; all range parsing is done by the PR's own inner IntRange.from. Absence-fabrication from the truncated diff"},
+        {"point": "Claims constructor support but only METHOD_CALL registered", "verdict": "good", "why": "Verified: 'method & constructor names' in eclipse metadata desc and isForbiddenMethod javadoc vs METHOD_CALL-only token registration"},
+        {"point": "Missing message key forbid.certain.method in messages.properties", "verdict": "wrong", "why": "The diff adds 'forbid.certain.method=Call to ...' to messages.properties; absence-fabrication"},
+        {"point": "Setters lack null/empty validation", "verdict": "trivial", "why": "Null already surfaces as config-time CheckstyleException with dedicated tests (testNullMethodNameRegex); empty methodName is documented intended behavior"},
+        {"point": "Test getCheckMessage passes one arg vs log's two; verify createModuleConfig used", "verdict": "wrong", "why": "log passes four format args and every test passes four matching the four {n} placeholders; tests do use createModuleConfig. Fabricated from unseen test file"},
+        {"point": "Missing getDefaultTokens()/getAcceptableTokens()", "verdict": "wrong", "why": "Both are defined in the diff, delegating to getRequiredTokens(); absence-fabrication"},
+        {"point": "sevntu-checks.xml methodName=assert(True|False) is a risky default for users", "verdict": "wrong", "why": "sevntu-checks.xml is the repo's own self-check config, not a shipped default; the check's real default is ^$ which matches nothing"},
+        {"point": "Description formatting defects in checkstyle-metadata.properties", "verdict": "good", "why": "Verified: desc contains '</dl><br/><br/>. Argument count' with a dangling period and odd <dl><li> markup"}
+      ],
+      "missed": ["lambda/EXPR argument undercount in ELIST counting", "stale IntRange null javadoc on primitive ints", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": ["metadata.properties description formatting defect (stray period after <br/><br/>, <dl> containing <li>) — real cosmetic issue the human did not list"],
+      "net": -7
+    },
+    "v5": {
+      "points": [
+        {"point": "Fragile dot.getNextSibling() traversal; replace with ast.findFirstToken(TokenTypes.ELIST).getChildCount()", "verdict": "wrong", "why": "Premise is false (for METHOD_CALL, ELIST is always the immediate sibling of the first child) and the proposed fix would break the check: ELIST children include COMMA tokens, so raw getChildCount() counts asList(1,2) as 3 args. The three cited checks were verified to exist and use that pattern, but only in contexts where commas cancel out (PARAMETERS comparison) or only zero/nonzero matters"},
+        {"point": "getChildCount(TokenTypes.EXPR) may undercount arguments if ELIST children are not always EXPR-typed", "verdict": "good", "why": "Verified real: LAMBDA arguments sit directly under ELIST unwrapped, so the filtered count undercounts — this is the PR's one genuine correctness bug. Credit for identifying the failure mode, though hedged, without the concrete lambda case, and paired with a recommendation (unfiltered getChildCount) that would overcount commas"},
+        {"point": "Method name extraction via dot.getLastChild() works for chained calls; add explanatory comment", "verdict": "trivial", "why": "Accurate analysis but concludes the code is correct and only asks for a comment"},
+        {"point": "Typo 'vaild ranges' in IntRange javadoc", "verdict": "trivial", "why": "Verified real but a one-letter typo in internal javadoc"},
+        {"point": "Trailing orphaned period '<br/><br/>.' in ForbidCertainMethodCheck.desc", "verdict": "good", "why": "Verified: desc contains '</dl><br/><br/>. Argument count' — real user-visible formatting defect in the eclipse plugin description"}
+      ],
+      "missed": ["constructor doc/behavior mismatch (docs claim 'method & constructor names' but only METHOD_CALL registered)", "stale IntRange null javadoc on primitive ints", "setArgumentCount partial-state mutation", "raw NumberFormatException escaping IntRange.from"],
+      "exceeds": ["metadata.properties dangling-period description defect — real cosmetic issue the human did not list"],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {"v4": 3, "v5": 0},
+  "qualitative": "The human approved with zero findings, so everything had to be verified against the diff. v4, working from a 7k-truncated diff, fabricated five of eight points — a phantom Utils.parseArgumentCount compilation blocker, a 'missing' message key and 'missing' token-getter overrides that the diff plainly adds, and an invented test/message-arg mismatch — three of which are textbook absence-fabrications; its two real points are the constructor doc mismatch and a cosmetic description defect. v5, with the full diff, fabricated nothing about absence: all of its cross-file citations to StaticMethodCandidateCheck, UselessSuperCtorCallCheck and OverridableMethodInConstructorCheck check out on inspection, and it grazed the PR's one genuine correctness bug (EXPR-filtered argument counting undercounts lambda arguments). However, v5's headline recommendation is actively harmful — raw ELIST.getChildCount() counts COMMA tokens, so adopting it would miscount every multi-arg call — and it missed the constructor doc/behavior mismatch that even v4 caught. Net, full-diff v5 (-3) clearly beats truncated v4 (-7), mainly by replacing fabrications with verifiable, grounded (if sometimes misjudged) analysis."
+}

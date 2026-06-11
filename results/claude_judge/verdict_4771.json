@@ -1,0 +1,54 @@
+{
+ "pr": 4771,
+ "own_review": [
+  {"point": "The change flips the 5th arg (optional) of MetadataFactory.createRequirement to true. Crucially, the 6-arg overload defaults greedy=true, so bundles that ARE resolvable are still pulled into the slice/target; only unresolvable ones (e.g. platform-filtered fragments like the SWT case) are skipped. This is the key verification that makes the one-character fix safe, and it is consistent end-to-end: OsgiBundleProject (~lines 405-418) already only warns ('Missing extra classpath entry') when the bundle is absent from the resolved artifacts.", "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:113", "severity": "normal"},
+  {"point": "Blanket behavior change: ALL platform-URL extra classpath requirements (both jars.extra.classpath and per-jar extra.<jar> maps, which funnel through the same createRequirementFromPlatformURL) become optional. Typos or genuinely missing required bundles no longer fail resolution; the error is deferred to a warning and possible later compile failure. Deliberate PDE-parity trade-off, but worth calling out as it can mask real configuration errors.", "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:113", "severity": "normal"},
+  {"point": "No test added for the new lenient behavior. tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java only covers successfully resolvable entries; an IT with an unresolvable platform-specific/fragment entry would prevent regression.", "file": "tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java", "severity": "normal"},
+  {"point": "These advice-based extra requirements are created independently of Tycho's OptionalResolutionAction (REQUIRE/IGNORE/OPTIONAL) mechanism used in BundleDependenciesAction, so the new optionality is unconditional and not user-configurable.", "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:66", "severity": "normal"},
+  {"point": "Import reshuffle of StatusTool is unrelated cosmetic noise; harmless.", "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:41", "severity": "normal"}
+ ],
+ "versions": {
+  "v2": {
+   "points": [
+    {"point": "Change is correct: 5th param makes requirement optional, matches PDE intent", "verdict": "trivial", "why": "Accurate but affirmation/restating of the PR's own rationale"},
+    {"point": "Consistent with existing optional=true patterns (AbstractTestMojo:457, AdditionalBundleRequirementsInstallableUnitProvider:78, InstallableUnitResolver:225, EclipseApplication:163)", "verdict": "trivial", "why": "All four citations verified real, but it is supporting context/praise, not an issue"},
+    {"point": "getExtraEntriesAdvice bypasses OptionalResolutionAction; optionality now unconditional and not configurable", "verdict": "good", "why": "Verified: BundleDependenciesAction honors optionalAction, the extra-entries advice does not; real design observation"},
+    {"point": "Import reordering is cosmetic; keep separate from functional changes", "verdict": "trivial", "why": "True but cosmetic diff-noise note"}
+   ],
+   "missed": [
+    "Greedy semantics: the 6-arg createRequirement overload keeps greedy=true so available bundles are still included — the crux verification (human's only point)",
+    "No test added for the unresolvable-entry scenario despite existing ExtraClassPathEntriesTest IT"
+   ],
+   "exceeds": [],
+   "net": -1
+  },
+  "v3": {
+   "points": [
+    {"point": "Semantic change (false->true optional) correct, matches PDE, fixes the SWT fragment case", "verdict": "trivial", "why": "Accurate restatement of the fix's intent"},
+    {"point": "Import reordering is cosmetic diff noise", "verdict": "trivial", "why": "True but cosmetic"},
+    {"point": "No test for unresolvable jars.extra.classpath entry; ExtraClassPathEntriesTest only covers successful resolution; suggests an IT", "verdict": "good", "why": "Verified: the TYCHO253 IT only tests resolvable entries; concrete actionable suggestion"}
+   ],
+   "missed": [
+    "Greedy semantics of the 6-arg createRequirement overload (human's key point)",
+    "Behavior change: typos/missing required bundles are now silently ignored at resolution, deferring errors to warnings/compile failures"
+   ],
+   "exceeds": [],
+   "net": -1
+  },
+  "v4": {
+   "points": [
+    {"point": "Core fix correct; cites FeatureDependenciesAction:121-123 and BundlesAction:347-348 as existing optional-requirement patterns", "verdict": "trivial", "why": "Citations verified real, but the point is affirmation/context, not an issue"},
+    {"point": "Import reordering cosmetic, only functional change is the boolean", "verdict": "trivial", "why": "True (direction of the move slightly misdescribed, but immaterial)"},
+    {"point": "Missing test coverage; TYCHO253 IT references org.apache.ant/com.jcraft.jsch which resolve; suggests IT with deliberately unresolvable entry", "verdict": "good", "why": "Verified: build.properties of the IT projects do reference exactly those bundles; concrete actionable suggestion"},
+    {"point": "Scope appropriately narrow: createRequirementFromPlatformURL is private, only reached from extra classpath properties; regex correct", "verdict": "trivial", "why": "Verified true but descriptive reassurance, not an issue"}
+   ],
+   "missed": [
+    "Greedy semantics of the 6-arg createRequirement overload (human's key point)",
+    "Behavior change: genuinely missing/typo'd extra classpath bundles are now silently ignored at resolution"
+   ],
+   "exceeds": [],
+   "net": -1
+  }
+ },
+ "qualitative": "All three candidates land at the same net because each contributes exactly one substantive verified point while missing the human reviewer's single — and decisive — observation: that MetadataFactory.createRequirement's 6-arg overload keeps greedy=true, which is what makes 'optional' safe (available bundles are still pulled in; only unresolvable ones are skipped). v2 is qualitatively strongest on design insight, being the only one to notice the requirement bypasses the OptionalResolutionAction mechanism and is thus unconditionally optional, with four accurately verified code citations. v4 is the most rigorously verified review overall (every cited file/line and IT build.properties claim checked out) and shares with v3 the useful missing-test recommendation, but pads with descriptive scope/pattern reassurance. v3 is the leanest, with a solid test-gap point and nothing wrong. Notably, no candidate fabricated anything — every concrete claim across v2/v3/v4 verified against the repo — but v3 and v4 both failed to flag the user-visible strictness regression (typos in jars.extra.classpath no longer fail the build), which v2 only obliquely captured via its configurability remark."
+}

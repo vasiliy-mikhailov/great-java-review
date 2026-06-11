@@ -1,0 +1,1334 @@
+[
+  {
+    "repo": "quarkusio/quarkus",
+    "pr": 28314,
+    "reviewer": "radcortez",
+    "net": 7,
+    "sec": 259.0,
+    "sent": 744182,
+    "recv": 8164,
+    "calls": 31,
+    "text": "SUMMARY:\nThis PR refactors the OpenTelemetry extension package structure to align with the Micrometer extension. However, it contains two critical compilation-blocking issues: (1) `TracerProcessor` still references the removed `isClassPresent()` method, and (2) imports point to non-existent `intrumentation` packages (also misspelled). One test file also violates the project's `*Test.java` naming convention.\n\nPOINTS:\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/tracing/TracerProcessor.java:3] **COMPILATION ERROR**: Static import `import static io.quarkus.opentelemetry.deployment.OpenTelemetryProcessor.isClassPresent;` references a method that this PR deletes. `TracerProcessor` uses `isClassPresent()` on lines 62 and 84 (in `MetricsExtensionAvailable` and `GrpcExtensionAvailable` classes). Either retain the `isClassPresent()` method in `OpenTelemetryProcessor` or update `TracerProcessor` to call `QuarkusClassLoader.isClassPresentAtRuntime()` directly (the established Quarkus pattern used by jackson, vertx, netty, agroal, kafka-client, etc.).\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryProcessor.java:34] **COMPILATION ERROR**: Import changed to `io.quarkus.opentelemetry.runtime.tracing.intrumentation.reactivemessaging.ReactiveMessagingTracingDecorator`, but the runtime module's `ReactiveMessagingTracingDecorator.java` still declares `package io.quarkus.opentelemetry.runtime.tracing.reactivemessaging;` (no `intrumentation` subpackage exists). This import points to a non-existent package.\n- [extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryProcessor.java:35] **COMPILATION ERROR + TYPO**: Import changed to `io.quarkus.opentelemetry.runtime.tracing.intrumentation.restclient.OpenTelemetryClientFilter`, but the runtime module's `OpenTelemetryClientFilter.java` still declares `package io.quarkus.opentelemetry.runtime.tracing.restclient;`. Additionally, \"intrumentation\" is misspelled (missing 'e' \u2014 should be \"instrumentation\").\n- [extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/NonAppEndpointsEqualRootPath.java:1] **NAMING CONVENTION**: This file contains a test class (has `@RegisterExtension QuarkusUnitTest` and `@Test` method) but is not named `NonAppEndpointsEqualRootPathTest.java`. It does not match Maven Surefire's default include patterns (`**/*Test.java`, `**/Test*.java`, etc.), making test discovery fragile. All other test classes in this package follow the `*Test.java` convention. Rename to `NonAppEndpointsEqualRootPathTest.java`.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "TracerProcessor.java:3 - isClassPresent() method removed but still referenced at lines 62, 84",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "TracerProcessor.java line 3 imports isClassPresent; lines 62,84 use it. Diff removes method from OpenTelemetryProcessor lines 178-180 and QuarkusClassLoader import."
+        },
+        {
+          "point": "OpenTelemetryProcessor.java:34 - ReactiveMessagingTracingDecorator import points to non-existent intrumentation subpackage",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "File at runtime/.../tracing/reactivemessaging/ReactiveMessagingTracingDecorator.java declares package io.quarkus.opentelemetry.runtime.tracing.reactivemessaging. No intrumentation package exists."
+        },
+        {
+          "point": "OpenTelemetryProcessor.java:35 - OpenTelemetryClientFilter import points to non-existent package + intrumentation typo",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "File at runtime/.../tracing/restclient/OpenTelemetryClientFilter.java declares package io.quarkus.opentelemetry.runtime.tracing.restclient. No intrumentation subpackage exists. 'intrumentation' misspelled."
+        },
+        {
+          "point": "NonAppEndpointsEqualRootPath.java - test class not named *Test.java, violating naming convention",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "File contains @RegisterExtension QuarkusUnitTest and @Test method but filename lacks 'Test' suffix. Other test files in package follow *Test.java convention."
+        }
+      ],
+      "missed_human": [],
+      "n_good": 4,
+      "n_wrong": 0,
+      "n_trivial": 0,
+      "n_missed": 0,
+      "net_score": 7
+    }
+  },
+  {
+    "repo": "wildfly/wildfly-core",
+    "pr": 6015,
+    "reviewer": "yersan",
+    "net": -1,
+    "sec": 484.6,
+    "sent": 1798653,
+    "recv": 14956,
+    "calls": 37,
+    "text": "SUMMARY:\nThis PR introduces a `ReloadParameters` builder class to `DomainLifecycleUtil` and migrates all callers from the old overloaded `reload()`/`reloadAdminOnly()` methods to the new builder-based `reload(String host, ReloadParameters)` API. The refactoring improves clarity for domain reload operations by replacing ambiguous boolean parameters with named fluent setters.\n\nPOINTS:\n- [testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java] The old overloaded public methods (`reload(String, Boolean)`, `reload(String, Boolean, Boolean)`, `reload(String, Boolean, Boolean, Long)`, `reloadAdminOnly(String)`, `reloadAdminOnly(String, Long)`) are REMOVED rather than deprecated. While all callers within the testsuite are migrated, this is a breaking API change. If `DomainLifecycleUtil` is used externally or considered part of a public test utility API, consider deprecating the old methods first with a `@Deprecated` annotation and `@deprecated` Javadoc rather than removing them outright.\n\n- [testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java] The `ReloadParameters` class uses mutable builder pattern (setters return `this` and modify state). Verify the class is declared `public static` as an inner class of `DomainLifecycleUtil` since it's referenced externally as `DomainLifecycleUtil.ReloadParameters`. Also confirm the new `reload(String host, ReloadParameters parameters)` method null-checks the parameters argument and extracts values correctly into the private `reload(String host, Boolean adminOnly, Boolean restartServers, Boolean waitForServers, Long timeout)` method.\n\n- [testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/AdminOnlyModeTestCase.java:89-91] The migration pattern `new DomainLifecycleUtil.ReloadParameters().setAdminOnly(true)` is clear and explicit. However, the `parameters` variable is reused across multiple test assertions (lines 92 and 104 in `testAdminOnlyMode`) \u2014 reassigning `parameters = new DomainLifecycleUtil.ReloadParameters()` creates a fresh object which is correct. Consider using `final` where the parameters object isn't reassigned (e.g., in `testAdminOnlyModeRestartServers` at line 119) to avoid accidental reuse bugs.\n\n- [testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/suites/IgnoredResourcesProfileCloneTestCase.java:368] The helper method `reloadSecondary(DomainLifecycleUtil secondaryLifecycleUtil)` calls `secondaryLifecycleUtil.reload(\"secondary\", false, false)` which still uses the OLD API signature. This was NOT migrated to use `ReloadParameters`. Either update this helper to use the builder pattern or ensure the old `reload(String, Boolean, Boolean)` overload is preserved.\n\n- [testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/suites/IgnoredResourcesTestCase.java:81] Same issue as above \u2014 `domainSecondaryLifecycleUtil.reload(\"secondary\", false, false)` in both `setupDomain()` and `tearDownDomain()` still uses the old API signature and was NOT migrated.\n\n- [testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/suites/IgnoredResourcesTestCase.java] The pattern `reload(\"secondary\", false, false)` means `restartServers=false, waitForServers=false`. In the builder pattern this should be `new DomainLifecycleUtil.ReloadParameters().setRestartServers(false).setWaitForServers(false)` \u2014 but since neither flag is set to `true`, the builder could just be `new DomainLifecycleUtil.ReloadParameters()` (all defaults are false/null). This is a minor optimization worth noting.\n\n- [testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/management/HttpManagementConstantHeadersTestCase.java:277] The `reload()` helper method at line 277 calls `domainPrimaryLifecycleUtil.reload(\"primary\", null, true)` \u2014 this still uses the OLD three-argument API and was NOT migrated to the builder pattern.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Old overloaded methods removed rather than deprecated - breaking API change",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "DomainLifecycleUtil.java has public reload/reloadAdminOnly methods; test utilities typically don't require deprecation cycles"
+        },
+        {
+          "point": "ReloadParameters mutable builder pattern verification - null-checks, public static",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Generic advice without identifying specific issues; cannot verify against truncated diff"
+        },
+        {
+          "point": "parameters variable reuse in AdminOnlyModeTestCase - suggest final",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff shows fresh objects are created correctly; minor style suggestion"
+        },
+        {
+          "point": "IgnoredResourcesProfileCloneTestCase.java:368 - reloadSecondary() uses OLD API not migrated",
+          "verdict": "wrong",
+          "severity": "none",
+          "score": -1,
+          "checked": "File has only 302 lines (lines 1-302 viewed). reloadSecondary() helper exists at lines 271-273, NOT 368. Line 368 is fabricated."
+        },
+        {
+          "point": "IgnoredResourcesTestCase.java:81 - reload('secondary', false, false) not migrated",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified at line 80 (and line 104): domainSecondaryLifecycleUtil.reload('secondary', false, false) uses old 3-arg API. Actual line is 80, not 81."
+        },
+        {
+          "point": "IgnoredResourcesTestCase.java default optimization - builder with no setters vs explicit false",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Minor code style suggestion; defaults are null/false so both patterns work identically"
+        },
+        {
+          "point": "HttpManagementConstantHeadersTestCase.java:277 - reload() helper uses OLD API not migrated",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified at line 275: domainPrimaryLifecycleUtil.reload('primary', null, true) uses old 3-arg API. Actual line is 275, not 277."
+        }
+      ],
+      "missed_human": [
+        "JavaDoc for ReloadParameters needs completion to describe behavior when values are null vs false vs true",
+        "Suggestion to use primitives instead of Boolean wrapper to avoid null/false ambiguity, with caveat about restartServers defaulting to true at operation level"
+      ],
+      "n_good": 2,
+      "n_wrong": 1,
+      "n_trivial": 4,
+      "n_missed": 2,
+      "net_score": -1
+    }
+  },
+  {
+    "repo": "apache/dubbo",
+    "pr": 13489,
+    "reviewer": "SaptarshiSarkar12",
+    "net": 3,
+    "sec": 208.6,
+    "sent": 170738,
+    "recv": 6224,
+    "calls": 11,
+    "text": "SUMMARY:\nPR adds a `check-format` job using `mvn spotless:check` to validate code formatting before downstream jobs. Spotless is confirmed configured in pom.xml (v2.42.0, Palantir format, `java11+` profile). The approach is sound but has several actionable issues: use of bare `mvn` instead of `./mvnw`, action version inconsistency with the rest of the workflow, and fragile error-parsing logic.\n\nPOINTS:\n- [.github/workflows/build-and-test-pr.yml:33] Use `./mvnw` instead of bare `mvn`. Every other job in this workflow file (and all other workflow files in the repo) uses `./mvnw` for reproducible builds. Running `mvn` directly may fail on runners where Maven is not pre-installed or may use an unexpected Maven version.\n\n- [.github/workflows/build-and-test-pr.yml:25-26] Action version inconsistency: `actions/checkout@v4` and `actions/setup-java@v4` are used here, but all other jobs in this file and in the rest of the `.github/workflows/` directory use `@v3`. Align with existing convention (`@v3`) to maintain consistency across the workflow.\n\n- [.github/workflows/build-and-test-pr.yml:28] `actions/upload-artifact@v4` should be `@v3` to match existing usage (all 34 occurrences of upload-artifact in the repo use `@v3`).\n\n- [.github/workflows/build-and-test-pr.yml:46] The `sed` command for error summary parsing is fragile:\n  ```\n  cat mvn.log | grep \"ERROR\" | sed 's/Check if code needs formatting    Check if code aligns with code style   [0-9A-Z:.-]\\+//' | sed 's/\\[ERROR] //' | head -n -11\n  ```\n  1. Hardcodes the job name (\"Check if code needs formatting\") and step name (\"Check if code aligns with code style\") \u2014 renaming either breaks the parsing.\n  2. `head -n -11` is a GNU coreutils extension; it will fail on macOS runners if ever used there. Consider a more robust approach or simply include the full `mvn.log` reference and let users download the artifact.\n\n- [.github/workflows/build-and-test-pr.yml:37-41] The artifact upload runs unconditionally (both on success and failure) since `continue-on-error: true` prevents the workflow from stopping. Add `if: ${{ steps.check.outcome == 'failure' }}` to upload the log only when needed, reducing artifact storage and noise.\n\n- [.github/workflows/build-and-test-pr.yml:42-45] The success/failure summary generation is correct in using `steps.check.outcome`. However consider also including a link to the uploaded artifact in the failure summary so developers can easily find the full log.\n\n- [.github/workflows/build-and-test-pr.yml:21] The Spotless plugin runs under the `java11+` profile (auto-activated for JDK \u226511) and Java 21 is used here \u2014 this is correct. The plugin version 2.42.0 with Palantir Java Format 2.38.0 is confirmed present in the root pom.xml.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Use ./mvnw instead of bare mvn - claims every job uses ./mvnw",
+          "verdict": "wrong",
+          "severity": "none",
+          "score": -1,
+          "checked": "Found bare 'mvn' at line 286: 'cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java...' and other locations in build-and-test-pr.yml. Claim that 'every other job' uses ./mvnw is factually false."
+        },
+        {
+          "point": "Action version inconsistency: checkout@v4 and setup-java@v4 vs existing @v3",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified all existing jobs in build-and-test-pr.yml use actions/checkout@v3 (lines 24, 50, 159, 219, 244, etc.) and actions/setup-java@v3 (lines 30, 53, 163, etc.)."
+        },
+        {
+          "point": "upload-artifact@v4 should be @v3 to match existing usage",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified existing workflow uses upload-artifact@v3 throughout (lines 79, 88, 209, 227, 288, 294, etc.)."
+        },
+        {
+          "point": "Fragile sed command for error parsing: hardcodes job/step names; head -n -11 is GNU extension",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "The sed in the diff hardcodes 'Check if code needs formatting    Check if code aligns with code style'. head -n -11 is indeed a GNU coreutils extension not portable to macOS."
+        },
+        {
+          "point": "Artifact upload runs unconditionally; add if condition for failure only",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "The upload-artifact step in the new check-format job has no 'if' condition, so it uploads mvn.log even on success. Adding 'if: steps.check.outcome == failure' would reduce noise."
+        },
+        {
+          "point": "Include artifact link in failure summary for developers",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Minor enhancement suggestion, not a real issue or bug."
+        },
+        {
+          "point": "Spotless plugin runs under java11+ profile with JDK 21 - this is correct",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified in pom.xml: java11+ profile auto-activates for [11,) JDK, spotless-maven-plugin.version=2.42.0, palantirJavaFormat.version=2.38.0. This is praise/confirmation."
+        }
+      ],
+      "missed_human": [],
+      "n_good": 4,
+      "n_wrong": 1,
+      "n_trivial": 2,
+      "n_missed": 0,
+      "net_score": 3
+    }
+  },
+  {
+    "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+    "pr": 575,
+    "reviewer": "mickaelistria",
+    "net": 4,
+    "sec": 284.0,
+    "sent": 260981,
+    "recv": 8931,
+    "calls": 26,
+    "text": "SUMMARY:\nPR corrects ESLint VSCode integration by fixing nodePath to point to the directory containing node_modules instead of the node executable, adds workspaceFolder and workingDirectory configuration, and introduces codeAction settings. The fix direction is correct but contains a syntax error, missing null checks, and fragile assumptions about the scopeUri parameter.\n\nPOINTS:\n- [ESLintClientImpl.java:40] Double semicolon syntax error: `highestPackageJsonDir = new File(new URI(configurationItem.getScopeUri())).getParentFile();;` \u2014 remove the extra `;`\n- [ESLintClientImpl.java:49-50] Null pointer risk: If `highestPackageJsonDir` remains null (URISyntaxException caught, root directory where `getParentFile()` returns null, or no package.json found in any ancestor), then `highestPackageJsonDir.toURI().toString()` and `highestPackageJsonDir.getAbsolutePath()` will throw NPE. Add a null check with a sensible fallback (e.g., workspace root or current directory).\n- [ESLintClientImpl.java:33] Missing bounds check: `configurationParams.getItems().get(0)` will throw IndexOutOfBoundsException if the items list is empty. Add `!configurationParams.getItems().isEmpty()` guard.\n- [ESLintClientImpl.java:40] Fragile scopeUri assumption: Code assumes scopeUri is always a file URI and calls `getParentFile()` to get a directory. Per LSP spec, scopeUri can be a workspace folder URI (directory) or null. If scopeUri is already a directory, searching from its parent skips that directory. Consider checking `new File(URI).isDirectory()` and handling null scopeUri gracefully.\n- [ESLintClientImpl.java:36] Positive note: Removing `NodeJSManager` import is correct \u2014 the old code incorrectly pointed nodePath to the node executable instead of the node_modules directory, which aligns with ESLint server's expected semantics per PR description.\n- [ESLintClientImpl.java:52-53] Map.of() is compatible: Project targets Java 11 (verified in MANIFEST.MF: `Bundle-RequiredExecutionEnvironment: JavaSE-11`), so `Map.of()` (Java 9+) is fully supported. No issue.\n- [ESLintClientImpl.java:31] HashMap capacity is correct: Changed from `new HashMap<>(3, 1.f)` to `new HashMap<>(6, 1.f)` which matches the 6 config keys (validate, run, nodePath, workspaceFolder, workingDirectory, codeAction).",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Double semicolon syntax error at line 40: `getParentFile();;`",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified in diff - line shows `getParentFile();;` with double semicolons, a code quality issue"
+        },
+        {
+          "point": "Null pointer risk: highestPackageJsonDir can be null (URISyntaxException caught, getParentFile() returns null), causing NPE on .toURI() and .getAbsolutePath()",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified: base code on disk shows no null handling; diff shows try-catch where highestPackageJsonDir remains null if exception caught, then used directly in config.put() calls without null check"
+        },
+        {
+          "point": "Missing bounds check: configurationParams.getItems().get(0) throws IOOB if list empty",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified in diff - no isEmpty() check before get(0), this is a legitimate bug"
+        },
+        {
+          "point": "Fragile scopeUri assumption: code assumes scopeUri is always file URI and calls getParentFile()",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Valid concern - LSP spec allows scopeUri to be null or a workspace folder URI; code doesn't handle these cases"
+        },
+        {
+          "point": "Positive note: Removing NodeJSManager import is correct",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "This is praise confirming the PR change is directionally correct - not an actionable finding"
+        },
+        {
+          "point": "Map.of() is compatible with Java 11 (verified in MANIFEST.MF)",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified MANIFEST.MF shows Bundle-RequiredExecutionEnvironment: JavaSE-11; confirming compatibility is not a finding"
+        },
+        {
+          "point": "HashMap capacity is correct (changed to 6 matching 6 config keys)",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified PR already changed HashMap size from 3 to 6; confirming this is fine is not a contribution"
+        }
+      ],
+      "missed_human": [
+        "Human flagged HashMap default size at line 36 (candidate confirmed it was correct in PR but didn't explicitly call this out as an observation), and multiple Map.of/singletonMap usages at lines 56, 61, 72, 73 - candidate did not comment on these specific code patterns"
+      ],
+      "n_good": 4,
+      "n_wrong": 0,
+      "n_trivial": 3,
+      "n_missed": 1,
+      "net_score": 4
+    }
+  },
+  {
+    "repo": "apache/accumulo-fluo",
+    "pr": 982,
+    "reviewer": "keith-turner",
+    "net": 4,
+    "sec": 198.2,
+    "sent": 195172,
+    "recv": 6661,
+    "calls": 21,
+    "text": "SUMMARY:\nThis PR intentionally removes metadata print statements from scan operations (fixing #981) and improves error handling consistency by switching scan failures from `System.out` to `System.err` with `System.exit(-1)`. The changes are well-aligned with established CLI conventions in the codebase.\n\nPOINTS:\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:130] The change from `System.out.println` to `System.err.println` + `System.exit(-1)` for `FluoException` is consistent with the dominant error handling pattern in `FluoCommand.java:35-37,108-114`, `BaseOpts.java:33-35`, and `FluoExec.java:49-50`. Good improvement.\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:171] Same improvement for `scanAccumulo` \u2014 now consistent with `scanFluo`. Note: both callers (`FluoScan.java:105,107` and `AppRunner.java:76,78`) invoke these methods without try-catch, so `System.exit(-1)` will terminate the JVM directly, which is appropriate for CLI tools.\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:128] Consider also addressing `CommandUtil.java:28-30,38-40`, which still uses `System.out.println()` for error messages (\"Application not initialized\"/\"Application not running\"). This is the only file in the CLI layer that prints errors to stdout \u2014 could be flagged as a follow-up for consistency.\n- [modules/command/src/test/java/org/apache/fluo/command/ScanTest.java] Pre-existing gap: only `getSpan()` and `getColumns()` are tested. The removed \"No data found\" message and the new `System.exit(-1)` behavior in `scanFluo`/`scanAccumulo` are untested. Not blocking, but worth noting for future coverage.\n- [modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:119] The `IllegalArgumentException` handler already used `System.err.println()` + `System.exit(-1)` in the base code \u2014 this PR makes the other exception handlers match it. Clean consolidation.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Error handling in FluoCommand.java:35-37,108-114, BaseOpts.java:33-35, FluoExec.java:49-50 uses System.err.println + System.exit(-1) - consistent pattern",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Read all 4 files; verified each location uses System.err.println followed by System.exit(-1)"
+        },
+        {
+          "point": "Callers FluoScan.java:105,107 and AppRunner.java:76,78 invoke scanFluo/scanAccumulo without try-catch, so System.exit(-1) is appropriate for CLI",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Read FluoScan.java lines 103-108 and AppRunner.java lines 75-79; both call scan methods directly with no surrounding try-catch"
+        },
+        {
+          "point": "CommandUtil.java:28-30,38-40 still uses System.out.println for error messages - follow-up for consistency",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Read CommandUtil.java; lines 28-30 and 38-40 use System.out.println for 'not initialized' and 'not running' error messages"
+        },
+        {
+          "point": "ScanTest.java only tests getSpan() and getColumns() - scanFluo/scanAccumulo with System.exit(-1) are untested",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Read ScanTest.java; only parseArgs() using getSpan/getColumns is tested via testValidInput() and testBadInputs()"
+        },
+        {
+          "point": "IllegalArgumentException handler already used System.err.println + System.exit(-1) in base code - PR makes other handlers match",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Read ScanUtil.java lines 105-108; catch(IllegalArgumentException e) { System.err.println(e.getMessage()); System.exit(-1); } exists in base code"
+        }
+      ],
+      "missed_human": [
+        "The candidate does not address that the System.exit(-1)/System.err changes are unrelated to the PR's stated goal (fixing missing meta info printing in scan). The human reviewer flagged this as scope creep - a valid concern that the changes go beyond what issue #981 requested."
+      ],
+      "n_good": 5,
+      "n_wrong": 0,
+      "n_trivial": 0,
+      "n_missed": 1,
+      "net_score": 4
+    }
+  },
+  {
+    "repo": "netty/netty",
+    "pr": 14487,
+    "reviewer": "franz1981",
+    "net": 4,
+    "sec": 789.6,
+    "sent": 5052671,
+    "recv": 20731,
+    "calls": 75,
+    "text": "SUMMARY:\nThis PR adds FileRegion support to io_uring using SPLICE operations, following the established epoll transport pattern. The implementation correctly gates gathering writes (writev) to ByteBuf-only paths and adds SPLICE to the write completion handler. However, critical missing pieces include the runtime capability check method, SPLICE factory method in IoUringIoOps, the new IoUringFileRegion class was not fully reviewable, and the writeComplete0 handler for FileRegion is truncated in the diff.\n\nPOINTS:\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/IoUring.java:73] `IoUring.isIOUringSpliceSupported()` is referenced in `AbstractIoUringStreamChannel.filterOutboundMessage()` but this method does NOT exist in the base IoUring.java class. The PR must add this capability check. It should follow the pattern of `isIOUringCqeFSockNonEmptySupported()` \u2014 probe for `IORING_OP_SPLICE` support during static initialization and cache the result.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/Native.java:280] `IORING_OP_SPLICE` (value 30) is defined but NOT included in the `REQUIRED_IORING_OPS` array (lines 277-293). If SPLICE is optional (gated by `isIOUringSpliceSupported()`), this is acceptable. However, clarify whether SPLICE is required or optional \u2014 if required for FileRegion to work, add it to the probe array so unsupported kernels fail at startup rather than at write time.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/IoUringIoOps.java] No `newSplice()` factory method exists. The PR must add one. io_uring SPLICE SQE requires: fd (out_fd), off (out_offset), addr (splice_off_in as pointer), len, rw_flags (splice_flags), and the sqe->addr2 field for the in_fd. The existing `IoUringIoOps` struct maps to: fd\u2192out_fd, offset\u2192out_offset, bufferAddress\u2192addr for in offset, length\u2192len, rwFlags\u2192flags. Need to verify how the input fd is passed \u2014 likely via bufferAddress or a new field, since io_uring SPLICE uses two file descriptors.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:208] `filterOutboundMessage` accepts only `DefaultFileRegion` and rejects generic `FileRegion` wrappers. Other transports (NIO, KQueue) accept `FileRegion` and call `transferTo()` as fallback. The comment says \"the channel can only support DefaultFileRegion\" because SPLICE/sendfile requires actual file descriptors. This is a real limitation \u2014 custom FileRegion wrappers (like FileRegionWrapper in tests) won't work. Consider adding an `EXPECTED_TYPES` constant to document this, or throw a more descriptive `UnsupportedOperationException`.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:262] When `fileRegion.open()` throws IOException, `handleWriteError(e)` is called and the method returns 0. Returning 0 means `numOutstandingWrites` will not be incremented. Since `scheduleWrite()` has `assert numOutstandingWrites > 0;` at line 335, this will trigger an assertion failure when an error occurs during open(). Fix: either rethrow the exception or return 1 with a poisoned completion.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:393] The `writeComplete0` FileRegion handler code is truncated in the diff (the try block is cut off). Verify it implements: (1) `fileRegion.transferred(res)` to advance position, (2) `channelOutboundBuffer.progress(res)` for progress notification, (3) completion check `fileRegion.transferred() >= fileRegion.count()`, (4) `fileRegion.close()` to release the file descriptor, (5) exception handling around close(), and (6) partial write retry \u2014 if not fully transferred and res > 0, the same FileRegion should be re-submitted.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringChannel.java:322] The guard change from `msgCount > 1` to `msgCount > 1 && in.current() instanceof ByteBuf` is CORRECT and matches epoll's pattern (`AbstractEpollStreamChannel.doWrite()` line 420). This ensures FileRegion messages bypass the gathering write path since writev cannot handle file descriptors.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringChannel.java:407] Adding `case Native.IORING_OP_SPLICE:` to the write completion switch is correct \u2014 SPLICE completion should be handled identically to WRITE/SEND completion.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:317] `cancelOutstandingWrites` only cancels when `writeId != 0`, but it uses `writeOpCode` to identify which operation to cancel. Since SPLICE now shares this path, verify that `writeOpCode` is set correctly for SPLICE operations (it should be set to `ops.opcode()` at line 275 which is correct since `writeOpCode = opCode;` is already there).\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/IoUringFileRegion.java] This new file was NOT fully reviewable. Critical questions: (1) Is `open()` idempotent? Can it be called multiple times safely? (2) Is `close()` called in ALL error paths including cancellation and channel close? (3) Does `splice(int fd)` correctly construct the SPLICE SQE with both input file fd and output socket fd? (4) Is the transferred byte counter thread-safe? (5) Does it implement proper reference counting for the wrapped DefaultFileRegion?\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:208] The filter checks `IoUring.isIOUringSpliceSupported()` which is a static capability check. If this returns false, FileRegion falls through to `super.filterOutboundMessage(msg)` which throws `UnsupportedOperationException`. This means on older kernels, users will get a runtime exception when writing FileRegion. Consider logging a warning at channel creation time or providing a clearer error message.\n\n- [testsuite/src/main/java/io/netty/testsuite/transport/socket/SocketFileRegionTest.java:67] The `supportsCustomFileRegion()` guard method is a good addition allowing io_uring to skip the custom FileRegion test since it only supports DefaultFileRegion. The `IoUringSocketFileRegionTest` (new file, not reviewable) should override this to return `false`.\n\n- [transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:253] The `scheduleWriteSingle` method now handles both ByteBuf and IoUringFileRegion. However, the method signature says `scheduleWriteSingle(Object msg)` and the old code had `ByteBuf buf = (ByteBuf) msg;` with no type check. Now with the if/else, the ByteBuf cast is protected. This is correct, but consider adding an assertion or throw at the end for unexpected types: `throw new Error(\"unexpected message type: \" + msg.getClass())`.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "isIOUringSpliceSupported() method missing from IoUring.java - called in filterOutboundMessage but does not exist",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "IoUring.java lines 1-114 - no isIOUringSpliceSupported() method exists; diff references it at AbstractIoUringStreamChannel line 212"
+        },
+        {
+          "point": "IORING_OP_SPLICE not in REQUIRED_IORING_OPS array - acceptable since SPLICE is optional",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Native.java lines 170-187 show REQUIRED_IORING_OPS does not include IORING_OP_SPLICE (defined at line 167); SPLICE is capability-gated so optional is correct"
+        },
+        {
+          "point": "No newSplice() factory method in IoUringIoOps - PR must add one",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "IoUringIoOps.java lines 1-352 - no newSplice method exists; diff calls fileRegion.splice(fd) which must return IoUringIoOps"
+        },
+        {
+          "point": "filterOutboundMessage only accepts DefaultFileRegion, not generic FileRegion like epoll does",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff shows instanceof DefaultFileRegion check; AbstractEpollStreamChannel.java line 523 accepts FileRegion"
+        },
+        {
+          "point": "fileRegion.open() IOException returns 0, potentially leaving message stuck in outboundBuffer",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Diff shows return 0 on open() error; message already added to outboundBuffer; no write completion would remove it"
+        },
+        {
+          "point": "writeComplete0 FileRegion handler code is truncated in diff, cannot verify implementation",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff ends at line 390 with incomplete try block"
+        },
+        {
+          "point": "msgCount > 1 guard change to include ByteBuf check is correct and matches epoll pattern",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff at line 322; AbstractEpollStreamChannel.java line 420 confirms same pattern"
+        },
+        {
+          "point": "Adding IORING_OP_SPLICE case to write completion switch is correct",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff adds case at line 407; SPLICE is a write operation so same handler is appropriate"
+        },
+        {
+          "point": "writeOpCode is set correctly for SPLICE via ops.opcode() at line 275",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff line 275 shows writeOpCode = opCode; cancelOutstandingWrites at line 399 uses writeOpCode"
+        },
+        {
+          "point": "IoUringFileRegion.java new file cannot be reviewed - missing critical details",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "File is new in PR, not visible in base commit"
+        },
+        {
+          "point": "On older kernels when splice unsupported, falls through to UnsupportedOperationException",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "AbstractIoUringChannel.java filterOutboundMessage throws UnsupportedOperationException for non-ByteBuf types"
+        },
+        {
+          "point": "supportsCustomFileRegion() guard method is good for allowing io_uring to skip test",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Diff adds method at line 67; standard test pattern"
+        },
+        {
+          "point": "Consider adding assertion for unexpected message types at end of scheduleWriteSingle",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Defensive coding suggestion, not a bug"
+        }
+      ],
+      "missed_human": [
+        "prepend IORING_SPLICE_SUPPORTED check before instanceof check for micro-optimization (avoid type check when capability is false)"
+      ],
+      "n_good": 3,
+      "n_wrong": 0,
+      "n_trivial": 10,
+      "n_missed": 1,
+      "net_score": 4
+    }
+  },
+  {
+    "repo": "eclipse-tycho/tycho",
+    "pr": 1264,
+    "reviewer": "HannesWell",
+    "net": 4,
+    "sec": 645.1,
+    "sent": 1430603,
+    "recv": 19619,
+    "calls": 49,
+    "text": "SUMMARY:\nPR #1264 attempts to simplify aggregator directory discovery by removing the `tycho.pomless.aggregator.names` property, but the core implementation using a `static ThreadLocal<Boolean> IS_FIRST` is fundamentally broken \u2014 it only allows the FIRST aggregator directory encountered to be scanned for modules, directly contradicting the PR's stated goal of scanning all aggregator directories.\n\nPOINTS:\n- [tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:47] **CRITICAL: `IS_FIRST` ThreadLocal prevents scanning of subsequent aggregator directories.** The static `ThreadLocal<Boolean> IS_FIRST` is initialized to `true` and set to `false` on the first `getPrimaryArtifact()` invocation. All subsequent aggregator directories will skip the scanning block (line 53: `if (IS_FIRST.get().booleanValue())`) and return `null` at line 90. The PR description says it \"scans all modules listed (transitively) in the root pom.xml for directly nested modules\" but the implementation only scans the first aggregator directory encountered. This is a fundamental logic error.\n\n- [tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:83] **ThreadLocal leak when `modules` is empty.** `IS_FIRST.remove()` is only called inside the `if (!modules.isEmpty())` block. If the first aggregator has no subdirectories with pom files (empty modules), the ThreadLocal stays as `false` permanently \u2014 a thread-local resource leak, and no aggregator will ever be scanned.\n\n- [tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:47] **Thread safety concern in parallel Maven builds.** The `static ThreadLocal<Boolean>` means each Maven thread independently tracks its own \"first aggregator.\" In parallel builds (`-T`), different threads could scan their own first aggregators, leading to non-deterministic behavior and potentially multiple temporary `pom.tycho` files being created with different module lists.\n\n- [tycho-its/projects/pomless-model/.mvn/maven.config] **Test has three aggregator directories but IS_FIRST only allows one.** The `pomless-model` test project declares `bundles`, `bundles-2`, and `bundles-with-enhanced-parents` as modules. The test assertions expect ALL three to resolve correctly (e.g., `assertProjectData(\"bundles-with-enhanced-parents/...\")`). With IS_FIRST logic, only whichever directory polyglot-maven visits first will be scanned. The test will likely fail.\n\n- [tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/AbstractTychoMapping.java:236] **Priority inversion risk: TychoBundleMapping loses its explicit priority.** The PR removes `getPriority()` from `AbstractTychoMapping` (which returned `0`). After this change, `TychoBundleMapping` inherits no override and falls back to the polyglot `Mapping` interface's default priority. Meanwhile, `AbstractXMLTychoMapping` still explicitly returns `1` for Feature/Repository/Target mappings. The PR description states the intended order is \"Bundle > Feature > pom.xml > Repository > Target-Platform > Aggregator,\" but if Bundle's priority is `0` and XML mappings are `1`, the actual order would be Feature/Repository/Target > Bundle > Aggregator \u2014 contradicting the stated intent. Either the default from the Mapping interface needs verification, or TychoBundleMapping needs an explicit `getPriority()` override.\n\n- [tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java:53] **`isValidLocation` change is an improvement but not reflected in test coverage.** Changing from `location.endsWith(TYCHO_POM)` to `Path.of(location).endsWith(TYCHO_POM)` fixes a potential false-match bug (e.g., a file named `mypom.tycho` would previously match). Consider adding a unit test verifying this behavior.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "CRITICAL: IS_FIRST ThreadLocal prevents scanning subsequent aggregator directories - only first aggregator scanned",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified in diff: proposed code has IS_FIRST.get().booleanValue() guard that passes only once, contradicting PR goal to scan all aggregator directories. Confirmed test has multiple aggregator modules (bundles, bundles-with-enhanced-parents) that both need scanning."
+        },
+        {
+          "point": "ThreadLocal leak when modules is empty - IS_FIRST.remove() only called inside if(!modules.isEmpty()) block",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified in diff: IS_FIRST.remove() is nested inside if(!modules.isEmpty()) conditional. If first aggregator has no subdirectories with poms, ThreadLocal stays false permanently - no aggregator ever scanned."
+        },
+        {
+          "point": "Thread safety concern - static ThreadLocal in parallel Maven builds",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "ThreadLocal provides per-thread isolation; the core issue is the algorithm being broken, not thread safety. Each thread would have its own 'first' but the logic is flawed regardless."
+        },
+        {
+          "point": "Test has three aggregator directories but IS_FIRST only allows one - test will fail",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: pom.xml declares bundles, bundles-2 (has pom.xml), bundles-with-enhanced-parents. Test expects bundles AND bundles-with-enhanced-parents both as pom aggregators. IS_FIRST would only scan one."
+        },
+        {
+          "point": "Priority inversion risk - TychoBundleMapping loses explicit priority after AbstractTychoMapping.getPriority() removal",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified: TychoBundleMapping does NOT override getPriority(). AbstractXMLTychoMapping returns 1. After removing AbstractTychoMapping.getPriority()=0, Bundle falls to interface default (likely 0), making Feature/Repository/Target (priority 1) sort ahead of Bundle, contradicting PR's stated order."
+        },
+        {
+          "point": "isValidLocation Path.of change is improvement but not reflected in test coverage",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Vague suggestion to add unit test. The Path.of(location).endsWith() is indeed slightly more precise than String.endsWith(), but not a substantive issue."
+        }
+      ],
+      "missed_human": [
+        "Human identified XML extension issue: MappingSupport.accept() checks getAcceptLocationExtensions() and feature.xml ends with '.xml', so XML mapping would falsely accept feature.xml files. This could cause XMLMapping to incorrectly handle feature.xml instead of TychoFeatureMapping, depending on sort order in PolyglotModelManager.getSortedMappings()."
+      ],
+      "n_good": 4,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 1,
+      "net_score": 4
+    }
+  },
+  {
+    "repo": "qubole/rubix",
+    "pr": 423,
+    "reviewer": "raunaqmorarka",
+    "net": 1,
+    "sec": 302.5,
+    "sent": 495874,
+    "recv": 8627,
+    "calls": 25,
+    "text": "SUMMARY:\nThis PR replaces an unbounded cached thread pool in LocalDataTransferServer with a bounded ThreadPoolExecutor and adds config support. However, the thread pool is never shut down (resource leak), the SynchronousQueue + AbortPolicy combination risks abrupt task rejection under load, and changing DEFAULT_SERVER_MAX_THREADS from Integer.MAX_VALUE silently affects BookKeeperServer too.\n\nPOINTS:\n- [rubix-bookkeeper/LocalDataTransferServer.java:182] **Thread pool is never shut down \u2014 resource leak.** The `threadPool` is a local variable inside `run()`. Method `stop()` (line ~200) only closes `listener` but never calls `threadPool.shutdown()` or `shutdownNow()`. Under high traffic, the 4096 worker threads will persist indefinitely after server stop. Make `threadPool` a field on `LocalServer` and invoke `threadPool.shutdown()` in `stop()`.\n\n- [rubix-bookkeeper/LocalDataTransferServer.java:182-186] **SynchronousQueue + default AbortPolicy causes abrupt task rejection.** `SynchronousQueue` has zero capacity \u2014 handoff succeeds only if a thread is immediately available. When all 4096 threads are busy, the default `AbortPolicy` throws `RejectedExecutionException`, which is swallowed by the outer `catch (IOException)` and never logged. Under a load spike, client connections will silently fail. Consider using a bounded `LinkedBlockingQueue` (e.g. capacity = maxThreads) to queue excess tasks, or set a `CallerRunsPolicy` so the accepting thread itself processes the overflow.\n\n- [rubix-spi/CacheConfig.java:161] **Changing DEFAULT_SERVER_MAX_THREADS from Integer.MAX_VALUE to 4096 silently affects BookKeeperServer.** BookKeeperServer (BookKeeperServer.java:141) already calls `getServerMaxThreads(conf)`, which reads this default. The PR title claims both servers are addressed, but BookKeeperServer.java is not modified \u2014 yet its behavior changes from unbounded to capped at 4096 Thrift worker threads. This is a breaking behavioral change for BookKeeperServer that could cause Thrift request rejection under extreme load. Document this impact or scope the default change to only the new config key.\n\n- [rubix-spi/CacheConfig.java:333] **getLocalTransferServerMaxThreads reuses DEFAULT_SERVER_MAX_THREADS as its fallback default.** The new config key `KEY_LOCAL_SERVER_MAX_THREADS` falls back to `DEFAULT_SERVER_MAX_THREADS` (4096). This tightly couples two semantically distinct configs (local transfer server vs. BookKeeper server). Consider giving the new config its own explicit default constant (e.g. `DEFAULT_LOCAL_TRANSFER_MAX_THREADS`) to keep defaults independent and make intent clear.\n\n- [rubix-bookkeeper/LocalDataTransferServer.java:182-186] **Core pool size of 0 means threads are always subject to keep-alive timeout.** With `corePoolSize=0` and `keepAliveTime=60s`, even lightly-loaded servers will continuously create and destroy threads as connections arrive/depart. If the server sustains moderate throughput, this causes unnecessary thread churn. Consider setting `corePoolSize` to a small fixed value (e.g. `Runtime.getRuntime().availableProcessors()`).",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Thread pool never shut down \u2014 resource leak. threadPool is local variable, stop() only closes listener.",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "LocalServer.run() line 177: threadPool is local variable. stop() line 198-206 only calls listener.close(), never shuts down threadPool. True resource leak."
+        },
+        {
+          "point": "SynchronousQueue + AbortPolicy causes abrupt task rejection; exception swallowed by catch(IOException).",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "RejectedExecutionException is a RuntimeException, NOT an IOException. The catch blocks only catch AsynchronousCloseException and IOException. The exception would NOT be swallowed \u2014 it would propagate and crash the accept loop. The candidate's specific claim about exception handling is factually FALSE."
+        },
+        {
+          "point": "Changing DEFAULT_SERVER_MAX_THREADS from Integer.MAX_VALUE to 4096 silently affects BookKeeperServer.",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "BookKeeperServer.java line 141: .maxWorkerThreads(getServerMaxThreads(conf)). CacheConfig.java line 377-380: getServerMaxThreads uses DEFAULT_SERVER_MAX_THREADS. Current value is Integer.MAX_VALUE at line 160. PR changes it to 4096 \u2014 real breaking change for BookKeeperServer."
+        },
+        {
+          "point": "getLocalTransferServerMaxThreads reuses DEFAULT_SERVER_MAX_THREADS as fallback \u2014 couples configs.",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "PR adds new method falling back to DEFAULT_SERVER_MAX_THREADS. Design/style suggestion, not a bug."
+        },
+        {
+          "point": "corePoolSize=0 means threads always subject to keep-alive timeout \u2014 unnecessary churn.",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "ThreadPoolExecutor(0, maxThreads, 60s, ...) \u2014 valid optimization suggestion but human reviewer explicitly approved 1m timeout for simplicity. Not a bug."
+        }
+      ],
+      "missed_human": [],
+      "n_good": 2,
+      "n_wrong": 1,
+      "n_trivial": 2,
+      "n_missed": 0,
+      "net_score": 1
+    }
+  },
+  {
+    "repo": "rharter/auto-value-moshi",
+    "pr": 78,
+    "reviewer": "swankjesse",
+    "net": -1,
+    "sec": 322.1,
+    "sent": 530959,
+    "recv": 9157,
+    "calls": 20,
+    "text": "SUMMARY:\nPR #78 adds support for wildcard types (`? extends X` and `? super X`) in generic type arguments for AutoValue properties by mapping JavaPoet's `WildcardTypeName` to Moshi's `Types.subtypeOf()` and `Types.supertypeOf()` APIs, which are confirmed available in Moshi 1.4.0.\n\nPOINTS:\n- [auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:503-505] The `IllegalArgumentException` for \"unrepresentable wildcard types\" (multiple bounds) is unreachable \u2014 Java's type system prohibits wildcards with multiple bounds, so JavaPoet would never construct such a `WildcardTypeName`. Consider replacing with a comment or using the `Messager` API for a proper compile-time diagnostic.\n- [auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java:75-76] The PR modifies existing tests but lacks a dedicated test case for bare unbounded wildcards (`Set<?> x()`). Since `WildcardTypeName.get()` yields `upperBounds = [Object]`, it would emit `Types.subtypeOf(Object.class)` \u2014 add explicit coverage for this path.\n- [auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java:100-101] Constructor parameter formatting changed inconsistently: original had `e,      \\nSet<String>` (extra spaces), new expectation has `e, \\n     Set<? extends String>` (different indent). Normalize to match project formatting conventions.\n- [auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:496] The cast `(WildcardTypeName) typeArg` is safe per the `instanceof` guard on line 494, but the pattern could be cleaner with Java 16+ `instanceof` pattern matching if the project targets that baseline.\n- [auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java:490-507] Correct use of Moshi's `Types.supertypeOf()` and `Types.subtypeOf()` \u2014 confirmed available in Moshi 1.4.0. The logic properly prioritizes lower bounds (`? super X`) before upper bounds (`? extends X`), which is the right semantic ordering.\n\nOverall: Implementation is correct and resolves #77. Main suggestions: add a bare `?` wildcard test case and reconsider the defensive error handling strategy.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "IllegalArgumentException for multiple bounds is unreachable",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "Java allows multiple upper bounds via intersection types (e.g., ? extends Number & Serializable). JavaPoet's WildcardTypeName.subtypeOf(ClassName...) accepts varargs, so multiple upperBounds IS possible and the check is reachable."
+        },
+        {
+          "point": "Missing test for bare unbounded wildcard (?)",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "PR tests ? extends X and ? super X but not bare ?. WildcardTypeName for bare ? would have upperBounds=[Object], emitting Types.subtypeOf(Object.class). Valid actionable coverage gap."
+        },
+        {
+          "point": "Constructor parameter formatting inconsistency",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Cosmetic whitespace concern in test string literals. Does not affect correctness."
+        },
+        {
+          "point": "Java 16+ instanceof pattern matching suggestion",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Project targets Java 7 (dependencies.gradle: JavaVersion.VERSION_1_7). Pattern matching not available."
+        },
+        {
+          "point": "Correct use of Moshi Types.subtypeOf/supertypeOf, semantic ordering praise",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Mostly praise. Claim about 'prioritizing lower bounds before upper bounds' is misleading - wildcards have EITHER upper OR lower bounds, never both, so no ordering concern exists."
+        }
+      ],
+      "missed_human": [
+        "Human reviewer noted that coercing Set<String> to Set<? extends String> in tests is 'slightly cheating' - while they behave identically at runtime, using Types.subtypeOf(String.class) everywhere would be more semantically correct and avoid implicit type coercion."
+      ],
+      "n_good": 1,
+      "n_wrong": 1,
+      "n_trivial": 3,
+      "n_missed": 1,
+      "net_score": -1
+    }
+  },
+  {
+    "repo": "sevntu-checkstyle/sevntu.checkstyle",
+    "pr": 645,
+    "reviewer": "romani",
+    "net": 7,
+    "sec": 395.1,
+    "sent": 1344662,
+    "recv": 10495,
+    "calls": 29,
+    "text": "SUMMARY:\nPR #645 adds `ForbidCertainMethodCheck` to ban method usage by name regex and argument count range. The implementation has several critical issues including a missing utility method, inconsistent token types vs documentation, missing message properties key, and test format mismatches.\n\nPOINTS:\n- [sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java:100] **CRITICAL: `Utils.parseArgumentCount()` does not exist.** The `Utils.java` class at `sevntu-checks/src/main/java/com/github/sevntu/checkstyle/Utils.java` has only two methods (`reportInvalidToken` and `getNextSubTreeNode`). `parseArgumentCount` is not added anywhere in this PR's diff. This will cause a compilation failure. Either add the utility method to `Utils.java` or implement the range parsing inline.\n\n- [sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java:178] **Claims constructor support but only registers `METHOD_CALL`.** The Javadoc (line 60) states \"method & constructor names\" are supported, but `getRequiredTokens()` returns only `{TokenTypes.METHOD_CALL}`. To catch constructor invocations (`new SomeClass()`), you must also register `TokenTypes.LITERAL_NEW`. See `ForbidInstantiationCheck.java:98-99` which uses `LITERAL_NEW` to detect instantiation. If constructors are truly not supported, update the Javadoc.\n\n- [sevntu-checks/src/main/resources/com/github/sevntu/checkstyle/checks/coding/messages.properties] **Missing message key `forbid.certain.method`.** The metadata XML (`checkstyle-metadata.xml:191`) references `<message-key key=\"forbid.certain.method\"/>` and the check calls `log(..., \"forbid.certain.method\", ...)`, but this key is absent from `messages.properties`. All other checks define their message keys there (e.g., `forbid.certain.imports=...`). Add the missing entry.\n\n- [sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java:90-102] **Setter methods lack null/empty validation.** `setMethodName()` compiles the pattern without null/empty guard. Compare with `NameConventionForJunit4TestClassesCheck.java:155-161` which checks `if (expectedClassNameRegex != null && !expectedClassNameRegex.isEmpty())`. While the metadata specifies a default `^$`, user input of `null` or empty string should be handled explicitly to avoid unexpected `Pattern.compile()` behavior.\n\n- [sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheckTest.java] **Test violation format mismatch.** The `log()` call in the check (line 160) passes two arguments: `methodName` and `argumentCount`. But the test's `getCheckMessage(MSG_KEY, methodName)` passes only one. The message pattern should be `{0} with {1} argument(s)` or similar, meaning tests must call `getCheckMessage(MSG_KEY, methodName, argumentCount)`. Also verify tests use `createModuleConfig(ForbidCertainMethodCheck.class)` per project convention (see `ForbidCertainImportsCheckTest.java`).\n\n- [sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java:185-186] **Missing `getDefaultTokens()` and `getAcceptableTokens()`.** Per project convention (see `ForbidCertainImportsCheck.java:134-150`), all three token methods should be present, with `getDefaultTokens()` as the canonical definition and the others delegating to it. Currently only `getRequiredTokens()` is defined.\n\n- [sevntu-checks/sevntu-checks.xml:83] **Default `methodName` value `assert(True|False)` is overly specific.** The default configuration in `sevntu-checks.xml` forbids `assertTrue`/`assertFalse` with 1 argument. This is useful as an example but may cause unexpected violations for users enabling the default module. Consider documenting this prominently or using an empty default (`^$`) to make the check opt-in by default.\n\n- [eclipsecs-sevntu-plugin/src/com/github/sevntu/checkstyle/checks/coding/checkstyle-metadata.properties] **Description text contains HTML entity errors.** The description has `<br/><br/>` which is fine, but also contains `<br/>.` (trailing period after break tag) and uses `<ol><li>` without line breaks that may render poorly. Compare with `ForbidCertainImportsCheck.desc` which uses cleaner formatting.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Utils.parseArgumentCount() missing - compilation failure",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Verified Utils.java at sevntu-checks/src/main/java/com/github/sevntu/checkstyle/Utils.java - only has reportInvalidToken and getNextSubTreeNode methods, no parseArgumentCount exists"
+        },
+        {
+          "point": "Constructor support claimed but only METHOD_CALL registered",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified metadata mentions 'method & constructor names' but PR diff shows only TokenTypes.METHOD_CALL in getRequiredTokens; ForbidInstantiationCheck.java:99 uses LITERAL_NEW for instantiation detection"
+        },
+        {
+          "point": "Missing message key forbid.certain.method",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified coding/messages.properties - has forbid.certain.imports but no forbid.certain.method key; metadata XML references this key and check's log() calls it"
+        },
+        {
+          "point": "Setter methods lack null/empty validation",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified ForbidCertainImportsCheck.java:96-98 has null guard, NameConventionForJunit4TestClassesCheck.java:155-161 has null+isEmpty guard; PR's setMethodName() calls Pattern.compile() without guard"
+        },
+        {
+          "point": "Test violation format mismatch",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "PR diff shows log() at line 160 passes 2 args (methodName, argumentCount) but test would call getCheckMessage(MSG_KEY, methodName) with 1 arg - verified by comparing to ForbidCertainImportsCheckTest.java which passes 2 args to getCheckMessage"
+        },
+        {
+          "point": "Missing getDefaultTokens() and getAcceptableTokens()",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified ForbidCertainImportsCheck.java:134-150 and ForbidInstantiationCheck.java:98-110 both define all three token methods with delegation pattern; PR only defines getRequiredTokens()"
+        },
+        {
+          "point": "Default methodName value assert(True|False) overly specific",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Opinion about default configuration design; debatable whether this should be opt-in by default"
+        },
+        {
+          "point": "HTML formatting issues in metadata description",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified metadata has <br/><br/>. with trailing period and <ol><li> without proper structure; cosmetic issue similar to existing metadata formatting"
+        }
+      ],
+      "missed_human": [],
+      "n_good": 6,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 0,
+      "net_score": 7
+    }
+  },
+  {
+    "repo": "SaptarshiSarkar12/Drifty",
+    "pr": 801,
+    "reviewer": "SaptarshiSarkar12",
+    "net": 5,
+    "sec": 405.0,
+    "sent": 677516,
+    "recv": 12263,
+    "calls": 27,
+    "text": "SUMMARY:\nThis PR upgrades the project from Java 21 to Java 23 across workflows, POMs, and Docker configs. While the intent is correct, there are critical issues that will break the build: the gluonfx-maven-plugin version tag is left empty, the root pom.xml maven-compiler-plugin still hardcodes Java 21, and the CLI's native-maven-plugin version predates JDK 23 support.\n\nPOINTS:\n- [GUI/pom.xml:51] CRITICAL: The `<version>` tag for `gluonfx-maven-plugin` is replaced with an empty/blank line instead of `${gluonfx-maven-plugin.version}`. The property is correctly defined as `1.0.25` in the properties section, but the plugin definition must reference it as `<version>${gluonfx-maven-plugin.version}</version>`. An empty version tag will cause Maven to fail to resolve the plugin, breaking the entire GUI build.\n- [pom.xml:80-81] CRITICAL: The `maven-compiler-plugin` configuration hardcodes `<source>21</source>` and `<target>21</target>`. The PR updates the properties (`maven.compiler.source` / `maven.compiler.target`) to 23 but misses these explicit plugin settings. Since explicit plugin configuration overrides properties, the compiler will still target Java 21. Change lines 80-81 to `<source>23</source>` and `<target>23</target>`.\n- [CLI/pom.xml:48,88,128,168] HIGH: The `native-maven-plugin` version `0.10.4` does not officially support GraalVM JDK 23. JDK 23 support was added in version `0.10.5` (May 2024), with improvements in `0.10.6` (Sept 2024). All four CLI profiles (Windows, Linux, macOS ARM, macOS Intel) use `0.10.4`. Upgrade to at least `0.10.6` to prevent native-image build failures.\n- [docker-compose.yaml:7] MINOR: Confirm `GRAALVM_VERSION_MAJOR=21` is updated to `23` in the `base` service build args. The file is listed among changed files, but verify the arg is correctly propagated so the dev Docker environment uses GraalVM JDK 23.\n- [.github/workflows/build.yml:108-115] The PR correctly adds conditional JDK setup: GraalVM JDK 23 for CLI mode and Gluon's GraalVM JDK 23 for GUI mode. The architecture detection for macOS (`aarch64` vs `x86_64`) is well-implemented.\n- [GUI/src/main/resources/META-INF/native-image/resource-config.json] INFO: The existing resource config includes ICU data for both `icudt72b` and `icudt74b`. Java 23 may ship with a newer ICU version (icudt75b or later). Consider whether additional ICU data patterns are needed, though the current dual-version approach may already handle this gracefully.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "GUI/pom.xml:51 empty gluonfx-maven-plugin version tag",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Diff shows line 51 replacing <version>1.0.23</version> with blank; property defined but not referenced"
+        },
+        {
+          "point": "pom.xml:80-81 maven-compiler-plugin hardcodes Java 21",
+          "verdict": "good",
+          "severity": "critical",
+          "score": 2,
+          "checked": "Confirmed on disk: <source>21</source> and <target>21</target> which override properties"
+        },
+        {
+          "point": "CLI/pom.xml native-maven-plugin 0.10.4 lacks JDK 23 support",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Confirmed version 0.10.4 at lines 48,88,128,168; claim about 0.10.5+ support is actionable"
+        },
+        {
+          "point": "docker-compose.yaml GRAALVM_VERSION_MAJOR=21 needs update",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Confirmed line 7 has GRAALVM_VERSION_MAJOR=21"
+        },
+        {
+          "point": "build.yml conditional JDK setup is well-implemented",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Praise for existing conditional logic"
+        },
+        {
+          "point": "ICU data in resource-config.json may need icudt75b",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Speculative observation about future ICU versions; existing icudt72b/74b patterns on disk"
+        }
+      ],
+      "missed_human": [
+        "docker-publish.yml:92 arch: 'amd64' is unnecessary since Docker images are already released only for amd64 architecture"
+      ],
+      "n_good": 4,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 1,
+      "net_score": 5
+    }
+  },
+  {
+    "repo": "trinodb/trino",
+    "pr": 29144,
+    "reviewer": "raunaqmorarka",
+    "net": 0,
+    "sec": 492.1,
+    "sent": 840546,
+    "recv": 7805,
+    "calls": 15,
+    "text": "SUMMARY:\nThis PR avoids expensive JSON parsing in `FileScanTask.spec()` by using pre-fetched `specsById` maps from the Iceberg table. The pattern is applied consistently in IcebergMetadata.java and IcebergSplitSource.java, but PartitionsTable.java was missed despite having access to the same optimization.\n\nPOINTS:\n- [plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/system/PartitionsTable.java:181] **Missed optimization \u2014 `PartitionsTable` still calls `fileScanTask.spec()` twice.** Line 181 calls `createStructLikeWrapper(fileScanTask)` which internally (StructLikeWrapperWithFieldIdToIndex.java:35) delegates to `fileScanTask.spec().partitionType()`, and line 186 directly calls `fileScanTask.spec()`. Since `PartitionsTable` has access to `icebergTable` (used at line 184: `icebergTable.schema().columns()`), you can add `Map<Integer, PartitionSpec> specsById = icebergTable.specs()` and apply the same optimization pattern used elsewhere. This is inconsistent with the PR goal of reducing `spec()` calls.\n- [plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java] **Verify `getFileScanPartitionSpec` handles the case where `specsById` is null or the spec ID is absent.** The method is newly added (not visible in diff) and used across multiple files. Consider adding a defensive fallback (e.g., `specsById != null && specsById.containsKey(specId) ? specsById.get(specId) : fileScanTask.spec()`) in case specsById is unexpectedly null or incomplete \u2014 this avoids a NullPointerException and preserves correctness if the optimization precondition isn't met.\n- [plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java:467] **Minor: verify `getPartitionKeys` signature change is consistent.** The call changed from `getPartitionKeys(fileScanTask)` to `getPartitionKeys(fileScanTask.partition(), ...)`. Ensure the corresponding `IcebergUtil.getPartitionKeys` overload accepts the new parameters correctly. A grep for all `getPartitionKeys` overloads in IcebergUtil.java would confirm there's no ambiguity or naming confusion.\n- [plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/StructLikeWrapperWithFieldIdToIndex.java:33] **The old single-arg `createStructLikeWrapper(FileScanTask)` still calls `fileScanTask.spec()`.** After this PR, most callers are migrated to the new two-arg version. Consider deprecating the single-arg overload or adding a `@Deprecated` annotation so future developers don't inadvertently reintroduce the expensive call. Alternatively, the method body could be updated to throw `UnsupportedOperationException` if specsById is not available.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "PartitionsTable.java missed optimization - still calls fileScanTask.spec() twice (line 181 and 186) despite having access to icebergTable.specs()",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified PartitionsTable.java:181 calls createStructLikeWrapper(fileScanTask) which at StructLikeWrapperWithFieldIdToIndex.java:35 calls fileScanTask.spec().partitionType(). Line 186 directly calls fileScanTask.spec(). Field icebergTable exists at line 73, so icebergTable.specs() would be available."
+        },
+        {
+          "point": "getFileScanPartitionSpec should handle null/missing specsById defensively",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "getFileScanPartitionSpec is a NEW method added by this PR - does not exist in base commit (grep returned no results). Cannot verify the actual implementation against code."
+        },
+        {
+          "point": "Verify getPartitionKeys signature change from getPartitionKeys(fileScanTask) to getPartitionKeys(fileScanTask.partition(), ...)",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified getPartitionKeys(StructLike partition, PartitionSpec spec) overload exists at IcebergUtil.java:811. The signature change is consistent with existing API. This confirms correctness rather than finding an issue."
+        },
+        {
+          "point": "Old single-arg createStructLikeWrapper(FileScanTask) at line 33 still calls fileScanTask.spec() - consider deprecating",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified StructLikeWrapperWithFieldIdToIndex.java:35 shows fileScanTask.spec().partitionType() still called. New two-arg overload exists at line 38. Deprecating the old method is concrete actionable improvement."
+        }
+      ],
+      "missed_human": [
+        "file cannot be null in getFileScanPartitionSpec - remove redundant null check (IcebergUtil.java:1335)",
+        "Should use checkState to assert spec is guaranteed to be present and return it (IcebergUtil.java:1338)"
+      ],
+      "n_good": 2,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 2,
+      "net_score": 0
+    }
+  },
+  {
+    "repo": "apache/kafka",
+    "pr": 17565,
+    "reviewer": "muralibasani",
+    "net": 1,
+    "sec": 413.9,
+    "sent": 842343,
+    "recv": 8057,
+    "calls": 21,
+    "text": "SUMMARY:\nThis PR adds the `forbiddenapis` Gradle plugin (v3.8) to check for forbidden API usage across all Kafka subprojects using the `jdk-unsafe` bundled signature, with failures ignored initially. The change is a sound incremental step toward enforcing API safety, and the configuration correctly applies to all subprojects including the Scala-based `:core` module since the plugin inspects compiled bytecode rather than source directories.\n\nPOINTS:\n- [build.gradle:803] `test.dependsOn('checkstyleMain', 'checkstyleTest', 'forbiddenApisMain')` wires only `forbiddenApisMain` but omits `forbiddenApisTest`. The plugin auto-creates both tasks. This follows the SpotBugs convention (line 805 wires only `spotbugsMain`; line 860 disables `spotbugsTest`) but deviates from Checkstyle (which checks both). Add a comment such as `// Only check main sources, not tests \u2014 consistent with spotbugs convention` to clarify intent for future maintainers.\n- [build.gradle:801] `ignoreFailures = true` is appropriate for an initial rollout, but this should become `false` once existing violations are remediated. Add a comment referencing the JIRA ticket for traceability: `// ignoreFailures = true \u2014 temporary until KAFKA-17798 violations are resolved`.\n- [build.gradle:797] The `forbiddenApis` block applies to all subprojects. This is correct: the plugin scans compiled bytecode, so it will properly inspect the `:core` project (where `java.srcDirs = []` but Java files are compiled via Scala joint compilation) and produce no output for subprojects with no compiled classes. Consistent with how SpotBugs is applied at line 800.\n- [build.gradle:806] The diff removes the trailing newline at end of file (shown as `\\ No newline at end of file`). Restore the trailing newline to comply with POSIX conventions and avoid diff noise in future edits.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Only forbiddenApisMain wired, omitting forbiddenApisTest - inconsistent with checkstyle which checks both main and test",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified line 798 shows checkstyle checks both (checkstyleMain, checkstyleTest), line 805 shows spotbugsMain only, line 860 disables spotbugsTest. PR only adds forbiddenApisMain."
+        },
+        {
+          "point": "Add JIRA ticket reference comment for ignoreFailures = true",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Line 801 shows ignoreFailures = true in PR diff. Candidate suggests adding JIRA comment for traceability - this is documentation advice, not a bug."
+        },
+        {
+          "point": "forbiddenApis block applies to all subprojects correctly; bytecode scanning works for :core Scala project",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "This is praise/confirmation that the configuration is correct, not identifying an issue."
+        },
+        {
+          "point": "Missing trailing newline at end of file causes diff noise",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Diff shows '\\ No newline at end of file' on the final line. POSIX convention violation that causes future diff noise."
+        }
+      ],
+      "missed_human": [
+        "Human reviewer noted ignoreFailures = true is NECESSARY because 'check fails for almost any module' without it - this explains WHY the setting is required, not just appropriate. Candidate only suggests adding a JIRA comment without capturing this key insight."
+      ],
+      "n_good": 2,
+      "n_wrong": 0,
+      "n_trivial": 2,
+      "n_missed": 1,
+      "net_score": 1
+    }
+  },
+  {
+    "repo": "quarkiverse/quarkus-mcp-server",
+    "pr": 51,
+    "reviewer": "mkouba",
+    "net": 3,
+    "sec": 69.6,
+    "sent": 43160,
+    "recv": 1765,
+    "calls": 8,
+    "text": "SUMMARY:\nThis PR adds metadata (pom descriptions and quarkus-extension.yaml files) to the SSE and stdio transport extensions so they render properly in code.quarkus and Maven Central. The changes follow repo conventions for keywords/categories/status, but contain a typo and a likely missing field.\n\nPOINTS:\n- [transports/stdio/pom.xml:14] Typo in description: `\"stanard input/output\"` should be `\"standard input/output\"`.\n- [transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml] Missing `description:` field. The core extension at `core/runtime/src/main/resources/META-INF/quarkus-extension.yaml` includes a top-level `description` key (e.g. `\"This extension enables developers to implement the MCP server features easily.\"`). Without this, the Quarkus extension catalog will have no description to display for the SSE transport. Add a `description:` line matching the pom.xml description (or similar).\n- [transports/stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml] Same as above \u2014 missing `description:` field. Add a top-level `description` key for consistency with the core extension's YAML.\n- [transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml, transports/stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml] The `guide` URL is set to `https://docs.quarkiverse.io/quarkus-mcp-server/dev/index.html`, whereas the core extension's guide link is commented out with a different path. Confirm that this guide URL is correct and the docs exist; if not yet published, consider commenting it out like the core extension does to avoid broken links.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Typo in stdio pom.xml: 'stanard' should be 'standard'",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified against diff: line shows 'stanard input/output' which is clearly a misspelling of 'standard'"
+        },
+        {
+          "point": "Missing description field in SSE quarkus-extension.yaml",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified core/runtime/src/main/resources/META-INF/quarkus-extension.yaml has 'description: This extension enables developers...' on line 2; SSE YAML in diff lacks this field"
+        },
+        {
+          "point": "Missing description field in stdio quarkus-extension.yaml",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Same verification as SSE point \u2014 core extension has description field but stdio YAML in diff does not"
+        },
+        {
+          "point": "Guide URL may be incorrect \u2014 should confirm docs exist or comment out like core extension",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Core extension has commented-out guide URL (line 6), but human reviewer confirms this guide URL is already published, so concern is unfounded"
+        }
+      ],
+      "missed_human": [],
+      "n_good": 3,
+      "n_wrong": 0,
+      "n_trivial": 1,
+      "n_missed": 0,
+      "net_score": 3
+    }
+  },
+  {
+    "repo": "spring-projects/spring-boot",
+    "pr": 49721,
+    "reviewer": "wilkinsona",
+    "net": 0,
+    "sec": 353.8,
+    "sent": 433173,
+    "recv": 12315,
+    "calls": 27,
+    "text": "SUMMARY:\nThis PR adds `/opt/homebrew/bin` as an additional macOS fallback directory alongside `/usr/local/bin` across three files containing process execution fallback logic. Investigation confirms all `USR_LOCAL_BIN` constant usages in the codebase are covered. The changes are functionally correct, though `CredentialHelper`'s mutation-in-a-loop pattern is fragile and inconsistent with the cleaner approach used in `ProcessRunner`.\n\nPOINTS:\n- [CredentialHelper.java:100-112] Fragile mutation-in-loop pattern: `processBuilder.command(command)` mutates the builder's internal command list on each iteration. Although `executable` is captured before the loop (line 99) so `command.set(0, binDirectory + executable)` produces the correct path each time, `new ArrayList<>(processBuilder.command())` on line 101 copies the *previously mutated* list, not the original. This works accidentally because index 0 is overwritten, but it's error-prone and confusing. Consider capturing the original command list once before the loop (`List<String> originalCommand = new ArrayList<>(processBuilder.command())`) and building from that, or create a fresh ProcessBuilder per iteration (matching the ProcessRunner pattern).\n- [ProcessRunner.java:119-122] Clean approach worth noting as the model: this PR correctly creates `new ProcessBuilder(localCommand)` for each fallback attempt, avoiding any mutation concerns. The same pattern should be considered for `CredentialHelper` for consistency.\n- [CredentialHelper.java:44 vs ProcessRunner.java:46] Inconsistent trailing slash convention: `USR_LOCAL_BIN` and `OPT_HOMEBREW_BIN` include trailing slashes in CredentialHelper (`\"/usr/local/bin/\"`) but NOT in ProcessRunner or DisabledIfProcessUnavailableCondition (`\"/usr/local/bin\"`). While internally consistent per-file, consider standardizing on one convention across the codebase to reduce cognitive load for future maintainers.\n- [CredentialHelperTests.java:109] Test correctly changed from `allSatisfy` to two `anySatisfy` assertions to verify both fallback directories are attempted. However, consider adding a count assertion (`assertThat(ex.getSuppressed()).hasSize(2)`) to ensure exactly two suppressed exceptions exist, which would catch cases where additional unexpected suppressed exceptions are added later.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Fragile mutation-in-loop pattern in CredentialHelper.java: processBuilder.command(command) mutates the builder, so subsequent loop iterations copy the previously mutated list instead of the original.",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified against diff: NEW code captures executable before loop but uses processBuilder.command() inside loop which returns the mutated list after processBuilder.command(command) sets it. Works accidentally because set(0,...) overwrites index 0, but is fragile."
+        },
+        {
+          "point": "ProcessRunner.java uses clean approach of new ProcessBuilder(localCommand) per fallback - worth noting as model.",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "Verified ProcessRunner.java base code and diff. This is praise for existing pattern in the PR, overlapping with Point 1's improvement suggestion."
+        },
+        {
+          "point": "Inconsistent trailing slash convention: CredentialHelper has trailing slashes in bin paths, ProcessRunner and DisabledIfProcessUnavailableCondition do not.",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified base code: CredentialHelper.java line 42 has '/usr/local/bin/', ProcessRunner.java line 45 has '/usr/local/bin', DisabledIfProcessUnavailableCondition.java line 44 has '/usr/local/bin'. Real inconsistency."
+        },
+        {
+          "point": "Test suggestion: add hasSize(2) assertion to verify exactly two suppressed exceptions exist.",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Verified base test at line 109 uses allSatisfy. PR changes to two anySatisfy calls. Adding count assertion would prevent false passes if more suppressed exceptions appear later."
+        }
+      ],
+      "missed_human": [
+        "DisabledIfProcessUnavailableCondition: The startsWith(binDirectory + '/') check is unnecessary - @DisabledIfProcessUnavailable is never used with slashes in command names, hurting portability",
+        "ProcessRunner: The startsWith(binDirectory + '/') check is unnecessary - ProcessRunner shouldn't be called with commands containing '/'",
+        "CredentialHelper: The startsWith(binDirectory) check is unnecessary - credential helper names shouldn't contain '/'"
+      ],
+      "n_good": 3,
+      "n_wrong": 0,
+      "n_trivial": 1,
+      "n_missed": 3,
+      "net_score": 0
+    }
+  },
+  {
+    "repo": "apache/flink",
+    "pr": 28116,
+    "reviewer": "snuyanzin",
+    "net": -1,
+    "sec": 167.6,
+    "sent": 208208,
+    "recv": 5725,
+    "calls": 13,
+    "text": "SUMMARY:\nThis PR adds an 8-arg overload of `buildShowCreateMaterializedTableRow` with `includeFreshness` and `includeRefreshMode` flags, allowing callers to suppress those clauses from SHOW CREATE output. The existing 6-arg overload delegates to the new one with `true, true`, preserving backward compatibility. One production caller (`ShowCreateMaterializedTableOperation`) uses the 6-arg version and is unaffected.\n\nPOINTS:\n- [flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java:146] The new 8-arg overload lacks Javadoc for the two new boolean parameters. Add `@param` tags explaining `includeFreshness` and `includeRefreshMode` and document the intended use case (platform-level deployments that fix these values at the platform level).\n- [flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java:146] The 6-arg overload is `public static` but the new 8-arg overload is package-private. Consider making the 8-arg overload `public` as well so that external platform integrations (the stated use case) can invoke it directly without reflection.\n- [flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java:180-185] When both flags are `false`, the output will contain an extra blank line between `START_MODE` and `AS` (since `extractStartMode` always appends `\"\\n\"` and the conditionals contribute nothing). Consider whether a trailing blank line in the rendered DDL is desirable, or whether the newline after START_MODE should also be conditional on at least one of the flags being true.\n- [flink-table/flink-table-api-java/src/test/java/org/apache/flink/table/api/internal/ShowCreateUtilTest.java:150] Good use of `@CsvSource` to cover all four combinations of the two boolean flags \u2014 clean and concise parameterization.\n- [flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java:180] The conditional emission pattern is clean and straightforward. No issues with the logic itself.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "Missing @param Javadoc for includeFreshness and includeRefreshMode",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "New 8-arg method only has /** Show create materialized table statement only for materialized tables. */ with no @param tags for the two new boolean parameters, while the original 6-arg method also lacks @param tags."
+        },
+        {
+          "point": "8-arg overload is package-private while 6-arg is public",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "Diff clearly shows the new 8-arg method is declared as 'public static String buildShowCreateMaterializedTableRow(' - NOT package-private. Claim is factually false."
+        },
+        {
+          "point": "Extra blank line between START_MODE and AS when both flags are false",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "When both flags are false, the output is 'START_MODE = FROM_BEGINNING\\nAS SELECT 1\\n' - just normal line breaks with no blank line. The test in the diff confirms expected output has no blank line between these sections."
+        },
+        {
+          "point": "Praise for @CsvSource parameterization covering all 4 flag combinations",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "This is praise for the test design, not identifying an issue."
+        },
+        {
+          "point": "Praise for clean conditional emission pattern",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "This is praise stating no issues with the logic, not identifying an issue."
+        }
+      ],
+      "missed_human": [
+        "Human requested test verification at line 180, but PR diff already includes showCreateMaterializedTableWithFlags test - so no actual miss"
+      ],
+      "n_good": 1,
+      "n_wrong": 2,
+      "n_trivial": 2,
+      "n_missed": 0,
+      "net_score": -1
+    }
+  },
+  {
+    "repo": "Aiven-Open/klaw",
+    "pr": 2296,
+    "reviewer": "muralibasani",
+    "net": -2,
+    "sec": 909.5,
+    "sent": 2827134,
+    "recv": 24077,
+    "calls": 45,
+    "text": "SUMMARY:\nThis PR introduces an AOP-based `@PermissionAllowed` annotation for declarative permission checking on Topic and Connector APIs. The approach is sound (first AOP-based authorization in the codebase), but there's a critical compilation error, inconsistent permission semantics, and incomplete migration from existing service-level checks.\n\nPOINTS:\n- [core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java] **COMPILATION ERROR**: The new exception handler references `ApiResponse.UNAUTHORIZED`, which does NOT exist. `ApiResponse` defines only `SUCCESS`, `FAILURE`, and `NOT_AUTHORIZED`. This will fail to compile. Replace with `ApiResponse.NOT_AUTHORIZED` to match the existing `handleKlawNotAuthoirzedExceptionInternal` pattern (which also returns `ApiResponse.NOT_AUTHORIZED` with `HttpStatus.UNAUTHORIZED`).\n- [core/src/main/java/io/aiven/klaw/controller/KafkaConnectController.java:saveConnectorDocumentation] **WRONG PERMISSION TYPE**: `saveConnectorDocumentation` (POST endpoint that writes documentation) is annotated with `@PermissionAllowed(permissionAllowed = {PermissionType.VIEW_CONNECTORS})`. A write/mutation operation should not use a VIEW permission. Consider adding a dedicated `EDIT_CONNECTOR_DOCUMENTATION` or `MANAGE_CONNECTORS` permission type, or at minimum use a more appropriate existing permission.\n- [core/src/main/java/io/aiven/klaw/service/KafkaConnectControllerService.java:112,440,452,528,553] **REDUNDANT PERMISSION CHECKS**: After adding `@PermissionAllowed` annotations on controller methods, the equivalent `isNotAuthorizedUser()` checks remain in service methods (e.g., `createConnectorRequest` line 112, `restartConnector` line 440, `deleteConnectorRequests` line 452, `approveConnectorRequests` line 528, `declineConnectorRequests` line 553). This creates redundant double-checking. Either remove the service-level checks or document why both layers are intentionally retained. Also note: the annotation uses OR logic (`{A, B}` = either permission suffices) while service-level checks use single-permission logic, creating potential inconsistency.\n- [core/src/main/java/io/aiven/klaw/controller/KafkaConnectController.java:restartConnector] **MISSING ANNOTATION (diff truncated)**: The diff is truncated before confirming whether `restartConnector` (POST /connector/restart, line 223 in base) receives `@PermissionAllowed`. The service layer (`KafkaConnectControllerService.restartConnector`) checks `PermissionType.MANAGE_CONNECTORS` (line 440). Ensure this endpoint has the annotation: `@PermissionAllowed(permissionAllowed = {PermissionType.MANAGE_CONNECTORS})`.\n- [core/src/main/java/io/aiven/klaw/controller/TopicController.java] **ANNOTATION COVERAGE UNVERIFIED**: The PR description states annotations are added to Topic APIs, but the TopicController diff is not included. The base file shows ZERO `@PermissionAllowed` annotations on all 17 TopicController endpoints. Verify that the TopicController changes are present in the PR and that endpoints like `/getTopics`, `/getTopicRequests`, `/execTopicRequests`, `/execTopicRequestsDecline`, `/deleteTopicRequests`, `/getTopicRequestsForApprover` are covered.\n- [core/src/main/java/io/aiven/klaw/model/requests/TopicCreateRequestModel.java:13] **DUAL PERMISSION PATHS**: TopicController endpoints `/createTopics` and `/updateTopics` already perform permission checks via `@TopicRequestValidator` on the model classes (Bean Validation path). If `@PermissionAllowed` annotations are also added to the same controller methods, requests will be validated twice through different mechanisms. Consider whether the `@TopicRequestValidator` permission check in `TopicRequestValidatorImpl.isValid()` (line 44-48) should be removed if the new annotation handles it, to avoid confusion about which mechanism is authoritative.\n- [core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:53] MINOR: Typo in method name `handleKlawNotAuthoirzedExceptionInternal` \u2014 \"Authoirzed\" should be \"Authorized\". Not introduced by this PR but worth noting.",
+    "judge": {
+      "candidate": [
+        {
+          "point": "COMPILATION ERROR: KlawExceptionHandler references ApiResponse.UNAUTHORIZED which does not exist",
+          "verdict": "wrong",
+          "severity": "critical",
+          "score": -1,
+          "checked": "ApiResponse.java defines SUCCESS, FAILURE, NOT_AUTHORIZED only. However, the KlawExceptionHandler diff content is not provided in the PR diff excerpt shown, so I cannot verify the claimed reference to ApiResponse.UNAUTHORIZED. The new PermissionConstraintException.java file doesn't exist in the base repo and its content isn't visible in the diff."
+        },
+        {
+          "point": "WRONG PERMISSION TYPE: saveConnectorDocumentation annotated with VIEW_CONNECTORS for a write endpoint",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "Diff clearly shows @PermissionAllowed(permissionAllowed = {PermissionType.VIEW_CONNECTORS}) added to saveConnectorDocumentation, which is a POST endpoint that writes documentation. PermissionType.VIEW_CONNECTORS description is 'View kafka connectors' \u2014 a read permission."
+        },
+        {
+          "point": "REDUNDANT PERMISSION CHECKS: service-level isNotAuthorizedUser checks remain after adding controller annotations",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "The candidate cites lines 112, 440, 452, 528, 553 as having isNotAuthorizedUser checks. Verified: line 112 has it (createConnectorRequest), but line 440 is isConnectorRequestOpen(), line 452 is isPromoteRequestOpen(), line 528 is variable declaration, line 553 is inside a lambda. Actual isNotAuthorizedUser calls are at lines 112, 532, 641, 791, 839. Core observation about redundancy is valid, but the specific citations are fabricated/wrong."
+        },
+        {
+          "point": "MISSING ANNOTATION: restartConnector may lack @PermissionAllowed (diff truncated)",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "Base file shows restartConnector at lines 228-236 with no @PermissionAllowed. The diff excerpt shows additions up to the final line and includes saveConnectorDocumentation and getConnectorDetailsPerEnv. Whether restartConnector gets the annotation is not shown, but claiming the diff is truncated is speculative \u2014 the diff appears complete up to the last shown change."
+        },
+        {
+          "point": "ANNOTATION COVERAGE UNVERIFIED: TopicController annotations not visible in diff",
+          "verdict": "wrong",
+          "severity": "normal",
+          "score": -1,
+          "checked": "Confirmed TopicController base has 0 @PermissionAllowed annotations across 17 endpoints. However, the diff is explicitly noted as showing only KafkaConnectController changes and is clipped. The PR claims to change TopicController.java but its diff isn't shown. Claiming this is a missing item is unverifiable since the diff excerpt is incomplete."
+        },
+        {
+          "point": "DUAL PERMISSION PATHS: @TopicRequestValidator and @PermissionAllowed may duplicate permission checks",
+          "verdict": "good",
+          "severity": "normal",
+          "score": 1,
+          "checked": "TopicCreateRequestModel.java has @TopicRequestValidator(getPermissionType = PermissionType.REQUEST_CREATE_TOPICS). TopicRequestValidatorImpl.java isValid() method (lines 47-56) calls commonUtilsService.isNotAuthorizedUser(). If @PermissionAllowed is also added to controller methods handling these requests, there would be two separate permission-checking mechanisms."
+        },
+        {
+          "point": "MINOR: Typo in handleKlawNotAuthoirzedExceptionInternal method name",
+          "verdict": "trivial",
+          "severity": "none",
+          "score": 0,
+          "checked": "KlawExceptionHandler.java line 30 confirms the typo: handleKlawNotAuthoirzedExceptionInternal. Not introduced by this PR."
+        }
+      ],
+      "missed_human": [
+        "Whitespace formatting in PermissionAllowedAspectInterceptor checkPermissions method signature (trivial stylistic point)"
+      ],
+      "n_good": 2,
+      "n_wrong": 4,
+      "n_trivial": 1,
+      "n_missed": 0,
+      "net_score": -2
+    }
+  },
+  {
+    "repo": "eclipse-vertx/vert.x",
+    "pr": 5478,
+    "reviewer": "vietj",
+    "net": null,
+    "sec": 475.6,
+    "sent": 1544580,
+    "recv": 14655,
+    "calls": 34,
+    "text": "SUMMARY:\nThis PR refactors the node selector implementation to handle ordering of select calls internally rather than relying on the Serializer queue mechanism. The changes introduce a new Completable-based NodeSelector API, remove the Serializer dependency from ClusteredEventBus, and add new selector implementations. However, the PR introduces breaking API changes without backward compatibility adapters, affecting custom NodeSelector implementations.\n\nPOINTS:\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java:25] **Breaking API Change**: The new `NodeSelector` interface uses `Completable<T>` instead of the old `Promise<T>` API. Custom implementations of the old `io.vertx.core.spi.cluster.impl.NodeSelector` (used in `CustomNodeSelectorTest.java:97` and `MessageQueueOnWorkerThreadTest.java:77`) will fail to compile since `Completable` lacks `tryComplete()`/`tryFail()` methods and requires implementing `complete(T result, Throwable failure)` instead.\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java:223] **Missing Backward Compatibility Adapter**: `ClusteredEventBus` now directly calls `nodeSelector.selectForSend(address, (nodeId, failure) -> {...})` with the new Completable callback style, but `VertxBootstrapImpl.clusterNodeSelector()` still accepts the old Promise-based `NodeSelector`. No adapter bridges the old SPI interface to the new internal interface. Existing users who provide custom node selectors via `VertxBootstrapImpl.clusterNodeSelector()` will experience runtime failures.\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java:32] **Thread Safety Concern - ConcurrentMap Entry Operations**: The implementation uses `ConcurrentHashMap<String, Entry>` where `Entry` maintains a linked list of pending promises. While ConcurrentHashMap provides atomic map operations, the linked list manipulation within entries requires explicit synchronization. The diff doesn't show the `Entry` class implementation - verify that compound operations (check-then-act on the linked list) are properly synchronized to prevent race conditions during concurrent select calls for the same address.\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java:28] **ClusteredNode vs ClusterManager Ambiguity**: The new `DefaultNodeSelector` uses `ClusteredNode` (new interface) instead of `ClusterManager`. The field is named `clusterManager` but typed as `ClusteredNode`. Verify that `ClusteredNode` extends `ClusterManager` and provides all necessary methods, or consider renaming the field to `clusteredNode` for clarity. Also, `VertxImpl.initClustered()` (line 340) passes `this` (VertxImpl) as the ClusteredNode - confirm VertxImpl implements ClusteredNode.\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java:221] **Removed Serializer Ordering Guarantee**: The old implementation used `Serializer.queue(message, nodeSelector::selectForSend, promise)` which provided per-context, per-address serialization. The new implementation relies on `DefaultNodeSelector` to maintain ordering internally. Verify that the new ordering mechanism handles all edge cases: (1) concurrent selects for different addresses, (2) rapid registration changes during pending selects, (3) failure scenarios where the cluster manager response never arrives (potential memory leak in the pending promises linked list).\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java:39] **Removed Import May Affect Tests**: The diff removes `import io.vertx.core.spi.cluster.impl.NodeSelector` from ClusteredEventBus. Tests in `ClusteredEventBusTest.java` and `CustomNodeSelectorTest.java` reference the old `NodeSelector` interface. Ensure test files are updated to use the new interface or an adapter is provided.\n\n- [vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/selector/Index.java, Weight.java, etc.] **New Selector Package Duplication**: The PR adds new selector implementations (`SimpleRoundRobinSelector`, `WeightedRoundRobinSelector`, `NullRoundRobinSelector`, `Index`, `Weight`) in `io.vertx.core.eventbus.impl.clustered.selector` package, duplicating existing implementations in `io.vertx.core.spi.cluster.impl.selector`. Consider whether the old implementations should be deprecated and migrated, or if both packages serve different purposes (SPI vs internal). If duplication is intentional, add @Internal annotations and Javadoc clarifying the separation.\n\n- [vertx-core/src/main/java/module-info.java:117] **Module Exports**: The module-info exports `io.vertx.core.eventbus.impl.clustered to io.vertx.core.tests` but the new selector package `io.vertx.core.eventbus.impl.clustered.selector` may need explicit export if tests access it directly. Verify test compilation works with the new package structure.",
+    "judge": null
+  },
+  {
+    "repo": "hibernate/hibernate-orm",
+    "pr": 11706,
+    "reviewer": "beikov",
+    "net": null,
+    "sec": 267.1,
+    "sent": 614655,
+    "recv": 8706,
+    "calls": 36,
+    "text": "SUMMARY:\nThis PR fixes HHH-20121 by adding null checks when logging loaded values during follow-on locking. The fix is correct and consistent with existing patterns in the same class, but includes an unused import.\n\nPOINTS:\n- [hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java:49] The import `java.util.Optional` is unused \u2014 remove it.\n\n- [hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java:472-481] The null check for `collectedEntities` is correct and necessary. Both `LoadedValuesCollectorImpl` implementations (in `FollowOnLockingAction` and `CollectionLockingAction`) lazily initialize `entitiesToLock`, so `getCollectedEntities()` can indeed return null when no entities matching the lock path are loaded. The pattern here is consistent with `segmentLoadedValues()` at line 496 in the same class, which already guards against null.\n\n- [hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java:488-497] Same for `collectedCollections` \u2014 the null guard is correct. Consistent with `segmentLoadedCollections()` at line 510.\n\n- [hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java:469-499] Minor style note: replacing `.forEach()` lambdas with enhanced for-loops is fine and arguably clearer alongside the null-check blocks. The broader codebase exclusively uses explicit `if (collection != null)` guards rather than `Optional.ofNullable().ifPresent()`, so the chosen approach aligns with project conventions.",
+    "judge": null
+  },
+  {
+    "repo": "agroal/agroal",
+    "pr": 81,
+    "reviewer": "franz1981",
+    "net": null,
+    "sec": 584.6,
+    "sent": 2069297,
+    "recv": 18065,
+    "calls": 36,
+    "text": "SUMMARY:\nThis PR replaces `CopyOnWriteArrayList`/`ConcurrentLinkedQueue` collections for JDBC resource tracking with a custom `AutoCloseableElement` linked list. The design is a valid optimization for reducing collection overhead, but introduces a critical correctness issue with leak detection and lacks adequate thread-safety validation and dedicated unit tests.\n\nPOINTS:\n- [agroal-pool/src/main/java/io/agroal/pool/wrapper/ConnectionWrapper.java:120-133] **Leak detection will report false positives.** The current `closeTrackedStatements()` captures `trackedStatements.size()` and calls `trackedResultSetSize()` on each statement to count leaks. This relies on self-removal (via `releaseTrackedStatement`/`releaseTrackedResultSet`) so that only truly leaked resources remain in the collection. The PR explicitly removes self-removal (\"wrappers do not remove themselves during operation\"). Without filtering out already-closed wrappers when counting, `statementCount` and `resultSetCount` will include properly-closed resources, causing incorrect leak warnings. The new implementation MUST track a closed state on each element and exclude closed elements from leak counts.\n\n- [agroal-pool/src/main/java/io/agroal/pool/wrapper/StatementWrapper.java:86-88] **`trackedResultSetSize()` semantics must change.** Currently returns `trackedResultSets.size()` which depends on self-removal to be accurate. After this PR, closed ResultSetWrappers remain in the linked list. This method (called from `ConnectionWrapper.closeTrackedStatements()` at line 125) must return only the count of *open* result sets, not total elements in the list.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/AutoCloseableElement.java] **Thread safety of the new linked list is unverified.** The replaced collections (`ConcurrentLinkedQueue`, `CopyOnWriteArrayList`) are thread-safe. The new `AutoCloseableElement` linked list must be equally robust. The codebase convention for concurrent structures (see `StampedCopyOnWriteArrayList`) uses `StampedLock` with optimistic reads. Verify that concurrent insertions (CAS between head and first element) cannot lose elements, and that `closeAllAutocloseableElements()` traversal is safe when other threads are inserting. Recommend dedicated stress tests with concurrent statement/ResultSet creation and closing.\n\n- [agroal-pool/src/main/java/io/agroal/pool/util/AutoCloseableElement.java] **No dedicated unit tests for the new class.** The 99-line `AutoCloseableElement` is a critical new component with non-trivial concurrent linked-list logic, but has no test coverage. Add unit tests covering: single-threaded insert/clear, concurrent insertion from multiple threads, traversal during mutation, empty-list operations, and `closeAllAutocloseableElements()` behavior.\n\n- [agroal-pool/src/main/java/io/agroal/pool/wrapper/StatementWrapper.java:94-108] **Memory retention of closed wrappers.** Since `connection.releaseTrackedStatement(this)` (line 105 in base) is removed, closed `StatementWrapper` objects remain referenced in the linked list until the parent `ConnectionWrapper` closes. For long-lived connections, this means accumulating wrapper objects in heap. The underlying JDBC resources are properly released (as noted in the PR description), but the wrapper object overhead persists. Consider whether this is acceptable or if lazy cleanup is needed.\n\n- [agroal-pool/src/main/java/io/agroal/pool/ConnectionHandler.java:107] **Minor: enlisted wrapper no longer removed on close.** Previously, `enlistedOpenWrappers.remove(wrapper)` was called in `onConnectionWrapperClose` when enlisted. After this PR, closed enlisted wrappers remain in the list until `transactionBeforeCompletion()` clears it. This is likely acceptable since enlisted connections typically follow the transaction lifecycle, but it means an enlisted wrapper that closes before transaction completion won't be cleaned up promptly.\n\n- [agroal-test/src/test/java/io/agroal/test/basic/ConnectionCloseTests.java] **Leak detection test needs update verification.** The `resultSetLeak()` test verifies that a warning is fired when a ResultSet is leaked. After this PR, verify that (a) the warning still fires for actual leaks, and (b) the warning does NOT fire when resources are closed properly (false positive regression test). The existing `jdbcResourcesTrackingDisabled()` test should continue to pass.\n\n- [agroal-pool/src/main/java/io/agroal/pool/wrapper/ResultSetWrapper.java:78] **`releaseTrackedResultSet` call removal must be complete.** The call to `statement.releaseTrackedResultSet(this)` in `ResultSetWrapper.close()` must be removed. Verify that `releaseTrackedStatement` and `releaseTrackedResultSet` methods are either removed entirely or left as no-ops for API compatibility, and that no other code depends on them.",
+    "judge": null
+  },
+  {
+    "repo": "square/okhttp",
+    "pr": 7002,
+    "reviewer": "swankjesse",
+    "net": null,
+    "sec": 290.1,
+    "sent": 659417,
+    "recv": 9264,
+    "calls": 35,
+    "text": "SUMMARY:\nThis PR introduces `kotlin.time.DurationUnit`-based `maxAge`, `maxStale`, and `minFresh` builder methods to CacheControl, enabling multiplatform duration APIs for the first time in okhttp. The JVM retains backward-compatible `TimeUnit` overloads while common logic lives in `-CacheControlCommon.kt`.\n\nPOINTS:\n- [okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:118-139] The KDoc for all three methods still references `[TimeUnit.SECONDS]` precision (e.g., line 118: \"This is stored and transmitted with [TimeUnit.SECONDS] precision\"), but the parameter type is now `DurationUnit`. Update the KDoc to reference `[DurationUnit.SECONDS]` for consistency.\n\n- [okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt:64-69] `commonClampToInt()` only clamps the upper bound (`> Int.MAX_VALUE`). While correct because `require(x >= 0)` guards against negatives and `toDuration().inWholeSeconds` preserves non-negativity, consider adding a comment explaining why the lower bound is not clamped \u2014 future maintainers might assume this is an oversight.\n\n- [okhttp/src/commonTest/kotlin/okhttp3/CacheControlTest.kt:47-63] The uncommented test uses only small `DurationUnit.SECONDS` values (1, 2, 3). Add tests for edge cases: (a) large values with `NANOSECONDS` or `MILLIS` that exercise the clamping logic, (b) negative values that should throw `IllegalArgumentException`, (c) `Int.MAX_VALUE` with `SECONDS` which overflows `Long` in `toDuration()` \u2014 clarify expected behavior.\n\n- [okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt:168] The `FORCE_CACHE` companion constant is still commented out in the expect declaration. Now that `maxStale(maxStale: Int, timeUnit: DurationUnit)` is available on all platforms, consider uncommenting it so non-JVM platforms also get `FORCE_CACHE`. Currently only JVM has it (jvmMain/CacheControl.kt:180-184).\n\n- [okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt:153-164] The JVM `TimeUnit` overloads (non-`actual`) and the new `DurationUnit` overloads (actual) coexist. This is fine for binary compatibility, but consider adding a `@Deprecated` annotation to the `TimeUnit` variants pointing users toward the multiplatform `DurationUnit` API, following the existing deprecation convention in this file (lines 56-124 use `@JvmName(\"-deprecated_...\")` and `@Deprecated(level = DeprecationLevel.ERROR)`).",
+    "judge": null
+  },
+  {
+    "repo": "apache/pulsar",
+    "pr": 25868,
+    "reviewer": "lhotari",
+    "net": null,
+    "sec": 471.0,
+    "sent": 757069,
+    "recv": 14038,
+    "calls": 43,
+    "text": "SUMMARY:\nThis PR implements incremental reload for built-in functions, mirroring the existing connector incremental reload pattern. The approach is sound: track archive MD5, reuse unchanged FunctionArchive instances, and close only changed/removed ones.\n\nPOINTS:\n- [pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java:42] The addition of `volatile` to the `functions` field is correct and consistent with `ConnectorsManager.connectors`. The volatile reference-swap pattern ensures thread-safe visibility across REST API threads and ThreadRuntime threads that concurrently access `getFunction()` and `getFunctionDefinitions()`. No additional synchronization needed since old maps are not mutated after reassignment.\n\n- [pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java:67-74] The refactored `reloadFunctions()` correctly delegates to `FunctionUtils.reloadFunctions()` and closes only the returned `functionsToClose()` collection. This matches the `ConnectorsManager.reloadConnectors()` pattern exactly. The old implementation closed ALL archives unconditionally on every reload, which is what this PR fixes.\n\n- [pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java:80-89] The `closeFunctions()` method overload refactoring is clean: the new `closeFunctions(Collection<FunctionArchive>)` handles closing without clearing, while the original `closeFunctions(Map<...>)` delegates to it and then clears. This correctly supports both the reload path (close changed only, no clear) and the shutdown path (close all, then clear).\n\n- [pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java] The new `reloadFunctions()` method should be added to this `@UtilityClass`-annotated class. Verify that all new methods are `static` \u2014 Lombok's `@UtilityClass` makes the class final with a private constructor and requires all fields/methods to be static. If the MD5 helper method is added as non-static, compilation will fail.\n\n- [pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java] Consider reusing `ConnectorUtils.computeArchiveMd5Hex(Path)` or extracting the shared MD5 logic to a common utility rather than duplicating it. `ConnectorUtils` already has `calculateMd5Hex(File)` and `computeArchiveMd5Hex(Path)` (lines 61-67). Duplication here would mean two nearly identical MD5 computation paths across the codebase.\n\n- [pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionArchive.java] The new `archiveMd5Hex` field (mirroring `Connector.archiveMd5Hex`) should be computed at construction time, not lazily. The connector pattern computes MD5 in the constructor so the comparison during reload is O(1). Avoid computing MD5 inside `getFunctionPackage()` or any other lazy-accessor, as that would add unwanted I/O cost during normal function execution.\n\n- [pulsar-functions/runtime/src/test/java/org/apache/pulsar/functions/worker/FunctionsManagerReloadFunctionsTest.java] The test suite correctly covers the four key scenarios: unchanged reuse (assertSame), changed recreation, removed archive closure, and missing directory handling. Good use of `writeMinimalNar()` helper to create test NAR files programmatically. Consider adding a test for concurrent reload calls to verify the volatile swap pattern doesn't produce lost updates.",
+    "judge": null
+  },
+  {
+    "repo": "smallrye/smallrye-config",
+    "pr": 1284,
+    "reviewer": "radcortez",
+    "net": null,
+    "sec": 145.1,
+    "sent": 243712,
+    "recv": 3591,
+    "calls": 11,
+    "text": "SUMMARY:\nThis PR adds builtin converters for `File` and `URI` to avoid NoSuchMethodExceptions for these common use cases. The implementation follows existing patterns well, but the `Ser.readResolve()` serialization switch statement is missing case handlers for the new converter IDs (and also for the existing PATH_CONVERTER).\n\nPOINTS:\n- [implementation/src/main/java/io/smallrye/config/Converters.java:985] **Critical: Missing serialization support for new converters.** The `Ser.readResolve()` switch statement handles IDs 0-17 but does not include cases for ID 18 (`PATH_CONVERTER`), ID 19 (`FILE_CONVERTER`), or ID 20 (`URI_CONVERTER`). When a serialized `BuiltInConverter` with ID 19 or 20 is deserialized, the `default` branch throws `InvalidObjectException: Unknown converter ID`. Add `case 18: return PATH_CONVERTER;`, `case 19: return FILE_CONVERTER;`, and `case 20: return URI_CONVERTER;` to the switch. Note that PATH_CONVERTER (ID 18) has the same pre-existing gap, so adding all three restores consistency and fixes the pre-existing bug too.\n- [implementation/src/main/java/io/smallrye/config/Converters.java:191] **Nit: Consider trimming for File converter for consistency.** The `FILE_CONVERTER` uses `newEmptyValueConverter(File::new)` without trimming, while `URI_CONVERTER` wraps with `newTrimmingConverter`. The existing `PATH_CONVERTER` also doesn't trim, so this is consistent with that pattern. However, `File` paths with leading/trailing whitespace could be unexpected. Consider whether trimming should be applied to `File` converter as well for consistency with most other built-in converters (Boolean, Double, Float, Long, Integer, etc. all use trimming).",
+    "judge": null
+  },
+  {
+    "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+    "pr": 727,
+    "reviewer": "mickaelistria",
+    "net": null,
+    "sec": 273.7,
+    "sent": 379268,
+    "recv": 8566,
+    "calls": 23,
+    "text": "SUMMARY:\nThis PR refactors the JS-TS rename test's dialog automation by replacing repeated button searches with a single-pass button collection, and adds a wizard-class filter to the SWT.Paint listener. The core fix addresses flaky test behavior, but introduces a null-pointer regression and relies on fragile internal Eclipse API strings.\n\nPOINTS:\n- [org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:110] **NPE risk**: `shell.getData().getClass().getName().startsWith(...)` will throw NullPointerException when `shell.getData()` returns null. The SWT.Paint filter fires on ALL composites being painted (not only wizard composites), and many shells in the IDE have no data set. Add a null guard: `shell.getData() != null && shell.getData().getClass().getName().startsWith(...)`.\n- [org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:54] **Fragile internal API dependency**: The constant `WIZARD_CLASSNAME_TEMPLATE = \"org.eclipse.ltk.internal.ui.refactoring.Refactoring\"` depends on Eclipse's internal package structure. The `internal` qualifier signals this is not part of the public API and may change across Eclipse releases. The original approach (checking `shell.getText()`) was more stable and resilient to Eclipse platform changes. Consider keeping the shell-text check as the primary filter and treating the class-name check as a secondary, best-effort guard (with null safety).\n- [org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:89] Sleep increased from 2000ms to 5000ms without explanation. This makes the test 150% slower. Consider adding a brief comment justifying the increase (e.g., \"increased to 5s due to slower LS initialization on CI runners\") or using a proactive readiness check instead of a fixed sleep.\n- [org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:163-175] `getButtons()` collects ALL buttons into a HashSet before checking, whereas the original `hasButton()` short-circuited on the first match. Functionally correct, but the old approach was more efficient when only one button check was needed. Consider a hybrid: short-circuit `hasButton()` variant for single-button checks, or keep as-is if readability is preferred.\n- [org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:163,177,185] Methods made `static` (`getButtons`, `pressOk`, `pressCancel`) \u2014 unnecessary since they are private helper methods in a test class with no external callers (confirmed: no other test class uses these patterns in this repo). Static adds no value here and reduces consistency with the non-static test structure.\n- [pom.xml:169] `download-maven-plugin` version bump from 1.6.1 to 1.6.7 is unrelated to the test fix. This should be a separate PR with its own justification (e.g., security fix, bug fix) to keep the PR focused and simplify revert if needed.",
+    "judge": null
+  },
+  {
+    "repo": "apache/accumulo-fluo",
+    "pr": 883,
+    "reviewer": "keith-turner",
+    "net": null,
+    "sec": 293.2,
+    "sent": 765665,
+    "recv": 8025,
+    "calls": 16,
+    "text": "SUMMARY:\nThis PR splits fluo.properties into connection and application configs, adds multi-file loading support, and creates new command-line entry points. The documentation examples contain a critical completeness issue, and the multi-file loading capability appears to be missing from the public API.\n\nPOINTS:\n- [docs/applications.md:30-35] **Documentation example is incomplete and will fail at runtime.** The second Java code example shows only `config.setInstanceZookeepers(\"localhost/fluo\")` and `config.setApplicationName(\"myapp\")`, but `hasRequiredClientProps()` (FluoConfiguration.java:547-553) requires four properties: application name, accumulo user, accumulo password, and accumulo instance. The `FluoClientImpl` constructor (core module) throws `IllegalArgumentException` when these are missing. The example must also call `setAccumuloUser()`, `setAccumuloPassword()`, and `setAccumuloInstance()` \u2014 or explain that `fluo-conn.properties` must contain these properties. The old code being removed (setAccumuloUser/setAccumuloPassword/setAccumuloInstance) was correct; replacing it with only setInstanceZookeepers/regApplicationName is a regression.\n\n- [modules/api/src/main/java/org/apache/fluo/api/config/SimpleConfiguration.java:63] **No public API for multi-file configuration loading.** The PR description claims \"Support loading FluoConfiguration from multiple files\" but SimpleConfiguration has no public method for adding configurations from multiple sources. The `load(InputStream in)` method (line 63) is private and adds to the internal CompositeConfiguration, but there is no public `addConfiguration()`, `load()`, or multi-file constructor. If the split config design requires loading fluo-conn.properties AND fluo-app.properties, this functionality must be added to the public API.\n\n- [modules/api/src/main/java/org/apache/fluo/api/config/FluoConfiguration.java:115-132] **FluoConfiguration constructors delegate to SimpleConfiguration without multi-file support.** All constructors (empty, SimpleConfiguration, InputStream, File, Map) delegate to parent with a single source. No constructor accepts multiple files or streams. This limits the split-config pattern to \"choose one file\" rather than \"layer connection + application configs\".\n\n- [docs/metrics.md] **Reference to fluo.properties not updated to reflect split config.** The metrics.md document (base content, line 24) still says \"A Fluo application can be configured (in [fluo.properties]) to report metrics\" and the link target references the single fluo.properties file. After the split, metrics config belongs in fluo-app.properties (application-level config), so this should be updated for consistency with the other doc changes.\n\n- [modules/cluster/src/main/java/org/apache/fluo/cluster/runnable/OracleRunnable.java:44 & WorkerRunnable.java:44] **Hardcoded path to `conf/fluo.properties` in YARN runnables.** Both OracleRunnable and WorkerRunnable reference `configDir + \"/fluo.properties\"` (line 44 in base). After the config split, these runnables need to load both fluo-conn.properties and fluo-app.properties, or the new combined configuration approach must be reflected here. This is a functional concern if the PR does not address it.\n\n- [modules/cluster/src/main/java/org/apache/fluo/cluster/util/FluoInstall.java:34-35] **FluoInstall.getFluoPropsPath() still returns `fluo.properties`.** The method returns `getFluoConfDir() + \"/fluo.properties\"`. If the PR splits config into two files, callers of `getFluoConfiguration()` (which loads this single file) will not get the full configuration. This utility class needs updating to reflect the new config structure.",
+    "judge": null
+  },
+  {
+    "repo": "quarkusio/quarkus",
+    "pr": 34681,
+    "reviewer": "dmlloyd",
+    "net": null,
+    "sec": 751.8,
+    "sent": 3393351,
+    "recv": 21690,
+    "calls": 63,
+    "text": "SUMMARY:\nThis PR rearchitects test class loading to use the runtime classloader instead of the deployment classloader, fixing multiple longstanding issues (#45349, #8446, #42000, #42006, #44320, #38987, #46383). The changes introduce a new classloading architecture with a FacadeClassLoader, modify core classloader creation in CuratedApplication, and update numerous integration tests. Key concerns include thread-safety of static classloader fields, incomplete handling of the @TestProfile on @Nested breaking change, and potential config release race conditions during test restarts.\n\nPOINTS:\n- [core/deployment/src/main/java/io/quarkus/deployment/dev/testing/JunitTestRunner.java:121] `private static QuarkusClassLoader firstDeploymentClassLoader;` is declared without `volatile`. This static mutable reference is shared across potentially concurrent test runner threads. The codebase consistently uses `volatile` for such fields (see `TestSupport.java`'s `volatile QuarkusCompiler compiler`, `QuarkusClassLoader.java`'s `volatile byte status`, and `QuarkusTestExtension.java`'s `private static volatile ScheduledExecutorService hangDetectionExecutor`). Add `volatile` to ensure memory visibility guarantees across threads.\n\n- [core/deployment/src/main/java/io/quarkus/deployment/dev/testing/JunitTestRunner.java:121] The static `firstDeploymentClassLoader` field holds a strong reference to a classloader \"for loading support classes.\" Since this is never cleared, previously closed classloaders may not be garbage collected if any loaded classes or their static fields retain references back. Consider whether this caching strategy could lead to metaspace leaks during extended dev mode sessions with multiple test runs. A WeakReference or explicit cleanup in `abort()`/test completion would mitigate this.\n\n- [core/deployment/src/main/java/io/quarkus/deployment/dev/testing/JunitTestRunner.java:101] `FACADE_CLASS_LOADER_NAME = \"io.quarkus.test.junit.classloading.FacadeClassLoader\"` references a class not present in the base commit. This class is likely in the omitted changed files. Verify the FacadeClassLoader properly delegates class loading between deployment and runtime classloaders, and that it handles edge cases like service loader lookups and reflection-heavy frameworks (e.g., CDI, MicroProfile Config).\n\n- [integration-tests/injectmock/src/test/java/io/quarkus/it/mockbean/WithTestProfileAndNestedTest.java:48-50] `@Nested @TestProfile(Profile.class)` is used on the inner class. The PR description states \"@TestProfile on @Nested tests are not supported anymore\" as a breaking change. Ensure this annotation is removed or the test is restructured. The base commit shows this pattern is still active and would fail silently or incorrectly under the new classloader model since nested classes must share a classloader with their enclosing class.\n\n- [integration-tests/main/src/test/java/io/quarkus/it/main/QuarkusTestNestedWithTestProfileTestCase.java:39-41] Same issue as above \u2014 `@Nested @TestProfile(ModernEnglishProfile.class)` on `ModernEnglishCase` inner class. This will be broken by the new architecture. The PR should either remove the nested @TestProfile, add @Disabled with issue reference, or restructure the test (following the pattern in `QuarkusTestNested1WithCommonCaseTest.java` which uses @TestProfile at the top level).\n\n- [core/runtime/src/main/java/io/quarkus/runtime/configuration/QuarkusConfigFactory.java:29-31] In `setConfig()`, there's a check-then-act pattern on the volatile `config` field that is NOT atomic: `if (QuarkusConfigFactory.config != null)` followed by `configProviderResolver.releaseConfig(...)` and `config = null`. During rapid test restarts (especially with multiple profiles creating different runtime classloaders), concurrent calls could release a config another thread just installed. Consider synchronizing this block or using atomic compare-and-swap.\n\n- [core/deployment/src/main/java/io/quarkus/deployment/dev/testing/CurrentTestApplication.java:10-11] The TODO comment (\"It is only needed for QuarkusMainTest, so we may be able to find a better way. For example, what about JUnit state?\") is valid. Using a public static volatile field for passing CuratedApplication is fragile and bypasses proper lifecycle management. Track a follow-up issue to replace this with JUnit extension state or similar mechanism.\n\n- [integration-tests/main/src/test/java/io/quarkus/it/main/testing/repro42006/Repro42006Test.java] The `@Disabled` annotation is being removed to claim the issue is fixed. Verify that lambda classes (like `SerializableSupplier` and `SerializableCustom`) are now correctly accessible from the runtime classloader. Lambda classes are generated by the JVM and can be tricky with classloader boundaries \u2014 ensure the FacadeClassLoader properly handles synthetic/generated class loading.\n\n- [independent-projects/bootstrap/core/src/main/java/io/quarkus/bootstrap/app/CuratedApplication.java] The `createDeploymentClassLoader()` and `createRuntimeClassLoader()` methods have been modified. In `createRuntimeClassLoader()`, verify that `setAggregateParentResources(true)` is set consistently across all call sites. The base file shows `getOrCreateBaseRuntimeClassLoader()` does NOT set this, which could cause resource lookup inconsistencies between flat and non-flat classpath modes.\n\n- [extensions/devservices/h2/src/main/java/io/quarkus/devservices/h2/deployment/H2DevServicesProcessor.java:66] `t.printStackTrace()` is used instead of proper logging when catching SQLException during database cleanup. This is inconsistent with the rest of the codebase which uses `LOG.info()`/`LOG.debug()`. Replace with `LOG.debugf(t, \"Failed to set DB_CLOSE_DELAY during H2 shutdown\")`.",
+    "judge": null
+  },
+  {
+    "repo": "netty/netty",
+    "pr": 15399,
+    "reviewer": "franz1981",
+    "net": null,
+    "sec": 1299.1,
+    "sent": 3838014,
+    "recv": 40922,
+    "calls": 118,
+    "text": "SUMMARY:\nThis PR introduces size-classes for the adaptive allocator, replacing histogram-based magazine logic with fixed size-class groups for small allocations and histogram-based groups for large allocations. The refactoring is architecturally sound and consistent with Netty's existing PooledByteBufAllocator design, but introduces a custom concurrent queue (`MpscIntQueue`) that breaks Netty's JCTools convention, and the diff is clipped such that critical SIZE_CLASSES values and the MpscIntQueue implementation cannot be fully verified.\n\nPOINTS:\n- [common/src/main/java/io/netty/util/concurrent/MpscIntQueue.java] **Convention Deviation \u2014 Custom MPSC Queue**: Netty's convention is to delegate all concurrent queue implementations to JCTools via `PlatformDependent.newFixedMpscQueue()` / `newFixedMpmcQueue()`. This new custom `MpscIntQueue` breaks that pattern. JCTools provides `MpscArrayIntQueue` out of the box (in the `jctools-core` artifact), but Netty currently shades only the generic queues from JCTools. Consider either (a) shading JCTools' primitive queues, (b) using JCTools directly without shading, or (c) documenting a clear justification for a custom implementation. Custom concurrent data structures carry a high risk of subtle correctness bugs.\n\n- [common/src/main/java/io/netty/util/concurrent/MpscIntQueue.java] **MpscIntQueue Implementation Not Reviewable**: The full content of this new file is not present in the provided diff. Since this is a concurrent data structure used for chunk reuse queues in the allocator, its correctness (memory barriers, volatile usage, overflow handling, MPSC invariant enforcement) is critical and must be reviewed before merge.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptivePoolingAllocator.java:127-128] **Breaking System Property Name Change**: The property name changes from `io.netty.allocator.centralQueueCapacity` to `io.netty.allocator.chunkReuseQueueCapacity`. Users who have configured the old property will silently get the default capacity instead. Consider supporting both property names during a deprecation period, or document this as a breaking change in the release notes.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptivePoolingAllocator.java:127-128] **Queue Capacity Default Doubled**: The default changes from `availableProcessors()` to `availableProcessors() * 2`. With `MAX_CHUNK_SIZE = 8 MiB`, on a 32-core machine this increases max idle memory from ~512 MiB to ~1 GiB. The Javadoc comment is updated to reflect this, but consider whether the increased memory footprint is acceptable for the default.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptivePoolingAllocator.java] **SIZE_CLASSES Array Values Not Verifiable**: The diff is clipped after line ~126 where the SIZE_CLASSES comment begins. The actual power-of-2 and power-of-2-plus-a-bit values cannot be verified. Confirm that: (a) size classes have no gaps that would cause allocations to fall through to the histogram path unexpectedly, (b) the largest size class is \u2264 `MAX_CHUNK_SIZE / BUFS_PER_CHUNK` (1 MiB), and (c) the \"plus-a-bit\" deltas are consistent with observed protocol overhead (headers, checksums) as documented in the comment.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptivePoolingAllocator.java] **MPSC Consumer Invariant for MpscIntQueue**: If `MpscIntQueue` is used for chunk reuse queues per magazine group, verify that each queue has exactly one consumer thread. Multiple consumers would violate the MPSC contract and cause data corruption.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptiveByteBufAllocator.java:17] **Clean MagazineCaching Removal**: The `MagazineCaching` enum removal is safe \u2014 it is package-private, annotated `@UnstableApi`, and only referenced in `AdaptiveByteBufAllocator.java` (same package). The simplification to a boolean parameter is cleaner.\n\n- [buffer/src/main/java/io/netty/buffer/AdaptivePoolingAllocator.java:116] **MAX_CHUNK_SIZE Decoupling is Correct**: Changing from `1 << AllocationStatistics.HISTO_MAX_BUCKET_SHIFT` to the literal `8 * 1024 * 1024` correctly decouples the chunk size limit from the histogram implementation. Both evaluate to 8 MiB.",
+    "judge": null
+  },
+  {
+    "repo": "eclipse-tycho/tycho",
+    "pr": 4771,
+    "reviewer": "HannesWell",
+    "net": null,
+    "sec": 455.1,
+    "sent": 576247,
+    "recv": 15786,
+    "calls": 47,
+    "text": "SUMMARY:\nPR #4771 makes `jars.extra.classpath` platform URL entries optional by changing the optional flag from `false` to `true` in `createRequirementFromPlatformURL`, aligning Tycho with PDE's behavior where unresolvable entries (e.g., platform-specific SWT bundles on incompatible OS) are silently ignored instead of causing resolution failures.\n\nPOINTS:\n- [tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:112] The core fix is correct. Changing the optional flag to `true` means p2 will not fail resolution when a referenced bundle (e.g., `org.eclipse.swt.cocoa.macosx.aarch64`) cannot be found on an incompatible environment. This is consistent with existing tycho patterns: `FeatureDependenciesAction.java:121-123` respects `entry.isOptional()` for feature entries, and `BundlesAction.java:347-348` creates optional requirements for source bundles.\n\n- [tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:40-43] The import reordering (moving `OptionalResolutionAction` above `StatusTool` and `TychoConstants`) is cosmetic alphabetical sorting. Harmless but unnecessary \u2014 the only functional change is line 112.\n\n- **Missing test coverage (recommendation):** No existing test covers the scenario where a `jars.extra.classpath` entry is unresolvable. The TYCHO253 test (`tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java`) references `org.apache.ant` and `com.jcraft.jsch`, which are available on `http://download.eclipse.org/releases/latest`. Consider adding an integration test with a deliberately unresolvable platform-specific entry (e.g., a macOS-only bundle ID) to verify that the build succeeds rather than fails with a dependency resolution error. This would prevent regression and document the expected behavior.\n\n- **Scope is appropriately narrow:** `createRequirementFromPlatformURL` is private and called only from `createRequirementFromExtraClasspathProperty` within the same class, so the change affects only `jars.extra.classpath` and `extra.<jar>=` entries from `build.properties`. Other requirement creation paths (Require-Bundle, features, products) are unaffected. The `PLATFORM_URL_PATTERN` regex (`platform:/(plugin|fragment)/([^/]*)(/)*.*`) correctly captures the bundle ID from platform URLs, and only matched URLs are converted to requirements.",
+    "judge": null
+  },
+  {
+    "repo": "qubole/rubix",
+    "pr": 374,
+    "reviewer": "raunaqmorarka",
+    "net": null,
+    "sec": 154.7,
+    "sent": 147358,
+    "recv": 5628,
+    "calls": 17,
+    "text": "SUMMARY:\nThis PR adds useful pre-requisite documentation for thrift, Java 8, and rpmbuild setup. The claims are well-grounded in the actual Maven configuration (thrift 0.9.3 at rubix-spi/pom.xml:23, thrift path at rubix-spi/pom.xml:80, Java 1.8 source/target at pom.xml:202-203, and rpm-maven-plugin at rubix-rpm/pom.xml:61).\n\nPOINTS:\n- [docs/contrib/env.md:20] The error message `Could not find artifact jdk.tools:jdk.tools:jar:1.6` references Java 1.6, but this project uses Java 1.8 (see pom.xml:202-203). Consider updating to `jdk.tools:jdk.tools:jar:1.8` or using more generic wording like \"Could not find artifact jdk.tools:jdk.tools:jar\" to avoid confusion.\n- [docs/contrib/env.md:7] \"the version of thrift should match the version you are going to deploy on\" \u2014 this could be misleading. The thrift compiler version needs to match what's declared in the build (0.9.3 in rubix-spi/pom.xml:23), not necessarily what's deployed. Consider rewording to \"the version of thrift should match the version configured in the project build (currently 0.9.3).\"\n- [docs/contrib/env.md:11] On Debian-based systems, `apt-get install thrift-compiler` may install a version that differs from 0.9.3. Consider adding a note to verify the installed version with `thrift --version` after installation, or point to the thrift source install link as the recommended path for version control.\n- [docs/contrib/env.md:1-31] Minor inconsistency: the existing content below uses \"RubiX\" (e.g., \"Fork your own copy of RubiX\") while the file title and your new section use \"Rubix\". Consider standardizing on one spelling for consistency.",
+    "judge": null
+  },
+  {
+    "repo": "sevntu-checkstyle/sevntu.checkstyle",
+    "pr": 1162,
+    "reviewer": "romani",
+    "net": null,
+    "sec": 309.2,
+    "sent": 343612,
+    "recv": 10819,
+    "calls": 33,
+    "text": "SUMMARY:\nThis PR replaces Java 21 pattern guard syntax with regular if-statements in the non-compilable test file, regressing coverage for instanceof pattern guards that the check actively processes. The PR description claims to \"align with Java 21 syntax\" but the diff shows the opposite \u2014 Java 21-specific pattern guard constructs are removed entirely.\n\nPOINTS:\n- [sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java] **REGRESSION: Pattern guard test coverage removed.** The original file tested Java 21 pattern guards (`case (Integer i) && i == 0:` and `o instanceof ((Integer i) && i == 0)`). The `LogicConditionNeedOptimizationCheck` implementation processes `LITERAL_INSTANCEOF` uniformly via `branchContains()` with no special exclusion for pattern guards, so these are valid and meaningful test cases. Replacing them with nested if-statements removes coverage for the check's behavior on pattern guard expressions.\n\n- [sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java] The PR description states the input \"has been updated to align with Java 21 syntax\" but the diff removes Java 21 pattern guard constructs entirely. If the original syntax was incorrect for Java 21, the PR description should explain why the original constructs were invalid and provide a reference to the correct Java 21 pattern guard syntax.\n\n- [sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java:38-47] The old test expected violations at lines 32 and 66, corresponding to `o instanceof (((Integer i) && i == 2)) && (o = i) != null`. The assignment `(o = i)` appearing before a comparison in a `&&` chain was the violation trigger. The new test preserves this semantic pattern (e.g., line 43: `o instanceof Integer i && i == 2 && (o = i) != null`) but no longer exercises it within a pattern guard context. Consider whether pattern guard coverage should be retained alongside the new instanceof pattern-matching cases.\n\n- [sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java:5-32] The refactored methods `typeGuardAfterParenthesizedTrueSwitchStatement1`, `typeGuardAfterParenthesizedTrueSwitchExpression1`, and their counterparts no longer contain any pattern guard logic \u2014 they now use nested if-statements inside switch cases. The method names are misleading since they no longer test \"type guard after parenthesized true\" patterns. Consider renaming these methods to reflect their actual content.\n\n- [sevntu-checks/src/test/java/.../LogicConditionNeedOptimizationCheckTest.java:74-87] The new expected violations reference lines 41, 43, 87, 89, 112 in the restructured input file. Given the significant restructuring of `InputLogicConditionNeedOptimizationCheck2.java` (from ~80 lines to ~120+ lines), verify these line numbers are accurate. A single line change elsewhere could shift them and cause silent test misalignment.",
+    "judge": null
+  },
+  {
+    "repo": "wildfly/wildfly-core",
+    "pr": 6304,
+    "reviewer": "yersan",
+    "net": null,
+    "sec": 544.9,
+    "sent": 1839305,
+    "recv": 15022,
+    "calls": 29,
+    "text": "SUMMARY:\nThis PR removes the `org.jboss.modules.ModuleIdentifier` dependency from extension handling by introducing a new `JBossModulesNameUtil` utility class that provides string-based module identifier parsing and canonicalization. The change affects 10 files across CLI, controller, and host-controller modules.\n\nPOINTS:\n- [controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java:28] **Naming inconsistency**: The method `parseCanonicalModuleIdentifier` should be renamed to `canonicalModuleIdentifier` to match the existing `ModuleIdentifierUtil.canonicalModuleIdentifier(String)` in the controller module. This maintains naming consistency across the codebase and reduces cognitive overhead when switching between the two utilities.\n\n- [controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java:1-191] **Code duplication with ModuleIdentifierUtil**: The new `JBossModulesNameUtil` duplicates nearly identical logic from `ModuleIdentifierUtil` (parseModuleIdentifier, escapeName, escapeSlot, canonicalModuleIdentifier). While this is structurally necessary since `controller-client` cannot depend on `controller`, consider adding a prominent comment referencing `ModuleIdentifierUtil` as the canonical implementation that this mirrors, to aid future maintenance when changes need to be synchronized.\n\n- [cli/src/main/java/org/jboss/as/cli/impl/ExtensionsLoader.java:148] **Variable type change from ModuleIdentifier to String**: The change from `final ModuleIdentifier moduleId` to `final String moduleId` is correct since `ModuleLoader.loadModule(String)` has an existing overload confirmed by other callers (ConsoleMode.java:260, ErrorContextHandler.java:63, AbstractControllerService.java:1044). However, note that `parseCanonicalModuleIdentifier` strips the \":main\" slot while the original `ModuleIdentifier.fromString()` preserves it as a `ModuleIdentifier` object. Verify this behavioral difference doesn't affect module resolution in any edge case.\n\n- [controller/src/main/java/org/jboss/as/controller/extension/ExtensionAddHandler.java:107] **Inconsistent patterns already exist**: The base code already calls `Module.loadServiceFromCallerModuleLoader(module, Extension.class)` with a `String` parameter, while other files like `DeferredExtensionContext.java:95` and `TransformerRegistry.java:64` use `ModuleIdentifier.fromString()`. This PR correctly addresses this inconsistency by converting the remaining callers. Verify all 4 extension-handling sites (ExtensionAddHandler, DeferredExtensionContext, TransformerRegistry, ApplyExtensionsHandler) are consistently updated.\n\n- [host-controller/src/main/java/org/jboss/as/domain/controller/operations/ApplyExtensionsHandler.java] **Verify conversion completeness**: This file is listed in changed files but the diff was truncated. Ensure the `ModuleIdentifier.fromString(module)` call at line 198 (in base) was converted to use the new utility or the String overload of `Module.loadServiceFromCallerModuleLoader`, matching the pattern in ExtensionAddHandler.\n\n- [controller-client/src/test/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtilUnitTestCase.java] **Test coverage**: Verify the new unit test covers edge cases that differ from `ModuleIdentifier.fromString()` behavior, particularly: empty slot handling, escape sequences (backslash escaping of colons and backslashes), and Unicode codepoint handling. The test should include cases like \"org.jboss.as:main\" canonicalizing to \"org.jboss.as\", and names containing special characters requiring escaping.",
+    "judge": null
+  },
+  {
+    "repo": "SaptarshiSarkar12/Drifty",
+    "pr": 956,
+    "reviewer": "SaptarshiSarkar12",
+    "net": null,
+    "sec": 250.8,
+    "sent": 339843,
+    "recv": 8736,
+    "calls": 29,
+    "text": "SUMMARY:\nThis PR adds a legal-use disclaimer to the README and website, following the existing pattern established by the terms and privacy-policy pages. The implementation is consistent with the codebase conventions but has a few areas for improvement.\n\nPOINTS:\n- [Website/app/disclaimer/page.tsx:2-4] No error handling for the `fetch()` call \u2014 if the GitHub raw URL is unreachable (network error, 404, rate limit), the server component will throw an unhandled error with no fallback UI. The existing `terms` and `privacy-policy` pages have the same issue, but the client-side `download` page demonstrates a better pattern with try/catch, loading state, and a retry button. Consider adding at minimum a `try/catch` that returns a graceful fallback message.\n\n- [Website/app/disclaimer/page.tsx:3] The URL `https://raw.githubusercontent.com/SaptarshiSarkar12/Drifty/master/disclaimer.txt` points to the `master` branch, which is mutable. The `privacy-policy` page uses a pinned commit hash (`c86ce857...`) for stability. Consider pinning to a commit hash after merge for consistency and to prevent the page from breaking if the file is renamed/moved.\n\n- [disclaimer.txt:8] Missing newline at end of file (shown as `\\ No newline at end of file` in the diff). Add a trailing newline to comply with POSIX conventions and avoid potential diff noise in future edits.\n\n- [README.md:89-94 vs disclaimer.txt:1-8] The disclaimer text in README.md and disclaimer.txt are duplicated but not identical in formatting. If the content diverges in the future, users will see different disclaimers depending on where they look. Consider either: (a) sourcing the README section from a shared file, or (b) adding a comment noting these should stay in sync.\n\n- [Website/package-lock.json] This PR includes unrelated `@eslint/plugin-kit` dependency updates (0.3.1 \u2192 0.3.4 with nested `@eslint/core` resolution). These lockfile changes are not related to the disclaimer feature and should be in a separate PR to keep the change history clean and simplify rollback if needed.\n\n- [Website/components/Footer.tsx:16] The footer's `<ul>` class changed from `flex-1 space-x-6` to `flex-auto space-x-4`. This is a behavioral change (different flex grow behavior and tighter spacing) that's not mentioned in the PR description. Verify this was intentional and doesn't cause layout issues on narrow screens with the additional disclaimer link.",
+    "judge": null
+  },
+  {
+    "repo": "trinodb/trino",
+    "pr": 27570,
+    "reviewer": "raunaqmorarka",
+    "net": null,
+    "sec": 356.4,
+    "sent": 657717,
+    "recv": 11707,
+    "calls": 24,
+    "text": "SUMMARY:\nPR improves overlap percent estimation for sparse columns (few distinct values over large numeric ranges) by adding a density-based heuristic. The core idea is sound, but the implementation has asymmetry, edge-case, and test coverage issues that need attention.\n\nPOINTS:\n- [core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:127-134] **Asymmetric density heuristic creates inconsistent results.** The check `thisDensity < DENSITY_HEURISTIC_THRESHOLD` only examines the receiver's density, but the fix returns `other.distinctValues / this.distinctValues`. This means `sparseRange.overlapPercentWith(filterRange)` triggers the heuristic while `filterRange.overlapPercentWith(sparseRange)` does not. The `overlappingDistinctValues()` method (line 134-135) calls `overlapPercentWith` in both directions, so asymmetric results could produce inconsistent join cardinality estimates. Consider applying the heuristic when *either* range has low density, or ensure symmetric behavior.\n\n- [core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:134] **NaN distinctValues in `other` produces a heuristic estimate of 1.** Callers like `ComparisonStatsCalculator.java:111`, `:121`, `:313`, and `:334` create `StatisticRange` objects with `NaN` distinctValues for `<`, `>`, and synthetic comparison ranges. When `other.distinctValues` is NaN, `minExcludeNaN(NaN / this.distinctValues, 1)` returns 1 (treating the filter as fully non-selective). This means sparse columns with range predicates (e.g., `x > 100`) would get overlapPercent=1 instead of a length-based estimate, which could overestimate selectivity. Consider adding an explicit `!isNaN(other.distinctValues)` guard before applying the NDV heuristic.\n\n- [core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:101] **Existing guard `other.distinctValues == 0` does not catch NaN.** The condition `this.distinctValues == 0 || other.distinctValues == 0` passes through ranges with NaN distinctValues (since `NaN == 0` is false). The PR's new code handles this with `!isNaN(thisDensity)` and `minExcludeNaN`, but adding an explicit NaN guard to the early-return condition (e.g., `isNaN(other.distinctValues)`) would be more defensive and consistent with how `isEmpty()` is defined.\n\n- [core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:62-66] **Test variable names are semantically inverted.** `sparseRange = range(1, 4, NaN)` has a small range with NaN distinct values, while `filterRange = range(1, 3662098119.0, 14)` has the large, sparse range. The test passes by coincidence (uniform ratio 3/3 = 1) rather than exercising the density heuristic. Rename variables or swap their construction to match intended semantics.\n\n- [core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:72-76] **Test uses NaN distinctValues for filter range, which is unrealistic for IN predicates.** The PR description describes an IN predicate scenario where the filter range should have `distinctValues = 1` per `ComparisonStatsCalculator.java:65`. The test `filterRange = range(1, 4, NaN)` does not reflect this reality. Add a test case with `filterRange = range(1, 4, 4)` (distinct values matching the IN list cardinality) to verify the heuristic behaves correctly for the actual IN predicate path.\n\n- [core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:101-105] **`testDensityThresholdBoundary` tests the boundary but uses an NDV-based expected value.** With `thisDensity = 10/10000 = 0.001 == DENSITY_HEURISTIC_THRESHOLD`, the condition `<` is false, so the heuristic is skipped and `100/10000 = 0.01` is returned. The expected value of 0.01 matches, but a comment explaining *why* (boundary excluded, uniform distribution used) would clarify intent.\n\n- [core/trino-main/src/test/java/io/trino/cost/TestFilterStatsCalculator.java:855-867] **Good integration test for the real-world scenario.** This test correctly models the sparse column IN predicate from the PR description. However, consider adding an assertion on `distinctValuesCount(4)` to verify the optimizer estimates 4 distinct values surviving the filter (matching 4 out of 14 original values), which is the core improvement this PR aims to achieve.",
+    "judge": null
+  },
+  {
+    "repo": "apache/kafka",
+    "pr": 16132,
+    "reviewer": "muralibasani",
+    "net": null,
+    "sec": 231.5,
+    "sent": 441740,
+    "recv": 7147,
+    "calls": 14,
+    "text": "SUMMARY:\nThis PR adds a new topic-level config `remote.log.disable.policy` for KIP-950 tiered storage disablement handling. The diff adds constants in TopicConfig.java and a field in LogConfig.java's RemoteLogConfig, but the diff is truncated and several critical pieces appear to be missing that would prevent the config from functioning at all.\n\nPOINTS:\n- [storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:static CONFIG block ~line 323] **CRITICAL: Missing `.define()` call for the new config.** The `RemoteLogConfig` constructor calls `config.getString(TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG)` but the config key is never registered in the static CONFIG block. Without a `.define(TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG, STRING, defaultValue, validator, importance, doc)` call, `AbstractConfig.getString()` will throw a `ConfigException` at runtime because the key is unrecognized. The diff shows the field/constructor change but (possibly truncated) does not show the corresponding `.define()` entry. This must be added, likely after the `REMOTE_LOG_STORAGE_ENABLE_CONFIG` definition at line 318.\n\n- [storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:202-206] **Missing from `CONFIGS_WITH_NO_SERVER_DEFAULTS`.** The PR description states this is a \"topic-level only\" config. The `CONFIGS_WITH_NO_SERVER_DEFAULTS` set must include `TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG`, otherwise the `ensureNoStaticInitializationOrderDependency()` test in LogConfigTest.scala (lines 53-58) will fail \u2014 it asserts that all config names (except those in this set) have a non-null server synonym mapping. Since no broker-level default exists for this config, it must be added to this set.\n\n- [storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:182-184] **Missing default value constant.** There is no `DEFAULT_REMOTE_LOG_DISABLE_POLICY` constant defined alongside the existing `DEFAULT_REMOTE_STORAGE_ENABLE`, `DEFAULT_LOCAL_RETENTION_BYTES`, and `DEFAULT_LOCAL_RETENTION_MS`. The `.define()` call will need this default value (likely `\"retain\"` based on the documentation describing retain as the default behavior).\n\n- [storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java:126-132] **`RemoteLogConfig.toString()` not updated.** The `toString()` method lists `remoteStorageEnable`, `localRetentionMs`, and `localRetentionBytes` but does not include the new `remoteLogDisablePolicy` field. While not a functional blocker, this should be updated for consistent debug logging. (May be in the truncated portion of the diff \u2014 please confirm.)\n\n- [storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java] **Missing `remoteLogDisablePolicy()` public accessor.** The integration test `RemoteTopicCrudTest.scala:392` calls `logBuffer.head.config.remoteLogDisablePolicy()` but no such public method is visible in the diff. There needs to be a public getter either on `LogConfig` (delegating to `remoteLogConfig.remoteLogDisablePolicy`) or directly on `RemoteLogConfig`. Compare with existing accessors like `remoteStorageEnable()` at line 436.\n\n- [clients/src/main/java/org/apache/kafka/common/config/TopicConfig.java:105] **Documentation clarity.** The doc string says \"after tiered storage disablement on a topic\" \u2014 since the PR description says this is topic-level only and `REMOTE_LOG_STORAGE_ENABLE_CONFIG` itself currently cannot be disabled once enabled (see its existing doc: \"You can not disable this config once it is enabled\"), this new config's practical applicability may be limited in this release. Consider noting that this config is relevant for future versions where disablement is supported.",
+    "judge": null
+  },
+  {
+    "repo": "quarkiverse/quarkus-mcp-server",
+    "pr": 659,
+    "reviewer": "mkouba",
+    "net": null,
+    "sec": 244.3,
+    "sent": 139263,
+    "recv": 8309,
+    "calls": 16,
+    "text": "SUMMARY:\nPR #659 adds a new standalone `conformance/` module and CI job to run the official MCP conformance tests against a test server. The module follows the same standalone pattern as existing samples, but has several inconsistencies and CI reliability concerns.\n\nPOINTS:\n- [conformance/pom.xml:19] **Quarkus version inconsistency**: Uses `quarkus.platform.version=3.32.1`, while the parent `pom.xml` uses `quarkus.version=3.27.2` and all existing samples use `3.27.0`. Aligning with the parent project version (3.27.2) would be more consistent.\n- [conformance/pom.xml:21] **`999-SNAPSHOT` limits standalone usability**: The `quarkus.mcp-server.version=999-SNAPSHOT` means this conformance server can only work during CI after the main project builds. Existing samples use a released version (`1.10.0`), making them usable standalone. Consider whether conformance should also pin a released MCP server version so external users can run it independently to validate their own servers.\n- [.github/workflows/build.yml:~line 130] **No server readiness check before running tests**: After `nohup java ... -jar target/quarkus-app/quarkus-run.jar &`, the workflow immediately runs `npx @modelcontextprotocol/conformance server`. The Quarkus server may still be starting up, causing intermittent/flaky test failures. Add a readiness check (e.g., `sleep 10` or a retry loop hitting `http://localhost:8080/q/health` or the MCP endpoint) before invoking the conformance tool.\n- [.github/workflows/build.yml:~line 137] **Cleanup step should use `if: always()`**: The `Stop test server` step has `if: steps.start_test_server.outcome == 'success'`, which means if the conformance tests fail, the server process won't be killed. Change to `if: always()` to guarantee cleanup regardless of test outcome.\n- [conformance/pom.xml:~line 62] **Unnecessary `native-image-agent` goal**: The Quarkus Maven plugin includes `<goal>native-image-agent</goal>`, which is for recording reflection/serialization proxies for native image builds. This conformance test server has no indication of needing native image generation. Remove this goal to avoid unnecessary processing.\n- [conformance/pom.xml:~line 38] **Purpose of `quarkus-scheduler` dependency unclear**: The `quarkus-scheduler` dependency is included, but without seeing ConformanceServer.java's full implementation it's unclear why scheduling is needed. If no `@Scheduled` methods exist, this dependency can be removed.\n- [.github/workflows/build.yml:~line 117] **Node.js version 24 availability**: `node-version: 24` is specified. Verify this version is available and stable on `actions/setup-node@v6` \u2014 as of recent knowledge, Node 24 may not yet be an LTS release. Consider using a more established version (e.g., 22 LTS) unless the conformance tool specifically requires 24.",
+    "judge": null
+  },
+  {
+    "repo": "spring-projects/spring-boot",
+    "pr": 45727,
+    "reviewer": "wilkinsona",
+    "net": null,
+    "sec": 306.9,
+    "sent": 414216,
+    "recv": 9818,
+    "calls": 16,
+    "text": "SUMMARY:\nThis PR removes the unused `SslBundles` parameter from `KafkaProperties.build*Properties()` methods. Investigation confirms the parameter was never actually consumed in `Ssl.buildProperties()` \u2014 it was passed through but never referenced. The change is correct in principle but has a critical missing update.\n\nPOINTS:\n- [spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaStreamsAnnotationDrivenConfiguration.java:65] **COMPILATION ERROR RISK**: This file calls `this.properties.buildStreamsProperties(null)` but the diff shows no changes to this file. After removing the `buildStreamsProperties(SslBundles)` overload, this call will fail to compile. Must change to `this.properties.buildStreamsProperties()` to match the pattern applied in `KafkaAutoConfiguration.java:170`.\n\n- [spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java:1431] `Ssl.buildProperties(SslBundles)` method body never references the `sslBundles` parameter \u2014 confirmed dead code. Similarly, the `Properties.with(Ssl, Security, Map, SslBundles)` helper at line 1797 passes `sslBundles` to `ssl.buildProperties(sslBundles)` which ignores it entirely. Removal is safe.\n\n- [spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java:1429] The `@Deprecated(since = \"3.2.0\", forRemoval = true)` annotation on the no-arg `Ssl.buildProperties()` should be removed since the no-arg version becomes the only version after this PR. The deprecated no-arg delegator and the overloaded method should both be replaced by a single no-arg implementation.\n\n- [spring-boot-project/spring-boot-autoconfigure/src/test/java/org/springframework/boot/autoconfigure/kafka/KafkaPropertiesTests.java:109,137,146,155,164] Five test methods pass `new DefaultSslBundleRegistry(...)` to `buildConsumerProperties(SslBundles)`. These tests must be updated \u2014 either remove the SslBundles argument or remove the tests entirely if they only validate the now-removed overload behavior. The PR description mentions \"The removed test has been restored\" but these 5 overloaded-method callers are not visible in the provided diff.\n\n- [spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java:38] Good removal of the unused `import org.springframework.boot.ssl.SslBundles;`. Note: `KafkaAutoConfiguration.java` retains its own `SslBundles` import (line 45) which is still needed for `PropertiesKafkaConnectionDetails` injection \u2014 correctly preserved.",
+    "judge": null
+  },
+  {
+    "repo": "apache/flink",
+    "pr": 28256,
+    "reviewer": "snuyanzin",
+    "net": null,
+    "sec": 353.9,
+    "sent": 1543410,
+    "recv": 9281,
+    "calls": 21,
+    "text": "SUMMARY:\nThis PR re-enables `IS_NOT_DISTINCT_FROM` constant inference in Flink's forked `RexUtil.java`, aligning with CALCITE-5336. The code change is minimal (uncommenting one case statement) and the updated XML golden-file tests show expected, more aggressive optimization (e.g., reduced group-by keys in DynamicFunctionPlanTest).\n\nPOINTS:\n- [flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:78-85] The class-level comment still states \"the class was copied over because of current Calcite way of inferring constants from IS NOT DISTINCT FROM clashes with filter push down\" \u2014 but this PR re-enables that exact behavior. Update this comment to explain that CALCITE-5336 resolved the filter push-down conflict, and note the minimum Calcite version where this is safe (1.37.0 is the current Flink dependency per `flink-table/pom.xml:82`).\n- [flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:85] The comment references \"FLINK modifications (backport of CALCITE-6764): Line 2489~2494\" but should also add a reference to CALCITE-5336 for this specific re-enablement. This helps future maintainers understand why the fork's behavior now matches upstream.\n- [flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:398-405] The change itself is correct and minimal. `IS NOT DISTINCT FROM` semantics (`x = y OR (x IS NULL AND y IS NULL)`) are equivalent to `EQUALS` for constant inference purposes when the right operand is a non-null literal \u2014 the same logic already applies to `EQUALS`.\n- [Test coverage] While the XML golden-files show plan changes (e.g., DynamicFunctionPlanTest.xml now produces `groupBy=[cat]` instead of `groupBy=[cat, hh]`), consider adding a dedicated unit test that explicitly validates `predicateConstants()` returns the expected constant map for `IS NOT DISTINCT FROM` predicates. Existing IS NOT DISTINCT FROM tests (found in WindowJoinITCase, IntervalJoinITCase, MultiJoinTestPrograms) focus on join conditions, not constant inference.\n- [flink-table/flink-table-planner/src/test/resources/.../*.xml] The XML test plan changes are consistent with more aggressive constant inference: aggregation group-by keys are reduced when `IS NOT DISTINCT FROM` with a constant is recognized. The plans look semantically correct (e.g., removing deterministic expressions from group-by).",
+    "judge": null
+  }
+]

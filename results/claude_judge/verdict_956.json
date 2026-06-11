@@ -1,0 +1,64 @@
+{
+  "pr": 956,
+  "own_review": [
+    {"point": "fetch() has no response.ok check or try-catch; worse, the URL points to master/disclaimer.txt which does not exist on master until this PR merges, so PR/preview builds render GitHub's literal '404: Not Found' body inside the <pre> (chicken-and-egg). Codebase has better patterns: Website/app/docs/layout.jsx wraps fetch in try-catch; Website/app/download/page.tsx shows error UI with Retry.", "file": "Website/app/disclaimer/page.tsx:2-5", "severity": "critical"},
+    {"point": "Fetching a file that lives in the same repository over the network from a mutable 'master' ref; privacy-policy/page.tsx pins a commit SHA. Better: read disclaimer.txt from the filesystem at build time, removing the raw.githubusercontent.com dependency entirely.", "file": "Website/app/disclaimer/page.tsx:3", "severity": "normal"},
+    {"point": "Disclaimer text is duplicated in README.md and disclaimer.txt; the two copies will drift over time — single source preferable.", "file": "disclaimer.txt", "severity": "normal"},
+    {"point": "Unexplained Footer layout changes beyond adding the link: flex-1 -> flex-auto changes the middle column from equal-basis to content-sized (breaks 3-column symmetry), and space-x-6 -> space-x-4 tightens spacing inconsistently with the other footer sections.", "file": "Website/components/Footer.tsx:16", "severity": "normal"},
+    {"point": "Unrelated package-lock.json churn (@eslint/plugin-kit 0.3.1->0.3.4 with nested @eslint/core 0.15.1) bundled into a docs/website PR.", "file": "Website/package-lock.json", "severity": "normal"},
+    {"point": "PR description says content is 'loaded from my fork' but the committed URL points to the main repo; description is stale/contradictory and the preview deployment cannot show real content until merge.", "file": "Website/app/disclaimer/page.tsx:3", "severity": "normal"},
+    {"point": "No caching/revalidate strategy on the fetch; Next 15 defaults fetch to uncached, so caching intent (force-cache or revalidate) should be explicit.", "file": "Website/app/disclaimer/page.tsx:2", "severity": "normal"},
+    {"point": "disclaimer.txt missing trailing newline.", "file": "disclaimer.txt:8", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "No error handling on fetch; cites docs/layout.jsx try-catch and download/page.tsx patterns", "verdict": "good", "why": "Verified: both cited files do have the claimed error handling; real build-crash risk"},
+        {"point": "PR description says 'loaded from my fork' but URL points to main repo", "verdict": "good", "why": "Verified discrepancy between description and committed URL"},
+        {"point": "No cache option on fetch; suggest explicit cache: force-cache", "verdict": "good", "why": "Real: Next 15 defaults to uncached fetch, intent should be explicit"},
+        {"point": "Missing trailing newline in disclaimer.txt", "verdict": "good", "why": "Verified in diff (\\ No newline at end of file); minor but actionable"},
+        {"point": "flex-1 -> flex-auto and space-x-6 -> space-x-4 change questioned", "verdict": "good", "why": "Verified behavioral layout change unexplained by PR description"}
+      ],
+      "missed": [
+        "Mutable master ref instead of pinned SHA (privacy-policy pins a commit) / could read repo-local file from filesystem",
+        "Disclaimer text duplicated between README.md and disclaimer.txt (drift risk)",
+        "Unrelated package-lock.json dependency churn bundled in"
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v3": {
+      "points": [
+        {"point": "No error handling on fetch; cites docs/layout.jsx try-catch pattern", "verdict": "good", "why": "Verified: docs/layout.jsx wraps its fetch in try-catch with fallback"},
+        {"point": "PR description fork-vs-main-repo URL discrepancy", "verdict": "good", "why": "Verified: committed URL is the main repo, contradicting the description"},
+        {"point": "Missing trailing newline in disclaimer.txt", "verdict": "good", "why": "Verified in diff"},
+        {"point": "Unrelated @eslint/plugin-kit lockfile bump should be separate", "verdict": "good", "why": "Verified: lockfile churn is unrelated to the disclaimer feature"},
+        {"point": "space-x-6 -> space-x-4 unmentioned style change", "verdict": "good", "why": "Verified, though it omits the flex-1 -> flex-auto half of the change"},
+        {"point": "No revalidate/caching directive; add revalidate = 3600", "verdict": "good", "why": "Real concern (no caching strategy), though 'avoids re-fetch on every build' reasoning is slightly off"}
+      ],
+      "missed": [
+        "Mutable master ref instead of pinned SHA / filesystem read alternative",
+        "Disclaimer text duplicated between README.md and disclaimer.txt (drift risk)"
+      ],
+      "exceeds": [],
+      "net": 4
+    },
+    "v4": {
+      "points": [
+        {"point": "No error handling on fetch; cites download page's try/catch + retry pattern", "verdict": "good", "why": "Verified: download/page.tsx has try/catch, error message, and Retry button"},
+        {"point": "URL uses mutable master branch; privacy-policy pins commit c86ce857", "verdict": "good", "why": "Verified: privacy-policy/page.tsx pins that exact SHA; stability concern is real"},
+        {"point": "Missing trailing newline in disclaimer.txt", "verdict": "good", "why": "Verified in diff"},
+        {"point": "README/disclaimer.txt duplication will drift; suggest single source", "verdict": "good", "why": "Verified: same text in two places with differing formatting"},
+        {"point": "Unrelated @eslint/plugin-kit lockfile changes should be separate PR", "verdict": "good", "why": "Verified unrelated churn"},
+        {"point": "Footer flex-1->flex-auto + space-x-4 behavioral change unmentioned in description", "verdict": "good", "why": "Verified; correctly identifies both halves of the class change"}
+      ],
+      "missed": [
+        "PR description claims content is loaded from a fork while the code points at the main repo (stale/contradictory description)",
+        "No explicit caching/revalidate strategy on the fetch"
+      ],
+      "exceeds": [],
+      "net": 4
+    }
+  },
+  "qualitative": "The human review is a content-free 'looks good to merge', so all three machine reviews vastly exceed the reference in substance. v4 is the best overall: it is the only one to catch both deeper structural issues — the mutable master ref versus the pinned-SHA convention in privacy-policy, and the README/disclaimer.txt content duplication — and it accurately verified codebase error-handling patterns, missing only the stale fork-URL note in the PR description and an explicit caching directive. v3 ties on net score with solid breadth (lockfile churn, fork discrepancy, revalidate) but only half-reports the Footer class change and slightly muddles Next.js caching semantics. v2 is the weakest: accurate but narrowest, missing the lockfile churn, the duplication, and the master-pinning issue. Notably, none of the three (nor the human) spotted the sharpest defect: disclaimer.txt does not exist on master until this PR merges, so PR-time and preview builds render GitHub's literal '404: Not Found' body as the page content — the no-error-handling points only gesture at this generically. No fabrications were found in any candidate; every codebase claim they made verified clean."
+}

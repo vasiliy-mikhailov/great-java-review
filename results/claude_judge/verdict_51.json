@@ -1,0 +1,55 @@
+{
+  "pr": 51,
+  "own_review": [
+    {"point": "Typo 'stanard input/output' should be 'standard input/output' in the new description", "file": "transports/stdio/pom.xml:14", "severity": "normal"},
+    {"point": "'server side events' is an incorrect expansion of SSE (it stands for Server-Sent Events); appears in both the sse pom description and the yaml name, user-facing on Maven Central/code.quarkus", "file": "transports/sse/pom.xml:14, transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml:1", "severity": "normal"},
+    {"point": "New quarkus-extension.yaml files omit the top-level 'description:' field that core/runtime/src/main/resources/META-INF/quarkus-extension.yaml has; relies on pom description inheritance instead of matching the core extension's convention", "file": "transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml, transports/stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "severity": "normal"},
+    {"point": "Descriptions added to parent aggregator poms (packaging pom), not runtime artifact poms; works because Maven inherits <description>, but all child artifacts (deployment too) get the same description — minor placement/convention note", "file": "transports/sse/pom.xml, transports/stdio/pom.xml", "severity": "normal"},
+    {"point": "Guide URL (docs.quarkiverse.io/quarkus-mcp-server/dev/index.html) differs from the commented-out URL in core's yaml (docs.quarkiverse.io/mcp-server/dev/); worth verifying which is correct and aligning core", "file": "transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml:5", "severity": "normal"}
+  ],
+  "versions": {
+    "v1": {
+      "points": [
+        {"point": "Typo 'stanard' -> 'standard' in stdio pom description", "verdict": "good", "why": "Verified in diff; matches the human review's suggestion."},
+        {"point": "sse yaml missing top-level description field present in core yaml", "verdict": "good", "why": "Verified: core yaml has description:, new sse yaml does not; concrete consistency fix aligned with the PR's purpose."},
+        {"point": "stdio yaml missing description field, same convention", "verdict": "good", "why": "Same verified gap in the second new yaml file."}
+      ],
+      "missed": ["'server side events' is a wrong expansion of SSE (Server-Sent Events) in pom description and yaml name"],
+      "exceeds": [],
+      "net": 2
+    },
+    "v2": {
+      "points": [
+        {"point": "Typo 'stanard' -> 'standard', noting sibling SSE pom spells it correctly", "verdict": "good", "why": "Verified; matches human suggestion, with accurate sibling comparison."},
+        {"point": "sse yaml missing top-level description field vs core yaml", "verdict": "good", "why": "Verified against core/runtime yaml; concrete actionable fix."},
+        {"point": "stdio yaml missing top-level description field", "verdict": "good", "why": "Same verified gap in the second file."},
+        {"point": "Guide URL differs from core's commented-out URL path; verify it matches intended docs structure", "verdict": "good", "why": "Verified discrepancy (mcp-server vs quarkus-mcp-server path); the guide line is exactly what the human review focused on, and v2 characterizes it accurately as low priority."}
+      ],
+      "missed": ["'server side events' is a wrong expansion of SSE (Server-Sent Events) in pom description and yaml name"],
+      "exceeds": [],
+      "net": 3
+    },
+    "v3": {
+      "points": [
+        {"point": "Typo 'stanard' -> 'standard' in stdio pom description", "verdict": "good", "why": "Verified; matches human suggestion."},
+        {"point": "sse yaml missing description field vs core extension yaml", "verdict": "good", "why": "Verified consistency gap with core yaml."},
+        {"point": "stdio yaml missing description field", "verdict": "good", "why": "Same verified gap in the second file."}
+      ],
+      "missed": ["'server side events' is a wrong expansion of SSE (Server-Sent Events) in pom description and yaml name"],
+      "exceeds": [],
+      "net": 2
+    },
+    "v4": {
+      "points": [
+        {"point": "Typo 'stanard' -> 'standard' in stdio pom description", "verdict": "good", "why": "Verified; matches human suggestion."},
+        {"point": "sse yaml missing description:, claiming the catalog 'will have no description to display'", "verdict": "good", "why": "The missing field vs core is verified and actionable, though the impact claim overstates it (the extension descriptor falls back to the inherited pom description)."},
+        {"point": "stdio yaml missing description: field", "verdict": "good", "why": "Same verified gap in the second file."},
+        {"point": "Guide URL differs from core's commented-out path; confirm docs exist, else comment it out like core", "verdict": "good", "why": "Real verified discrepancy and properly hedged, though the 'comment it out' suggestion runs opposite to the human reviewer's note that the guide is already published."}
+      ],
+      "missed": ["'server side events' is a wrong expansion of SSE (Server-Sent Events) in pom description and yaml name"],
+      "exceeds": [],
+      "net": 3
+    }
+  },
+  "qualitative": "All four candidates caught the two substantive issues: the 'stanard' typo (the human's concrete fix) and the missing top-level description in the new quarkus-extension.yaml files compared with core's yaml — a real convention gap I also found independently. v2 and v4 additionally flagged the guide-URL inconsistency with core's commented-out link, which is the exact line the human review touched, making them the most complete; v2 edges out v4 qualitatively because v4 slightly overclaims the impact of the missing yaml description and suggests commenting out a guide that the human reviewer notes is already published. The human's guide-URL suggestion text is already present verbatim in this diff snapshot, so I did not count it as missed for v1/v3. No candidate noticed that 'server side events' is a wrong expansion of SSE (Server-Sent Events) in the user-facing descriptions, the one finding unique to my review. No fabrications anywhere; this was a small metadata PR and all reviews stayed grounded."
+}

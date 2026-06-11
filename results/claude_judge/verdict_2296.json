@@ -1,0 +1,89 @@
+{
+  "pr": 2296,
+  "own_review": [
+    {"point": "Requestor-facing endpoints /getTopicRequests, /getConnectorRequests (coral 'my requests' pages) and /topic/request/{id} (editTopicRequest.js edit flow) are gated with APPROVE_* permissions only; users in roles with only REQUEST_* permissions get 401, and coral main.tsx redirects any 401 to /login — wrong permission set for requestor endpoints", "file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java", "severity": "critical"},
+    {"point": "Annotation OR-semantics conflict with leftover service checks: controller allows APPROVE_ALL_REQUESTS_TEAMS, but approveConnectorRequests/declineConnectorRequests (KafkaConnectControllerService:641,791) and approveTopicRequests/declineTopicRequests (TopicControllerService:723,885) still hard-require APPROVE_CONNECTORS/APPROVE_TOPICS and return NOT_AUTHORIZED — duplicate checks were removed for topics create/update/delete but not for approve/decline or most connector paths", "file": "core/src/main/java/io/aiven/klaw/service/KafkaConnectControllerService.java", "severity": "normal"},
+    {"point": "API contract change: deleteTopicRequests/deleteConnectorRequests went from HTTP 200 + NOT_AUTHORIZED body to HTTP 401; coral treats 401 as session-expired and bounces an authenticated user to /login; 403 FORBIDDEN would be semantically correct (though 401 matches the pre-existing KlawNotAuthorizedException handler)", "file": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java", "severity": "normal"},
+    {"point": "Permission check now runs AFTER @Valid bean validation: TopicRequestValidatorImpl had permission as its first check; the AOP @Before advice runs at handler invocation, after argument resolution/validation, so unauthorized users now trigger full validation incl. DB lookups (topic-existence probe via 400 vs 401, wasted work)", "file": "core/src/main/java/io/aiven/klaw/validation/TopicRequestValidatorImpl.java", "severity": "normal"},
+    {"point": "Coverage gaps vs stated goal: createClaimTopicRequest and getTopicTeam in TopicController have no @PermissionAllowed; createClaimTopicRequest also has no service-side permission check, while the connector claim endpoint got REQUEST_CREATE_CONNECTORS — inconsistent", "file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java", "severity": "normal"},
+    {"point": "Previously-unchecked read endpoints (getTopicsOnly, getTopicDetailsPerEnv, getTopicEvents, getAdvancedTopicConfigs, getConnectors, getConnectorOverview, getConnectorDetailsPerEnv) now require VIEW_*; getTopicsOnly feeds ACL-request topic dropdowns (requestAcls.js, coral getTopicNames), so custom roles without VIEW_TOPICS break, amplified by the 401-to-login redirect", "file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java", "severity": "normal"},
+    {"point": "PermissionConstraintException extends jakarta.validation.ConstraintDeclarationException — semantically wrong base (signals invalid constraint declarations); should reuse KlawNotAuthorizedException which is already mapped to 401, instead of a new exception + duplicate handler", "file": "core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java", "severity": "normal"},
+    {"point": "@Order(Ordered.HIGHEST_PRECEDENCE) is placed on the @interface PermissionAllowed where it has no effect; aspect ordering requires @Order on PermissionAllowedAspectInterceptor", "file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowed.java", "severity": "normal"},
+    {"point": "@Target includes ElementType.TYPE and @Inherited, but the @annotation(...) pointcut only matches method-level annotations — a class-level @PermissionAllowed would be silently unenforced (false sense of security); message/groups/payload are Bean-Validation boilerplate on a non-@Constraint annotation, message() never used", "file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowed.java", "severity": "normal"},
+    {"point": "Dead code left behind: throws KlawNotAuthorizedException clauses remain on createTopicsCreateRequest/createTopicsUpdateRequest/createTopicDeleteRequest/getTopics though nothing throws it anymore; dead null != permissionAllowed check in the aspect (bound parameter can never be null); new handler repeats the 'NotAuthoirzed' typo and does not log unlike sibling handlers", "file": "core/src/main/java/io/aiven/klaw/service/TopicControllerService.java", "severity": "normal"},
+    {"point": "Test nits: unused @Autowired BuildProperties added to TopicAclControllerIT; explicit imports replaced with wildcard imports (java.util.*, model.requests.*) against existing style; createTopicRequestNotAuthorized mutates global tenant config via /updateKwCustomProperty in an order-dependent IT", "file": "core/src/test/java/io/aiven/klaw/TopicAclControllerIT.java", "severity": "normal"},
+    {"point": "No spring-boot-starter-aop dependency added; the aspect compiles/works only because aspectjweaver arrives transitively via spring-boot-starter-data-jpa's spring-aspects — fragile, worth an explicit dependency (the new IT tests passing shows it does work)", "file": "core/pom.xml", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "/connector/restart missing @PermissionAllowed", "verdict": "wrong", "why": "Diff adds @PermissionAllowed(MANAGE_CONNECTORS) on /connector/restart"},
+        {"point": "Duplicate service-layer checks remain in KafkaConnectControllerService (createConnector etc.)", "verdict": "good", "why": "Verified: checks at 112/641/791/839 remain (though the cited deleteConnectorRequests one was removed)"},
+        {"point": "Cannot verify TopicController read-endpoint annotations (truncated diff), author should confirm", "verdict": "trivial", "why": "Hedge, not a finding; the endpoints (except getTopicTeam/claim) are in fact annotated"},
+        {"point": "Handler should return 403 FORBIDDEN, not 401, for authenticated-but-unauthorized", "verdict": "good", "why": "Handler does return 401; real semantics issue (though consistent with existing convention)"},
+        {"point": "Verify OR semantics of permission array", "verdict": "trivial", "why": "Verification request; Set overload with retainAll is indeed OR — no issue raised"},
+        {"point": "Verify @Order places aspect after authentication", "verdict": "trivial", "why": "Speculative hedge; aspect runs inside authenticated MVC dispatch; misses the actual misplaced-@Order issue"},
+        {"point": "TopicRequestValidatorImpl still performs its own permission check", "verdict": "wrong", "why": "The PR removes exactly that check from isValid()"},
+        {"point": "checkIsAuthorized calls remain in TopicControllerService for create/update/delete/getTopics — remove them", "verdict": "wrong", "why": "The PR removed all of those; only approve/decline checks remain (not the ones cited)"},
+        {"point": "Critical test coverage missing for unauthorized rejection / HTTP status", "verdict": "wrong", "why": "PR adds three IT tests in TopicAclControllerIT asserting 401 for exactly that pipeline"},
+        {"point": "getTopicRequestsForApprover dual check, verify annotation intent", "verdict": "trivial", "why": "Muddled hedge; service line 527 is team-scope selection, not an auth gate; annotation set misquoted"}
+      ],
+      "missed": [
+        "APPROVE_*-only gating on requestor endpoints /getTopicRequests, /getConnectorRequests, /topic/request/{id} breaks requestor-only roles (coral redirects 401 to /login)",
+        "200+NOT_AUTHORIZED to HTTP 401 contract change for deleteTopicRequests/deleteConnectorRequests and coral 401-as-session-expired redirect",
+        "Permission check now runs after @Valid validation (DB-backed validation executes for unauthorized users, info leak)",
+        "createClaimTopicRequest/getTopicTeam left unannotated; topic claim has no check at all",
+        "PermissionConstraintException extends ConstraintDeclarationException — wrong base; should reuse KlawNotAuthorizedException",
+        "@Order on the annotation type is ineffective; TYPE target unsupported by @annotation pointcut"
+      ],
+      "exceeds": [],
+      "net": -8
+    },
+    "v3": {
+      "points": [
+        {"point": "CRITICAL: missing spring-boot-starter-aop, aspect silently ignored", "verdict": "wrong", "why": "aspectjweaver is present transitively via starter-data-jpa/spring-aspects; the PR's own IT tests prove the aspect fires (the mild 'add explicit dep' advice would be fair, the blocker claim is false)"},
+        {"point": "CRITICAL: missing @EnableAspectJAutoProxy", "verdict": "wrong", "why": "Spring Boot AopAutoConfiguration enables aspect auto-proxying by default"},
+        {"point": "Missing @ExceptionHandler for PermissionConstraintException", "verdict": "wrong", "why": "The diff adds exactly that handler to KlawExceptionHandler"},
+        {"point": "Duplicate isNotAuthorizedUser checks remain in KafkaConnectControllerService (7 sites)", "verdict": "good", "why": "Mostly true (112/508/641/791/839 remain), though cited line 488 was removed by the PR"},
+        {"point": "Ten duplicate checks persist in TopicControllerService incl. 110/115/124/228/1098", "verdict": "wrong", "why": "Those cited checks were removed by the PR; only approve/decline checks persist"},
+        {"point": "getConnectorDetailsPerEnv and restartConnector missing annotations", "verdict": "wrong", "why": "Both receive @PermissionAllowed in the diff (VIEW_CONNECTORS, MANAGE_CONNECTORS)"},
+        {"point": "deleteConnectorRequests should use REQUEST_DELETE_CONNECTORS not REQUEST_CREATE_CONNECTORS", "verdict": "trivial", "why": "Endpoint withdraws one's own create-request; annotation mirrors the long-standing service check, debatable opinion not a bug"},
+        {"point": "Cannot verify TopicController coverage (diff omitted)", "verdict": "trivial", "why": "Hedge, not a finding"},
+        {"point": "No tests added for the new aspect", "verdict": "wrong", "why": "PR adds three IT tests asserting 401 through annotation-aspect-handler pipeline (OR-logic test gap alone would be valid)"},
+        {"point": "Add @Order to the aspect to guarantee ordering", "verdict": "good", "why": "Correct direction — the PR's @Order sits uselessly on the annotation; ordering should be on the aspect"}
+      ],
+      "missed": [
+        "APPROVE_*-only gating on requestor endpoints /getTopicRequests, /getConnectorRequests, /topic/request/{id} breaks requestor-only roles (coral redirects 401 to /login)",
+        "200+NOT_AUTHORIZED to HTTP 401 contract change and coral 401-as-session-expired redirect",
+        "Permission check now runs after @Valid validation (DB-backed validation executes for unauthorized users, info leak)",
+        "createClaimTopicRequest/getTopicTeam left unannotated; topic claim has no check at all",
+        "PermissionConstraintException extends ConstraintDeclarationException — wrong base; should reuse KlawNotAuthorizedException"
+      ],
+      "exceeds": [],
+      "net": -9
+    },
+    "v4": {
+      "points": [
+        {"point": "COMPILATION ERROR: handler references ApiResponse.UNAUTHORIZED which does not exist", "verdict": "wrong", "why": "Fabricated — the diff uses ApiResponse.NOT_AUTHORIZED"},
+        {"point": "saveConnectorDocumentation (write op) gated by VIEW_CONNECTORS", "verdict": "good", "why": "Verified — write endpoints (also saveTopicDocumentation) gated by VIEW_* permission; real design concern"},
+        {"point": "Redundant isNotAuthorizedUser checks remain in connector service after annotating controllers", "verdict": "good", "why": "Verified (createConnector, restart, approve, decline remain; cited deleteConnectorRequests one was actually removed)"},
+        {"point": "Annotation OR logic vs single-permission service checks creates inconsistency", "verdict": "good", "why": "Verified — APPROVE_ALL_REQUESTS_TEAMS passes the annotation but approve/decline service checks still reject without APPROVE_CONNECTORS/APPROVE_TOPICS"},
+        {"point": "restartConnector annotation unconfirmed due to truncation, ensure MANAGE_CONNECTORS", "verdict": "trivial", "why": "Hedge; annotation is present in the diff"},
+        {"point": "TopicController annotation coverage unverified", "verdict": "trivial", "why": "Hedge, not a finding"},
+        {"point": "Dual permission paths: consider removing TopicRequestValidatorImpl permission check if annotation covers it", "verdict": "trivial", "why": "The PR already removed that check; advice restates what the diff does"},
+        {"point": "Typo handleKlawNotAuthoirzedExceptionInternal (pre-existing)", "verdict": "trivial", "why": "Pre-existing nit; misses that the NEW handler method repeats the same typo"}
+      ],
+      "missed": [
+        "APPROVE_*-only gating on requestor endpoints /getTopicRequests, /getConnectorRequests, /topic/request/{id} breaks requestor-only roles (coral redirects 401 to /login)",
+        "200+NOT_AUTHORIZED to HTTP 401 contract change and coral 401-as-session-expired redirect (and 401 vs 403 semantics)",
+        "Permission check now runs after @Valid validation (DB-backed validation executes for unauthorized users, info leak)",
+        "createClaimTopicRequest/getTopicTeam left unannotated; topic claim has no check at all",
+        "PermissionConstraintException extends ConstraintDeclarationException — wrong base; should reuse KlawNotAuthorizedException",
+        "@Order on the annotation type is ineffective; TYPE target unsupported by @annotation pointcut"
+      ],
+      "exceeds": [],
+      "net": -4
+    }
+  },
+  "qualitative": "v4 is the best of a weak field: it lands the two most substantive verified points (write endpoints gated by VIEW_* permissions, and the OR-semantics annotation conflicting with leftover single-permission service checks) and contains only one fabrication, though that one — a claimed compilation error on a symbol the diff never uses — is a bad look. v2 and v3 both fell into the truncated-diff trap and asserted absences that the full diff disproves: v2 claims the restart endpoint is unannotated, the validator still checks permissions, the removed topic-service checks remain, and that no tests were added; v3 goes further with confident false blockers (aspect 'silently ignored' for lack of an AOP dependency that is satisfied transitively and proven working by the PR's own new IT tests, a 'missing' exception handler the diff adds, 'missing' annotations that exist). All three correctly spotted the redundant service-layer checks theme, and v2 alone raised the 401-vs-403 semantics. None found the most consequential issue: requestor-facing endpoints (/getTopicRequests, /getConnectorRequests, /topic/request/{id}) are now gated by approver-only permissions, and coral redirects any 401 to /login, so requestor-only roles lose their own requests pages; none noticed the permission check moving behind @Valid validation, the unprotected topic-claim endpoint, or the misapplied @Order/TYPE-target annotation mechanics. The human reference was a single cosmetic suggestion and offered little signal."
+}

@@ -1,0 +1,57 @@
+{
+  "pr": 11706,
+  "own_review": [
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 49,
+      "issue": "Added import java.util.Optional is never used (leftover from an earlier Optional-based revision of the fix); dead import, may trip checkstyle/IDE warnings.",
+      "severity": "minor"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 478,
+      "issue": "'-> empty' marker is printed only when the list is null; a non-null empty list prints nothing under the header, so the log output is inconsistent between the two 'no values' states (same at line ~490 for collections).",
+      "severity": "trivial"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 469,
+      "issue": "No regression test added; the Hibernate bot checklist item 'Add test reproducing the bug' is unchecked and the author explicitly asks whether one is needed. Debug-logging-only NPE, so arguably acceptable, but worth flagging.",
+      "severity": "trivial"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 470,
+      "issue": "Fix verified correct: both LoadedValuesCollectorImpl implementations (FollowOnLockingAction.java:330-338 and CollectionLockingAction.java:196-204) lazily initialize entitiesToLock/collectionsToLock and return the raw fields, so getCollectedEntities()/getCollectedCollections() genuinely return null when nothing was registered; the NPE in HHH-20121 is real and the null guards fix it.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "Unused import java.util.Optional — remove it (line 49)", "grade": "good", "note": "Verified: Optional is never referenced in the file; import is dead."},
+        {"point": "Null check for collectedEntities is correct; both LoadedValuesCollectorImpl impls lazily init, consistent with segmentLoadedValues guard", "grade": "trivial", "note": "Accurate, well-verified commentary (segmentLoadedValues at line 495-497 does guard null), but an affirmation rather than an actionable finding."},
+        {"point": "Same null guard correctness for collectedCollections, consistent with segmentLoadedCollections", "grade": "trivial", "note": "Accurate affirmation; segmentLoadedCollections at line 506+ guards null."},
+        {"point": "Style note: forEach->for-loop is fine; codebase uses explicit null guards rather than Optional.ofNullable().ifPresent()", "grade": "trivial", "note": "Verified: no ifPresent-based null guards in hibernate-core main sources; accurate but non-actionable style commentary that happens to echo the human reviewer's control-flow preference."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Caught the unused Optional import, which the human review (made on the earlier revision) never flagged.",
+        "Verified the NPE root cause across both LoadedValuesCollectorImpl implementations and cross-referenced the existing null-guard pattern in segmentLoadedValues/segmentLoadedCollections."
+      ],
+      "net": 1
+    },
+    "v5": {
+      "points": [
+        {"point": "Unused import java.util.Optional — not used anywhere, remove to avoid compiler warnings (line 49)", "grade": "good", "note": "Verified real; identical to my own finding."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Caught the unused Optional import not present in the human reference."
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v4": 0, "v5": 0},
+  "qualitative": "Tiny, clean PR: null guards around lazily-initialized collector lists to fix a debug-logging NPE, where the only real residual defect is the dead java.util.Optional import left over from an earlier Optional-based revision. Both candidates caught exactly that defect, so both land at net +1 with zero fabrications. v4 is the stronger review qualitatively: it verified the NPE root cause in both LoadedValuesCollectorImpl implementations, cross-referenced the existing null-guard pattern in segmentLoadedValues/segmentLoadedCollections (claims I verified line-by-line and found accurate), and addressed the control-flow style question the human reviewer raised — but those extra points are affirmations, not actionable findings, so they earn no rubric credit. v5 is terse but precise and entirely correct. Neither candidate flagged the minor '-> empty' vs empty-list logging inconsistency or the missing regression test, but both are trivial-severity items I did not count as misses."
+}

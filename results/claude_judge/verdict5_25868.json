@@ -1,0 +1,136 @@
+{
+  "pr": 25868,
+  "own_review": [
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions loop (next.put)",
+      "issue": "If two NAR files declare the same function name, the second next.put(name, ...) silently overwrites the first archive, which is then neither in the active map nor in functionsToClose -> classloader/file-handle leak. The old full-reload code closed every prior archive. Same latent flaw exists in ConnectorUtils.reloadConnectors, but for functions this leak is newly introduced by this PR.",
+      "severity": "minor"
+    },
+    {
+      "file": "pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java",
+      "line": "66-73",
+      "issue": "reloadFunctions is an unsynchronized read-modify-write on this.functions; two concurrent reload calls (admin REST endpoint) can double-close the same evicted archives and leak the losing thread's newly created archives. volatile only fixes visibility, not atomicity. Pre-existing race in the old code and mirrored from ConnectorsManager, so not a blocker for this PR.",
+      "severity": "minor (pre-existing)"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionArchive.java",
+      "line": "4-arg constructor",
+      "issue": "Constructor now performs full-file I/O (MD5 of the NAR) and can throw UncheckedIOException \u2014 a contract change for existing callers. In-repo callers are safe (searchForFunctions catches Throwable, which silently skips the function on hash failure; the test helper uses a real file), but every scan now reads each NAR fully for hashing \u2014 extra startup/reload cost for large built-in NARs.",
+      "severity": "minor"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "49-58",
+      "issue": "computeArchiveMd5Hex/calculateMd5Hex are verbatim duplicates of the public ConnectorUtils.computeArchiveMd5Hex (ConnectorUtils.java:61-66); should be extracted to a shared utility instead of duplicated.",
+      "severity": "minor"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions missing-dir branch",
+      "issue": "Unlike searchForFunctions, a missing functions directory no longer logs a warning; all archives are silently closed.",
+      "severity": "trivial"
+    },
+    {
+      "file": "pulsar-functions/utils/src/test/java/org/apache/pulsar/functions/utils/functions/FunctionUtilsReloadTest.java",
+      "line": "tests",
+      "issue": "Temp directories/NAR extraction dirs are never cleaned up (no @AfterMethod); no test covers a brand-new NAR appearing between scans.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {
+          "point": "volatile on functions field correct, consistent with ConnectorsManager; 'no additional synchronization needed'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate praise on visibility, but glosses over the (pre-existing) reload read-modify-write race it claims away."
+        },
+        {
+          "point": "reloadFunctions delegation matches ConnectorsManager pattern; old code closed all archives",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate restatement/praise, no actionable content."
+        },
+        {
+          "point": "closeFunctions overload refactor is clean (Collection vs Map+clear)",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate praise."
+        },
+        {
+          "point": "@UtilityClass: verify methods are static or 'compilation will fail'",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False: Lombok @UtilityClass automatically marks members static; non-static members do not fail compilation. Also moot \u2014 the diff's methods are explicitly static."
+        },
+        {
+          "point": "Reuse ConnectorUtils.computeArchiveMd5Hex / extract shared MD5 logic instead of duplicating",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: ConnectorUtils.java:61-66 has identical helpers; matches the human reviewer's sole point."
+        },
+        {
+          "point": "archiveMd5Hex should be computed at construction, not lazily",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "The diff already computes it in the constructor; vacuous advice from the truncated view, not a false assertion."
+        },
+        {
+          "point": "Test suite covers four scenarios; consider concurrent-reload test",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Scenarios exist but in FunctionUtilsReloadTest, not the manager test it cites; suggestion is mild."
+        }
+      ],
+      "missed": [
+        "Duplicate function names across NARs leak the overwritten archive (never closed) \u2014 new regression vs old close-everything reload",
+        "FunctionArchive constructor now does file I/O and throws UncheckedIOException \u2014 contract change / silent fail-open skip in searchForFunctions"
+      ],
+      "exceeds": [],
+      "net": -2
+    },
+    "v5": {
+      "points": [
+        {
+          "point": "Missing test for a new NAR added between scans",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: the four tests cover unchanged/changed/removed/missing-dir only; the new-function branch is untested."
+        },
+        {
+          "point": "computeArchiveMd5Hex/calculateMd5Hex indirection duplicated from ConnectorUtils; cross-cutting cleanup",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified duplication of ConnectorUtils.java:61-66; covers the human reviewer's shared-utils point."
+        },
+        {
+          "point": "Constructor wraps IOException in UncheckedIOException; searchForFunctions catches Throwable and silently skips \u2014 fail-open, callers never see the IOException",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified against searchForFunctions catch(Throwable); matches my own finding."
+        },
+        {
+          "point": "Swap-then-close ordering means brief coexistence of old+new archives; consistent with ConnectorsManager",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate, self-labelled as observation not concern."
+        }
+      ],
+      "missed": [
+        "Duplicate function names across NARs leak the overwritten archive (never closed) \u2014 new regression vs old close-everything reload"
+      ],
+      "exceeds": [
+        "Missing new-NAR test case (beyond human reference)",
+        "UncheckedIOException fail-open behavior in searchForFunctions (beyond human reference)"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v4": 0,
+    "v5": 0
+  },
+  "qualitative": "v5 is clearly stronger: every one of its four points is verified-true against the repo, three are substantive (untested new-NAR path, MD5-helper duplication mirroring the human's only comment, and the UncheckedIOException fail-open contract change my own review also flagged), and it correctly self-calibrates the fourth as a non-concern. v4 is dominated by accurate but non-actionable praise of the diff, hedged speculation driven by its truncated view (advice to do things the code already does), and one factually wrong claim about Lombok @UtilityClass requiring explicit static members; its single solid point is the MD5 duplication, which overlaps the human reference. Both candidates missed the one genuine regression I found: when two NARs declare the same function name, the overwritten FunctionArchive is neither kept nor closed, leaking a classloader \u2014 behavior the old close-everything reload did not have. Neither candidate fabricated absent code, though v4's Lombok claim is a false technical assertion."
+}

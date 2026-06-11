@@ -1,0 +1,59 @@
+{
+  "pr": 27570,
+  "own_review": [
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:134", "issue": "No finiteness/NaN guard on other.distinctValues: minExcludeNaN(NaN/this.ndv, 1) returns 1.0. Range predicates (<, >, BETWEEN) build filter ranges with NDV=NaN (ComparisonStatsCalculator:111,121,313,334); traced x<100 on the sparse column: filterFactor becomes exactly 1.0 (keeps 100% of rows vs ~2.7e-8 before). Flips sparse-column range filters from 'filters everything' to 'filters nothing'. The PR's own testLowDensityOverlapWithSparseRightRange enshrines this (expects 1). The infinite-intersect branch above checks isFinite on both NDVs; the new branch is inconsistent with it.", "severity": "critical"},
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:130-134", "issue": "NDV-ratio heuristic ignores intersection size and containment: it triggers for ANY lengthOfIntersect > 0. E.g. this=(0,1e9,100), other=(1e9-1,2e9,1e6): 1-unit sliver intersection returns min(1e6/100,1)=1.0 (100% overlap). The other.ndv/this.ndv ratio is only meaningful when other's range is contained in this's range; no containment check exists.", "severity": "critical"},
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:126-134", "issue": "The new branch never fires for the motivating IN-predicate example: FilterStatsCalculator.visitIn decomposes IN into point equalities (filterRange=(c,c,1)), which hit the lengthOfIntersect==0 branch (1/max(ndv,1)) — already yielding the desired 4/14 ~ 29%. The actual behavioral change is in JoinStatsRule/inequality paths, contradicting the PR description.", "severity": "major"},
+    {"loc": "core/trino-main/src/test/java/io/trino/cost/TestFilterStatsCalculator.java:841-865", "issue": "testSparseColumnInPredicateOverlap expects outputRowsCount(1000000) (zero filtering). Actual per the code path is 4 x (1/14) x 1e6 = 285714.29 (consistent with existing testInPredicateFilter math: 18.75 = 1000 x 0.75 x 1/40); assertion tolerance is 1e-7, so the test fails as written. It also contradicts the PR description's claimed ~29% selectivity.", "severity": "major"},
+    {"loc": "core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:62-69", "issue": "testLowDensityOverlapWithSparseLeftRange does not exercise the new code: this.ndv=NaN makes thisDensity NaN (guard skips heuristic) and the filter fully covers this range, so the result 1 comes from the pre-existing uniform path. Misleading name and dead coverage.", "severity": "minor"},
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:131", "issue": "Exact floating-point comparison lengthOfIntersect != length() to detect 'other fully covers this' is fragile; intent (containment exclusion) should be expressed explicitly.", "severity": "minor"},
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:127-134", "issue": "Heuristic is asymmetric (only this-side density checked) while callers use single directions independently (estimateFilterRange uses one direction; JoinStatsRule:213-214 scales each side separately), producing direction-dependent estimates and inflated overlappingDistinctValues in intersect().", "severity": "minor"},
+    {"loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:35", "issue": "DENSITY_HEURISTIC_THRESHOLD=1e-3 is a magic constant with no justification and no session/config toggle; CBO heuristic changes of this breadth (changes TPC-DS q84 join distribution) typically need a flag and broader plan verification (only 1 of 99 iceberg/partitioned plan files updated).", "severity": "minor"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "Asymmetric density heuristic creates inconsistent results (StatisticRange.java:127-134)", "grade": "good", "value": 1, "note": "Verified: only this-side density checked; overlappingDistinctValues queries both directions; correctly flags inconsistency risk."},
+        {"point": "NaN distinctValues in other produces heuristic estimate of 1 (StatisticRange.java:134)", "grade": "critical", "value": 2, "note": "Verified blocker: ComparisonStatsCalculator:111,121,313,334 all construct NaN-NDV ranges (line refs accurate); minExcludeNaN(NaN,1)=1 makes sparse-column range predicates non-selective. Correct guard suggested."},
+        {"point": "Existing guard other.distinctValues==0 does not catch NaN (StatisticRange.java:101)", "grade": "trivial", "value": 0, "note": "True observation but pre-existing behavior; returning 0 for unknown NDV would itself be a regression — questionable advice."},
+        {"point": "Test variable names semantically inverted; testLowDensityOverlapWithSparseLeftRange passes by coincidence (TestStatisticRange.java:62-66)", "grade": "good", "value": 1, "note": "Verified: NaN density skips heuristic; uniform 3/3=1. Matches my finding."},
+        {"point": "Filter test range NaN NDV unrealistic for IN predicates; add range(1,4,4) test (TestStatisticRange.java:72-76)", "grade": "good", "value": 1, "note": "Verified: real IN equality filters carry NDV=1 (ComparisonStatsCalculator:67); range(1,4,4) would yield min(4/14,1)~0.286 matching PR intent. Constructive."},
+        {"point": "testDensityThresholdBoundary needs explanatory comment (TestStatisticRange.java:101-105)", "grade": "trivial", "value": 0, "note": "Correct boundary analysis (1e-3 not < 1e-3) but comment-only ask."},
+        {"point": "Good integration test; consider adding distinctValuesCount(4) assertion (TestFilterStatsCalculator.java:855-867)", "grade": "wrong", "value": -1, "note": "The PR test ALREADY asserts symbolStats distinctValuesCount(4) — absence-fabrication (truncated-diff artifact). Also wrongly praises a test whose row-count expectation (1000000) fails against actual ~285714."}
+      ],
+      "missed": [
+        "Heuristic ignores intersection size/containment — sliver intersections can return overlap 1.0",
+        "Heuristic never fires for the motivating IN-predicate case (point ranges take lengthOfIntersect==0 branch); PR premise mismatch",
+        "testSparseColumnInPredicateOverlap expects 1000000 rows but actual is ~285714 — failing test contradicting PR's own ~29% claim",
+        "lengthOfIntersect != length() exact-double condition concern (human raised the length()-equality/finiteness question)"
+      ],
+      "exceeds": [
+        "Suggestion to add range(1,4,4) filter-NDV test mirroring real IN cardinality — neither human nor my review proposed this concrete case"
+      ],
+      "net": 0
+    },
+    "v5": {
+      "points": [
+        {"point": "PR description's IN predicate example is misleading; heuristic never reached for IN, real effect is in JoinStatsRule (StatisticRange.java:125-131)", "grade": "critical", "value": 2, "note": "Verified: visitIn -> point equalities -> lengthOfIntersect==0 branch; 8.19e-10 = uniform range math in join/inequality paths. Key insight matching my review; 'only in JoinStatsRule' slightly overstated (also inequality filter path) but core claim correct."},
+        {"point": "Range predicates trigger heuristic with other.distinctValues=NaN -> 1.0 (StatisticRange.java:129)", "grade": "good", "value": 1, "note": "Mechanism verified and caller lines correct, but mis-assessed severity: calls a 100%-selectivity estimate for sparse-column range filters 'a reasonable heuristic', merely 'worth noting'. Found the fact, waved off the blocker."},
+        {"point": "Asymmetry is benign because all callers query both directions and combine with max(); no behavioral regression expected (StatisticRange.java:129)", "grade": "wrong", "value": -1, "note": "False: estimateFilterRange (ComparisonStatsCalculator:134) queries ONE direction; JoinStatsRule:213-214 uses each direction independently to scale each side's NDV, no max() cancellation. Conclusion 'no regression' is unsupported and misleading."},
+        {"point": "Unit tests don't cover JoinStatsRule or ComparisonStatsCalculator integration paths (TestStatisticRange.java:59-114)", "grade": "trivial", "value": 0, "note": "JoinStatsRule-test suggestion is apt (per its own point 1), but the claim that nothing tests the ComparisonStatsCalculator path ignores the PR's new TestFilterStatsCalculator.testSparseColumnInPredicateOverlap — absence-fabrication; v5 never mentions that changed file despite seeing the full diff."},
+        {"point": "testAddAndCollapseDistinctValues lacks low-density coverage (TestStatisticRange.java:95-105)", "grade": "trivial", "value": 0, "note": "Gist OK but 'all 8 assertions use density >= 1' is inaccurate (unbounded ranges have density 0); mild coverage nit."},
+        {"point": "DENSITY_HEURISTIC_THRESHOLD=1e-3 not justified; suggest comment/configurability (StatisticRange.java:35)", "grade": "good", "value": 1, "note": "Verified design concern, matches my finding."}
+      ],
+      "missed": [
+        "Heuristic ignores intersection size/containment — sliver intersections can return overlap 1.0",
+        "testSparseColumnInPredicateOverlap expects 1000000 rows but actual is ~285714 — failing test; glaring given v5 itself proved the heuristic never fires for IN, yet never examined the PR's filter test",
+        "testLowDensityOverlapWithSparseLeftRange never exercises the new branch (NaN density, full-cover uniform path)",
+        "lengthOfIntersect != length() exact-double condition concern (human raised the length()-equality/finiteness question)"
+      ],
+      "exceeds": [],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {
+    "v4": 1,
+    "v5": 1
+  },
+  "qualitative": "Both candidates independently found the most important code defect — NaN filter-NDV making the new heuristic return overlap 1.0 — but v4 correctly treated it as a bug needing a guard while v5 shrugged it off as 'reasonable', and v5 further excused the asymmetry with a verifiably false claim that all callers combine both directions with max(). v5's standout contribution is proving the PR's motivating IN-predicate example never reaches the new code path, an insight v4 (and the human) lacked; yet v5 inexplicably never looked at the PR's TestFilterStatsCalculator change, which that very insight dooms. v4 was stronger on test scrutiny (caught the no-op sparse-left test, proposed a realistic NDV=4 filter test) but committed a truncation-driven absence-fabrication by requesting a distinctValuesCount(4) assertion the test already contains, and praised a test whose 1,000,000-row expectation actually fails (~285,714 per the code). Both candidates missed the two biggest problems: the heuristic's total disregard for intersection size/containment, and the arithmetically failing integration test. Net result: v4 edges out v5 on rigor-per-claim despite seeing only a truncated diff."
+}

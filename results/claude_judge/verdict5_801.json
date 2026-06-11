@@ -1,0 +1,56 @@
+{
+  "pr": 801,
+  "own_review": [
+    {"loc": ".github/workflows/build.yml:101 / docker-publish.yml:100", "issue": "gluonhq/setup-graalvm pinned to mutable @master branch (with GITHUB_TOKEN in env) — supply-chain and reproducibility risk; pin to a tag or commit SHA like the CLI's graalvm/setup-graalvm@v1", "severity": "medium"},
+    {"loc": "GUI/src/main/resources/META-INF/native-image/", "issue": "PR adds reachability-metadata.json (reflection+jni) but leaves legacy reflect-config.json (521 lines) and jni-config.json (123 lines) in the same auto-discovered directory — duplicate/possibly conflicting metadata; GraalVM for JDK 23 warns and may ignore legacy files, silently dropping entries not in the new file. Should consolidate.", "severity": "medium"},
+    {"loc": "docker-compose.yaml:7 + Docker/dev/commons/base/Dockerfile:21, codeql.yml:38, formatter.yml:27", "issue": "Pinning to non-LTS JDK 23 (EOL Sep 2025) via download.oracle.com/graalvm/23/latest and setup-java distribution 'oracle': Oracle only serves /latest for the current feature release and LTS, so these will 404/fail after JDK 24 GA — a recurring-maintenance trap; an LTS (21) or GraalVM Community would be more durable", "severity": "medium"},
+    {"loc": ".github/workflows/build.yml (GUI mode)", "issue": "GUI builds lose Maven dependency caching: graalvm/setup-graalvm had cache:'maven', gluonhq/setup-graalvm has no cache support and no actions/cache step was added — slower CI, no correctness impact", "severity": "minor"},
+    {"loc": "GUI/src/main/resources/META-INF/native-image/resource-config.json", "issue": "File minified to a single line (unreviewable diffs); new 'globs' array is internally inconsistent with the retained 'includes' patterns (omits SplashLight.png, Backgrounds/DriftyMainLight.png, DrawRoundRect_Color.frag, Blend_SRC_IN.frag, LinearConvolveShadow_20/_4.frag) — harmless today because the includes section still lists them, but confusing generated output; bundles also dropped the \"\" (default-locale) entry", "severity": "minor"},
+    {"loc": ".github/workflows/docker-publish.yml:105", "issue": "arch: 'amd64' is not a documented input value of gluonhq/setup-graalvm (docs say x86_64/aarch64); it happens to work because the action maps any non-aarch64 value to -amd64 for java23, and Docker images are amd64-only anyway, but it is inconsistent with build.yml's 'x86_64' and arguably unnecessary (matches the human reviewer's point)", "severity": "trivial"},
+    {"loc": "GUI/pom.xml:126-130", "issue": "Windows profile pins gluonfx-maven-plugin back to 1.0.23 (1.0.25 cannot build native images on Windows) — reasonable workaround, well-commented, but Windows/macOS builds are explicitly untested per the PR description, so the 1.0.23 + Gluon GraalVM java23 combination is an unverified risk", "severity": "info"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "GUI/pom.xml:51 empty <version> tag for gluonfx-maven-plugin breaks GUI build", "grade": "wrong", "score": -1, "note": "Fabricated: the full diff clearly shows <version>${gluonfx-maven-plugin.version}</version> with the property defined as 1.0.25"},
+        {"point": "pom.xml:80-81 maven-compiler-plugin still hardcodes source/target 21", "grade": "wrong", "score": -1, "note": "Fabricated: the diff updates exactly those lines to <source>23</source>/<target>23</target>"},
+        {"point": "CLI/pom.xml:48,88,128,168 native-maven-plugin 0.10.4 does not support JDK 23; support added in 0.10.5 (May 2024)", "grade": "wrong", "score": -1, "note": "Line refs are real (0.10.4 at those lines) but the incompatibility and dates are fabricated: 0.10.4 (Dec 2024) postdates JDK 23 GA (Sep 2024) and supports it; the author's Ubuntu CLI build succeeded with this exact setup"},
+        {"point": "docker-compose.yaml:7 'confirm' GRAALVM_VERSION_MAJOR updated to 23", "grade": "trivial", "score": 0, "note": "The update is plainly in the diff; hedged non-finding"},
+        {"point": "build.yml conditional JDK setup well-implemented", "grade": "trivial", "score": 0, "note": "Praise, not a finding"},
+        {"point": "resource-config.json ICU icudt75b speculation for Java 23", "grade": "trivial", "score": 0, "note": "Speculative; JDK 23 uses icudt74b which is already present"}
+      ],
+      "missed": [
+        "human: docker-publish.yml arch change unnecessary (amd64-only releases)",
+        "gluonhq/setup-graalvm@master mutable-branch pin",
+        "legacy reflect-config.json/jni-config.json left alongside new reachability-metadata.json",
+        "non-LTS JDK 23 EOL / Oracle 'latest' URL breakage (Dockerfile, oracle setup-java distro)",
+        "resource-config.json globs/locale inconsistencies (dropped \"\" locale, omitted entries)"
+      ],
+      "exceeds": [],
+      "net": -8
+    },
+    "v5": {
+      "points": [
+        {"point": "Stale reflect-config.json/jni-config.json not removed alongside new reachability-metadata.json", "grade": "good", "score": 1, "note": "Verified: both files exist at base in the auto-discovered META-INF/native-image dir and are untouched by the diff; exact line counts (521/123) are correct"},
+        {"point": "globs array omits DrawRoundRect_Color.frag, LinearConvolveShadow_20.frag, Blend_SRC_IN.frag", "grade": "trivial", "score": 0, "note": "Textually accurate about the globs array, but the retained 'includes' patterns section still lists all three, so no resources are actually lost; appropriately hedged ('verify or add back')"},
+        {"point": "Bundles lost the \"\" (default) locale entry", "grade": "good", "score": 1, "note": "Verified in diff: old locales [\"\",\"en-US\",\"und\"] vs new [\"en-US\",\"und\"]; plausible localization fallback regression on non-en-US systems"},
+        {"point": "Windows 1.0.23 workaround comment lacks issue-tracker URL", "grade": "trivial", "score": 0, "note": "Documentation nit"},
+        {"point": "gluonhq/setup-graalvm@master mutable pin, should be tag/SHA", "grade": "good", "score": 1, "note": "Verified; real supply-chain/reproducibility issue, matches my own finding"},
+        {"point": "reachability-metadata.json lacks regeneration documentation", "grade": "trivial", "score": 0, "note": "Process suggestion, not a defect"},
+        {"point": "CodeQL uses Oracle JDK rather than GraalVM", "grade": "trivial", "score": 0, "note": "Self-acknowledged as acceptable; musing"}
+      ],
+      "missed": [
+        "human: docker-publish.yml arch change unnecessary (amd64-only releases)",
+        "non-LTS JDK 23 EOL / Oracle 'latest' URL breakage (Dockerfile, oracle setup-java distro)"
+      ],
+      "exceeds": [
+        "Stale legacy native-image config files (not in human reference; verified real)",
+        "Lost default-locale bundle entry (not in human reference; verified real)",
+        "@master mutable action pin (not in human reference; verified real)"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v4": 2, "v5": 0},
+  "qualitative": "v4 is dominated by three confidently-asserted 'critical' findings that are all false against the full diff: the 'empty <version> tag' and 'compiler still hardcodes 21' absence-fabrications (both flagged in the brief and confirmed false here), plus a fabricated native-maven-plugin 0.10.4/JDK-23 incompatibility with invented release dates, while missing everything the human and my review caught. v5 repeats neither of v4's fabrications and instead produces three verified, diff-grounded findings (stale legacy config files with exact line counts, the dropped default-locale bundle entry, the @master mutable action pin), all of which exceed the thin one-point human reference. v5's weaknesses are mild: several process/documentation nits with no scoring value, an overcautious shader-resource warning whose entries are actually still covered by the retained includes section, and it misses the human's amd64-arch point and the non-LTS JDK 23 EOL / Oracle download-URL sustainability trap. Net, v5 is a clear and large improvement over v4 on this PR: accurate where v4 hallucinated, and genuinely additive beyond the reference review."
+}

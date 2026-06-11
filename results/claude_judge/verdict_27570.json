@@ -1,0 +1,74 @@
+{
+  "pr": 27570,
+  "own_review": [
+    {"point": "Filter ranges built from literals have NaN distinctValues (ComparisonStatsCalculator lines 111, 121, 313, 334 and BETWEEN/contiguous-IN via SimplifyContinuousInValues rewrite). In the new branch minExcludeNaN(NaN / this.distinctValues, 1) returns 1, so every <, >, BETWEEN, and contiguous IN predicate on a low-density column is now estimated to keep 100% of rows. The PR flips an underestimate (8.19e-10) into a total overestimate (1.0): its own headline example IN (1,2,3,4) yields filterFactor 1.0, not the ~29% (4/14) the description claims, and the new TestFilterStatsCalculator test asserting outputRowsCount(1000000) == input row count actually documents this overestimation.", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:131", "severity": "critical"},
+    {"point": "The NDV-ratio fallback other.distinctValues / this.distinctValues ignores how much of `other` actually lies inside the intersection — it assumes all of other's distinct values fall within this range. E.g. this=[0,1e9,ndv=10] vs other=[1e9-10,2e9,ndv=1000]: intersection is a sliver (1e-8 of the range) yet the heuristic returns min(1000/10,1)=1.0. The NDV of other should be scaled to the intersection (as overlappingDistinctValues does), or the intersect's NDV used instead.", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:131", "severity": "critical"},
+    {"point": "DENSITY_HEURISTIC_THRESHOLD = 1e-3 is an arbitrary magic number and is unit/scale-dependent: density NDV/length depends on the column's value scale. Timestamp columns (epoch micros) spanning months have density far below 1e-3, so the heuristic hijacks all range-filter estimation on time columns; no rationale or benchmark evidence is provided.", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:34", "severity": "normal"},
+    {"point": "Hard threshold plus exact floating-point comparison lengthOfIntersect != length() create discontinuities: density 0.999e-3 vs 1.001e-3, or an intersect covering 99.99% vs 100% of the range, flip between NDV-based and uniform estimates, causing plan instability. Consider blending (e.g. max of the two estimates) and `<` instead of `!=`.", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:130", "severity": "normal"},
+    {"point": "q84.plan.txt change replaces a REPLICATED (broadcast) join of the small household_demographics dimension with a PARTITIONED join that repartitions the large customer side — likely a plan regression silently accepted as the new expected plan. A CBO heuristic change like this needs benchmark justification (TPC-DS/TPC-H), which the PR does not provide.", "file": "testing/trino-tests/src/test/resources/sql/trino/tpcds/iceberg/partitioned/q84.plan.txt", "severity": "normal"},
+    {"point": "Heuristic only checks this.distinctValues density, making overlapPercentWith even more asymmetric; overlappingDistinctValues() and JoinStatsRule call both directions and can get inconsistent values (the inflated intersect NDV then feeds back into the second overlapPercentWith call, cascading to factor 1.0).", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:126", "severity": "normal"},
+    {"point": "New unit tests bake in degenerate behavior: testLowDensityOverlapWithSparseLeftRange never reaches the heuristic (NaN density skips the branch, uniform 3/3=1); testLowDensityOverlapWithSparseRightRange asserts 1 only because NaN/14 -> minExcludeNaN -> 1; testVeryLowDensity asserts a [100,200] filter on [0,1e9] keeps 50% of rows purely from the 5/10 NDV ratio. Variable names are inverted (sparseRange is the small filter range). No test asserts the ~29% (4/14) outcome the PR description promises.", "file": "core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:62", "severity": "normal"},
+    {"point": "Minor: !isNaN(thisDensity) guard is redundant since NaN < DENSITY_HEURISTIC_THRESHOLD is already false.", "file": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:128", "severity": "normal"}
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Asymmetric heuristic (only thisDensity checked), both directions called by overlappingDistinctValues and ComparisonStatsCalculator", "verdict": "good", "why": "Verified; callers at lines 134-135 and 309/330 confirmed"},
+        {"point": "Add comment explaining statistical rationale of the NDV formula", "verdict": "good", "why": "Matches human reference point; the comment in the diff explains the symptom, not the model"},
+        {"point": "DENSITY_HEURISTIC_THRESHOLD = 1e-3 magic number, no justification", "verdict": "good", "why": "Verified; arbitrary constant with no rationale"},
+        {"point": "testLowDensityOverlapWithSparseLeftRange variable names inverted (sparseRange is the small range)", "verdict": "good", "why": "Verified against the diff"},
+        {"point": "Left-range test never exercises the heuristic: NaN density skips the branch, passes via uniform 3/3=1", "verdict": "good", "why": "Verified by tracing overlapPercentWith"},
+        {"point": "Right-range test computes NaN/14 -> minExcludeNaN -> 1, degenerate; add test with both NDVs finite", "verdict": "good", "why": "Verified; minExcludeNaN(NaN,1)=1 confirmed in MoreMath"},
+        {"point": "testSparseColumnInPredicateOverlap does NOT exercise the heuristic because IN creates point ranges (lengthOfIntersect == 0)", "verdict": "wrong", "why": "False: SimplifyContinuousInValues rewrites IN(1,2,3,4) to BETWEEN 1 AND 4 in FilterStatsCalculator.simplifyExpression, producing lengthOfIntersect=3 > 0; the heuristic fires and is exactly why the test asserts 1,000,000 rows instead of ~285,714"},
+        {"point": "lengthOfIntersect != length() exact double comparison fragile; use epsilon or <", "verdict": "good", "why": "Valid robustness concern; aligns with human's point about the == length case"}
+      ],
+      "missed": [
+        "NaN-NDV literal filter ranges make the heuristic return 1, so <, >, BETWEEN and contiguous IN on sparse columns keep 100% of rows — the PR overshoots its own example (100% instead of ~29%)",
+        "NDV ratio ignores the intersection extent (assumes other fully contained in this); sliver overlaps can return 1.0",
+        "q84 plan change swaps broadcast for partitioned join on a tiny dimension — likely plan regression accepted without benchmark justification"
+      ],
+      "exceeds": [],
+      "net": 3
+    },
+    "v3": {
+      "points": [
+        {"point": "Asymmetric directionality, defensible but should be documented", "verdict": "good", "why": "Verified, though heavily hedged"},
+        {"point": "NDV fallback assumes all of other's distinct values fall within this range; can overestimate", "verdict": "good", "why": "Verified; this is the containment flaw (my finding 2)"},
+        {"point": "1e-3 magic constant needs rationale", "verdict": "good", "why": "Verified"},
+        {"point": "Consider guarding distinctValues == 1; result capped anyway, non-breaking", "verdict": "trivial", "why": "Self-admittedly non-breaking; no actionable defect"},
+        {"point": "Diff truncated — verify testDensityWithZeroDistinctValues is complete; NDV=0 would trigger the heuristic path", "verdict": "wrong", "why": "Complains about truncation instead of checking the commit, and the sub-claim is false: distinctValues==0 returns 0.0 at the early guard (line 101) and never reaches the density branch"},
+        {"point": "Test naming/direction reversed vs real call pattern", "verdict": "good", "why": "Verified; sparseRange/filterRange roles are swapped"},
+        {"point": "testVeryLowDensity 0.5 could be far from reality; add comment", "verdict": "trivial", "why": "Restates point 2 as a comment request"},
+        {"point": "BIGINT constants with DOUBLE-typed range — ensure coercion is handled", "verdict": "trivial", "why": "Non-issue hedge; all SymbolStatsEstimate/StatisticRange stats are doubles by design"}
+      ],
+      "missed": [
+        "NaN-NDV literal filter ranges -> heuristic returns 1 -> range predicates on sparse columns estimated to keep all rows (the critical production bug)",
+        "Discontinuity / exact != double comparison at lengthOfIntersect == length() (human flagged this case)",
+        "q84 plan regression (broadcast -> partitioned) accepted without benchmark evidence"
+      ],
+      "exceeds": [],
+      "net": 0
+    },
+    "v4": {
+      "points": [
+        {"point": "Asymmetric density heuristic, inconsistent two-direction results", "verdict": "good", "why": "Verified"},
+        {"point": "NaN distinctValues in other yields heuristic estimate of 1; ComparisonStatsCalculator 111/121/313/334 build NaN-NDV ranges, so range predicates (x > 100) on sparse columns get overlapPercent=1", "verdict": "critical", "why": "Verified — this is the central flaw: literal-derived ranges all have NaN NDV, so the fix disables selectivity for <,>,BETWEEN,contiguous-IN on sparse columns; all four cited lines confirmed"},
+        {"point": "Early-return guard does not catch NaN other.distinctValues; add explicit isNaN guard there", "verdict": "trivial", "why": "Observation is true but pre-existing, and returning 0 for NaN NDV would zero out every literal range filter — the suggested 'defensive' change is misdirected"},
+        {"point": "Test variable names semantically inverted; left test passes by coincidence (3/3=1), heuristic not exercised", "verdict": "good", "why": "Verified"},
+        {"point": "Filter range NaN NDV unrealistic; add test with finite filter NDV like range(1,4,4)", "verdict": "good", "why": "Actionable and on-target; finite-NDV path does behave sensibly (4/14)"},
+        {"point": "testDensityThresholdBoundary: boundary excluded by <, expected 0.01 from uniform path; add comment", "verdict": "trivial", "why": "Accurate math but only requests a comment"},
+        {"point": "Consider adding an assertion on distinctValuesCount(4) to the integration test", "verdict": "wrong", "why": "Fabricated gap: the test already asserts symbolStats.distinctValuesCount(4) in the diff"}
+      ],
+      "missed": [
+        "NDV ratio ignores intersection extent (containment assumption) — sliver overlaps can return 1.0",
+        "1e-3 magic threshold, arbitrary and unit/scale-dependent (timestamps in micros always fall below it)",
+        "Discontinuity at the threshold and exact != double comparison (human flagged the == length case)",
+        "q84 plan regression (broadcast -> partitioned on tiny dimension) accepted without benchmark justification",
+        "No request for an explanatory comment on the new main-code section (human asked for one)"
+      ],
+      "exceeds": [],
+      "net": -1
+    }
+  },
+  "qualitative": "v2 is the best overall: broadest accurate coverage (asymmetry, magic constant, the != double comparison, and a precise trace showing both new unit tests degenerate to NaN-driven results), with only one fabrication — it claimed the IN integration test never reaches the heuristic, missing that SimplifyContinuousInValues rewrites IN(1,2,3,4) to BETWEEN so the heuristic is exactly what makes that test assert zero filtering. v4 found the single most important defect — literal-derived filter ranges carry NaN NDV so the heuristic returns 1 and range predicates on sparse columns lose all selectivity, with correct line citations into ComparisonStatsCalculator — but it spent points on a misdirected NaN-guard suggestion, fabricated a 'missing' distinctValuesCount(4) assertion that is plainly in the diff, and missed the magic-threshold, containment, and plan-file concerns. v3 is middling: it alone articulated the containment flaw (NDV ratio assumes other lies fully inside this), but padded with hedges (type coercion non-issue, comment requests), complained about diff truncation instead of verifying the commit, and made a false claim that NDV=0 reaches the heuristic path. None of the three connected the change to the q84 plan file, where a broadcast join of a tiny dimension becomes a partitioned join — the clearest external evidence the heuristic overcorrects."
+}

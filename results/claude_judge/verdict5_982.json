@@ -1,0 +1,50 @@
+{
+  "pr": 982,
+  "own_review": [
+    {"loc": "ScanUtil.java:140-142", "issue": "System.exit(-1) in the scanFluo FluoException catch executes inside the outer try-with-resources body, so FluoClient.close() is never invoked on scan failure (ZK/client resources not closed cleanly before JVM death). Minor since the JVM exits anyway, but exit-inside-twr is a known footgun.", "severity": "minor"},
+    {"loc": "ScanUtil.java:125-139", "issue": "Removal of entriesFound counter and the 'No data found' message makes an empty scan produce zero output; user cannot distinguish 'no matching data' from a no-op. Arguably intentional per issue #981 (stop polluting stdout with meta info), but it is a user-facing behavior change beyond pure meta-info removal and worth calling out.", "severity": "minor"},
+    {"loc": "ScanUtil.java:128-133, 168-171", "issue": "The System.err + System.exit(-1) change is an unrelated bug fix bundled into a 'stop printing meta info' PR (scope mixing); previously a failed scan exited 0. The fix itself is correct and matches the existing IllegalArgumentException handlers (lines 106-107/158-159).", "severity": "info"},
+    {"loc": "ScanUtil.java:131,170", "issue": "exit(-1) wraps to status 255; conventional CLI failure code is 1. Pre-existing pattern in this file, trivial.", "severity": "trivial"},
+    {"loc": "ScanUtil.java:93,167", "issue": "Stray blank lines left at the top of scanFluo/scanAccumulo after deleting the println blocks; style leftover.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "err+exit for FluoException consistent with FluoCommand/BaseOpts/FluoExec patterns (cited lines verified accurate)", "grade": "good", "score": 1},
+        {"point": "scanAccumulo same change; verified both callers (FluoScan.java:105/107, AppRunner.java:76/78) call without try-catch so exit is appropriate for CLI", "grade": "good", "score": 1},
+        {"point": "CommandUtil.java:28-30,38-40 still prints errors to stdout - follow-up suggestion (verified true), but the claim it is 'the only file in the CLI layer that prints errors to stdout' is false (FluoList, FluoInit:191, ValidateAppName, ClusterUtil also do)", "grade": "good", "score": 1},
+        {"point": "ScanTest covers only getSpan/getColumns; removed 'No data found' and new exit(-1) behavior untested (verified)", "grade": "good", "score": 1},
+        {"point": "Observation that IllegalArgumentException handler already used err+exit and PR makes others match - accurate but pure restatement/praise, no actionable content", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "System.exit(-1) inside try-with-resources skips FluoClient.close() on scan failure",
+        "UX regression: empty scan now silent, indistinguishable from no-op (v4 mentioned the removal only as a test-coverage note, never raised the behavior concern)"
+      ],
+      "exceeds": [
+        "CommandUtil stdout-for-errors consistency follow-up (verified, neither human nor judge found)",
+        "ScanTest coverage gap for changed behavior (verified, neither human nor judge found)"
+      ],
+      "net": 2
+    },
+    "v5": {
+      "points": [
+        {"point": "Questions whether PR title means meta info should be RESTORED rather than removed - hedged clarifying question, but diff+issue intent are clear (human confirms removal was the stated goal); noise, not fabrication", "grade": "trivial", "score": 0},
+        {"point": "err vs out switch consistent with FluoWorkerImpl 87/94, FluoOracleImpl 90/97 and ScanUtil's own 106/158 (all line refs verified accurate)", "grade": "good", "score": 1},
+        {"point": "exit(-1) consistent with existing handlers; verified callers FluoScan.main/AppRunner.scan have no code after the call and no library consumers in-repo affected (all verified)", "grade": "good", "score": 1},
+        {"point": "Same for scanAccumulo - one-line duplicate of previous point with no new analysis", "grade": "trivial", "score": 0},
+        {"point": "Removal of entriesFound/'No data found' makes empty scans silent; cannot distinguish zero results from silent failure - real behavior regression, matches judge finding", "grade": "good", "score": 1},
+        {"point": "Removal of 'Scanning snapshot...' startup feedback - but removing exactly that message IS the PR's stated purpose per issue #981; mild noise, real fact", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "System.exit(-1) inside try-with-resources skips FluoClient.close() on scan failure"
+      ],
+      "exceeds": [],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v4": 1,
+    "v5": 0
+  },
+  "qualitative": "Tiny CLI-cleanup PR where the single human point (the err/exit change is an unrelated exit-code bug fix) was substantively engaged by both candidates. v4 shines on cross-codebase verification and produces two genuine exceeds (CommandUtil stdout inconsistency, test-coverage gap), but overclaims with a false 'only file in the CLI layer prints errors to stdout' assertion (FluoList, FluoInit, ValidateAppName, ClusterUtil all do) and never raises the empty-scan UX regression it tangentially acknowledged. v5 catches that UX regression cleanly with zero fabrications and accurate line references throughout, but burns points on a confused intent question and a duplicate one-liner. Both missed that System.exit(-1) inside the try-with-resources skips FluoClient.close(). Net result is a tie at +2, with v5 the more trustworthy text (no fabrications) and v4 the more exploratory one."
+}

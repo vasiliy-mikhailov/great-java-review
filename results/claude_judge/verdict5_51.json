@@ -1,0 +1,35 @@
+{
+  "pr": 51,
+  "own_review": [
+    {"file": "transports/stdio/pom.xml", "line": 14, "issue": "Typo in description: 'stanard input/output' should be 'standard input/output'; this text is user-visible on Maven Central / code.quarkus.", "severity": "minor"},
+    {"file": "transports/sse/pom.xml + transports/sse/runtime/.../quarkus-extension.yaml", "line": 14, "issue": "'server side events' is not the official term; SSE stands for 'Server-Sent Events'. Appears in both the pom description and the yaml 'name'.", "severity": "minor"},
+    {"file": "transports/{sse,stdio}/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "line": 1, "issue": "New yamls omit a top-level 'description' field while core/runtime's quarkus-extension.yaml carries one. Not a functional gap: the runtime modules inherit <description> from the parent pom (Maven inherits description) and the quarkus-extension-maven-plugin descriptor mojo falls back to project.description, but it is inconsistent with the core extension's convention.", "severity": "info"},
+    {"file": "transports/{sse,stdio}/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "line": 5, "issue": "Guide URL https://docs.quarkiverse.io/quarkus-mcp-server/dev/index.html verified correct against docs/antora.yml (name: quarkus-mcp-server); core's commented-out URL (.../mcp-server/dev/) is the stale one.", "severity": "info"},
+    {"file": "transports/{sse,stdio}/pom.xml", "line": 14, "issue": "Description placed on the parent aggregator pom is inherited by the deployment artifact as well, giving the deployment jar an 'extension' description; harmless.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "stdio pom typo 'stanard' -> 'standard'", "grade": "good", "value": 1},
+        {"point": "sse yaml missing 'description' field; claims catalog 'will have no description to display'", "grade": "trivial", "value": 0, "note": "The inconsistency vs core yaml is real, but the stated consequence is false: runtime poms inherit the parent <description> and the extension-descriptor mojo falls back to project.description, which is exactly how this PR fixes the display. Overstated mechanism cancels the credit."},
+        {"point": "stdio yaml missing 'description' field (duplicate of previous point)", "grade": "trivial", "value": 0},
+        {"point": "guide URL 'confirm it is correct / consider commenting out like core'", "grade": "trivial", "value": 0, "note": "Hedged verification request; the URL is in fact correct and published (human confirms), so no real issue raised."}
+      ],
+      "missed": ["'server side events' should be 'Server-Sent Events' (terminology error in sse pom description and yaml name)"],
+      "exceeds": [],
+      "net": 0
+    },
+    "v5": {
+      "points": [
+        {"point": "stdio pom typo 'stanard' -> 'standard'", "grade": "good", "value": 1},
+        {"point": "both yamls omit top-level 'description' present in core yaml; asks if intentional or should be added for consistency", "grade": "good", "value": 1, "note": "Real, verified inconsistency; correctly framed as a consistency question without fabricating a broken-display consequence."},
+        {"point": "guide URL active in new files but commented out in core; suggests uncommenting core if docs are live", "grade": "trivial", "value": 0, "note": "Accurate observation, hedged, non-blocking; no actionable defect in this PR."}
+      ],
+      "missed": ["'server side events' should be 'Server-Sent Events' (terminology error in sse pom description and yaml name)"],
+      "exceeds": ["yaml description-field inconsistency vs core extension convention (valid finding beyond the human reference)"],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v4": 1, "v5": 0},
+  "qualitative": "Tiny metadata-only PR; the human review boils down to the 'stanard' typo and confirming the published guide URL. Both machine reviews caught the typo and the genuine yaml-vs-core description inconsistency, and both missed the 'server side events' vs 'Server-Sent Events' terminology slip. v4 undermined its description point by asserting the catalog 'will have no description to display' -- false, since the runtime modules inherit the parent pom description and the descriptor mojo falls back to it (the PR's whole premise) -- and it padded the review by duplicating the same point per file. v5 made the identical observation but framed it as a hedged consistency question with no fabricated consequence, making it the cleaner, more trustworthy review despite seeing the same content."
+}

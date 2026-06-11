@@ -1,0 +1,100 @@
+{
+  "pr": 5478,
+  "own_review": [
+    {
+      "point": "DefaultNodeSelector.fail() has no retry loop: if a concurrent selectFor appends a waiter between entries.get(address) and the entries.remove(address, tail) CAS, the remove fails and the method silently returns; the dead WaiterEntry chain stays in the map, those waiters are never completed, and all future selects for the address append to the dead chain and hang forever (no re-initialize since the entry exists). succeed() loops on CAS failure, fail() does not.",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java:166-182",
+      "severity": "critical"
+    },
+    {
+      "point": "registrationsUpdated() throws UnsupportedOperationException when the entry is a WaiterEntry. wantsUpdatesFor() returns true while getRegistrations is in flight, and cluster managers fire registrationsUpdated whenever registrations change (FakeClusterManager.fireRegistrationUpdateEvents does so unconditionally), so a consumer registering/unregistering on another node during in-flight resolution crashes the CM notification thread. The old Selectors.dataReceived(isUpdate=true) handled this gracefully; the new test testRegistrationUpdateBeforeGetResolution enshrines the exception with the comment 'Is this a valid case ?'.",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java:279-303",
+      "severity": "critical"
+    },
+    {
+      "point": "registrationsLost() regression: the old spi.cluster.impl.DefaultNodeSelector overrode registrationsLost() to clear all selector state (Selectors.dataLost()); the new implementation inherits the RegistrationListener no-op default, so cached SelectorEntry instances stay stale after cluster data loss and keep routing to potentially dead nodes.",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Breaking SPI change: NodeSelector moved from io.vertx.core.spi.cluster.impl to io.vertx.core.eventbus.impl.clustered (exported only to io.vertx.core.tests in module-info), with signature changes Promise->Completable and init(Vertx, ClusterManager)->init(ClusteredNode). External custom node selectors and cluster-manager test harnesses no longer compile and the type is no longer reachable under JPMS.",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java",
+      "severity": "normal"
+    },
+    {
+      "point": "Threading behavior change in ClusteredEventBus.sendOrPub: old code completed via ctx.promise() so sendToNode/sendOrPublishFailed ran on the originating context; the new raw Completable lambda runs synchronously on whatever thread completes it (caller thread for cached selector, cluster-manager response thread for waiters). Also loses the old Serializer close-hook behavior of failing pending tasks with 'Context is closing' when a deployment context closes.",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java:219-243",
+      "severity": "normal"
+    },
+    {
+      "point": "Code hygiene: production code ships placeholder exceptions UnsupportedOperationException(\"Does this case make sense \" + entry) in succeed() and (\"Is this case valid ?\") in registrationsUpdated(); fail() broadcasts failures newest-first while succeed broadcasts FIFO (inconsistent ordering); selectForPublish javadoc still references Promise#tryComplete/tryFail though the parameter is now Completable; FakeClusterManager setter is named getRegistrationsLatency(long).",
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "severity": "normal"
+    }
+  ],
+  "versions": {
+    "v2": {
+      "points": [
+        {"point": "Breaking API change: NodeSelector Promise->Completable, init(ClusteredNode); existing custom implementations break", "verdict": "good", "why": "Verified: interface moved and signatures changed; real SPI break worth release-note attention."},
+        {"point": "Verify ClusterManager extends ClusteredNode, else won't compile", "verdict": "trivial", "why": "The diff explicitly shows 'ClusterManager extends VertxServiceProvider, ClusteredNode'; hedged restatement, plus confused claim that VertxImpl implements ClusteredNode."},
+        {"point": "Missing module-info export for io.vertx.core.eventbus.impl.clustered.selector", "verdict": "wrong", "why": "The PR adds exactly that export (replaces the old spi.cluster.impl.selector export line)."},
+        {"point": "Verify Entry.resolve()/PromiseNode linked-list resolution handles concurrency", "verdict": "wrong", "why": "Fabricated identifiers (no Entry.resolve or PromiseNode exist); generic 'verify' with no concrete bug while the actual fail() race goes unnoticed."},
+        {"point": "Serializer class retained as dead code, consider removing", "verdict": "wrong", "why": "Serializer.java is deleted by the PR (-154 lines shown in the diff)."},
+        {"point": "Duplicate DefaultNodeSelector classes; old SPI one still uses Selectors", "verdict": "wrong", "why": "io.vertx.core.spi.cluster.impl.DefaultNodeSelector and Selectors are deleted by the PR; no duplication exists."},
+        {"point": "PR adds new selector implementations; verify WeightedRoundRobinSelector correctness", "verdict": "wrong", "why": "These are git renames (98% similarity), not new implementations; re-verifying unchanged moved code is noise on a false premise."},
+        {"point": "CustomNodeSelectorTest must be updated to the new signatures", "verdict": "wrong", "why": "The diff already updates CustomNodeSelectorTest to Completable/ClusteredNode."}
+      ],
+      "missed": [
+        "fail() missing CAS retry loop causing permanently hung waiters and future selects",
+        "registrationsUpdated throws UnsupportedOperationException for pending WaiterEntry (reachable in clustered runs)",
+        "registrationsLost() no longer clears stale cached selectors (regression vs old DefaultNodeSelector)",
+        "callback threading change: selection callbacks no longer dispatched on the originating context (old ctx.promise())",
+        "human's point: ordering-reversal not caught by MessageQueueOnWorkerThreadTest; value of CM-level latency in the new test"
+      ],
+      "exceeds": [],
+      "net": -10
+    },
+    "v3": {
+      "points": [
+        {"point": "Breaking API change for SPI NodeSelector implementations, no adapter", "verdict": "good", "why": "Core break is real and verified, though framed as two coexisting interfaces when it is actually a rename of one."},
+        {"point": "Weight.increment() not atomic, thread-safety concern", "verdict": "trivial", "why": "Weight is pre-existing moved code, only used single-threaded during computeWeights; self-acknowledged non-issue."},
+        {"point": "Verify ClusterManager extends ClusteredNode and export of spi.cluster", "verdict": "trivial", "why": "Both facts are visible in the diff; hedged verification, no issue."},
+        {"point": "io.vertx.core.eventbus.impl.clustered.selector not exported to tests; add export", "verdict": "wrong", "why": "The PR adds exactly this export in module-info.java."},
+        {"point": "Two DefaultNodeSelector classes; spi one remains unchanged; deprecate or consolidate", "verdict": "wrong", "why": "The spi.cluster.impl.DefaultNodeSelector is deleted by the PR."},
+        {"point": "Verify Completable callback thread context after removing Serializer (old code used ctx.emit)", "verdict": "good", "why": "Real behavior change: callbacks now run on caller or CM thread instead of the originating Vert.x context."},
+        {"point": "Missing cleanup of entries map on close/reopen", "verdict": "trivial", "why": "Speculative; selector lifecycle matches old Selectors map which was also never cleared on close."},
+        {"point": "MessageQueueOnWorkerThreadTest CustomNodeSelector will break, update it", "verdict": "wrong", "why": "The diff already updates that test to the new Completable/ClusteredNode signatures."},
+        {"point": "Verify ConcurrentLinkedQueue<ResultPromise> FIFO ordering under concurrency", "verdict": "wrong", "why": "Fabricated: the implementation uses an immutable CAS'd linked list of WaiterEntry, no ConcurrentLinkedQueue or ResultPromise exists."}
+      ],
+      "missed": [
+        "fail() missing CAS retry loop causing permanently hung waiters and future selects",
+        "registrationsUpdated throws UnsupportedOperationException for pending WaiterEntry (reachable in clustered runs)",
+        "registrationsLost() no longer clears stale cached selectors (regression vs old DefaultNodeSelector)",
+        "human's point: ordering-reversal not caught by MessageQueueOnWorkerThreadTest; value of CM-level latency in the new test"
+      ],
+      "exceeds": [],
+      "net": -6
+    },
+    "v4": {
+      "points": [
+        {"point": "Breaking API change: Completable replaces Promise; custom NodeSelector implementations fail to compile", "verdict": "good", "why": "Verified real SPI break with correct mechanics (Completable lacks tryComplete/tryFail)."},
+        {"point": "VertxBootstrapImpl.clusterNodeSelector still accepts old Promise-based NodeSelector; runtime failures", "verdict": "wrong", "why": "VertxBootstrapImpl is updated to import the new NodeSelector; the old interface no longer exists, and the break is compile-time, not runtime."},
+        {"point": "Linked-list manipulation in Entry needs synchronization; diff doesn't show Entry implementation, verify", "verdict": "trivial", "why": "Entry/WaiterEntry are fully shown and use immutable CAS chains; generic hedge that never lands on the actual fail() race."},
+        {"point": "Verify ClusteredNode extends ClusterManager; VertxImpl passes this as ClusteredNode", "verdict": "wrong", "why": "Inheritance is backwards (ClusterManager extends ClusteredNode) and VertxImpl passes clusterManager, not this."},
+        {"point": "Removed Serializer ordering guarantee; verify edge cases incl. rapid registration changes during pending selects and CM response never arriving (leak)", "verdict": "good", "why": "Names the precise risky scenario (registration update during pending resolution) that is in fact broken (UnsupportedOperationException), though only as a verify item."},
+        {"point": "Removed import may affect tests; ensure ClusteredEventBusTest/CustomNodeSelectorTest updated", "verdict": "trivial", "why": "Tests are already updated in the diff; hedged restatement."},
+        {"point": "New selector package duplicates io.vertx.core.spi.cluster.impl.selector; deprecate old or document", "verdict": "wrong", "why": "These are renames; the old package is deleted by the PR, no duplication exists."},
+        {"point": "Selector sub-package may need explicit module export for tests; verify", "verdict": "trivial", "why": "Hedged; the export is in fact added by the PR."}
+      ],
+      "missed": [
+        "fail() missing CAS retry loop causing permanently hung waiters and future selects",
+        "registrationsLost() no longer clears stale cached selectors (regression vs old DefaultNodeSelector)",
+        "callback threading change: selection callbacks no longer dispatched on the originating context (old ctx.promise())",
+        "human's point: ordering-reversal not caught by MessageQueueOnWorkerThreadTest; value of CM-level latency in the new test"
+      ],
+      "exceeds": [],
+      "net": -5
+    }
+  },
+  "qualitative": "v4 is the best of a weak field (net -5), edging out v3 (-6); v2 is clearly worst (-10). All three correctly identified the one obvious headline issue - the breaking NodeSelector SPI change from Promise to Completable - but none found the PR's two genuine concurrency defects: the missing retry loop in fail() that permanently hangs waiters on a CAS race, and the reachable UnsupportedOperationException in registrationsUpdated() when an update arrives during in-flight resolution (v4 at least pointed verification at that exact scenario). The characteristic failure mode is fabricating 'leftover duplication' findings from a truncated diff: all three claimed the old spi.cluster.impl classes, Serializer, or test files were left un-updated or that module-info exports were missing, when the full commit shows deletions, renames, updated tests, and the export already added. v3's unique correct contribution was the callback-threading change after Serializer removal; v2 compounded its misses with invented identifiers (Entry.resolve, PromiseNode) and six points contradicted by the actual diff."
+}

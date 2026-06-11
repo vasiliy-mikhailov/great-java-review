@@ -1,0 +1,68 @@
+{
+  "pr": 28116,
+  "own_review": [
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "145-159",
+      "issue": "The new 8-arg overload has no production caller and the flags are not wired to any operation, config option, or SQL syntax; the only consumer (ShowCreateMaterializedTableOperation.java:62) still calls the 6-arg overload. Speculative/dead API per the stated use case.",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "144",
+      "issue": "Javadoc on the new public overload is a copy of the old one-liner and does not document includeFreshness/includeRefreshMode (@param tags).",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "150-152",
+      "issue": "Call sites now have four positional boolean-ish flags (isTemporary, createOrAlter, includeFreshness, includeRefreshMode) - boolean-trap; an options enum/object would be safer.",
+      "severity": "nit"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "180-185",
+      "issue": "Verified no behavior change with (true,true); each clause carries its own trailing newline so suppression leaves no blank line. Grammar (parserImpls.ftl) marks FRESHNESS and REFRESH_MODE optional, so suppressed output still parses. No correctness issue.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "New 8-arg overload lacks @param Javadoc for the two new booleans", "verdict": "good", "score": 1, "note": "Verified: new overload reuses the old one-line javadoc, no param docs."},
+        {"point": "8-arg overload is package-private while 6-arg is public; make it public", "verdict": "wrong", "score": -1, "note": "False. The diff plainly shows 'public static String buildShowCreateMaterializedTableRow(' for the 8-arg overload. Absence-fabrication."},
+        {"point": "Both flags false leaves an extra blank line between START_MODE and AS", "verdict": "wrong", "score": -1, "note": "False. extractStartMode is followed by exactly one \\n; with both flags false output is 'START_MODE = ...\\nAS ...'. The PR's own (false,false) test asserts no blank line."},
+        {"point": "Praise for @CsvSource covering 4 combinations", "verdict": "trivial", "score": 0},
+        {"point": "Praise for conditional emission pattern", "verdict": "trivial", "score": 0}
+      ],
+      "missed": [
+        "New flags are unwired: no production caller, no config/syntax integration - the stated platform use case has no entry point (raised by v5 and in my review)"
+      ],
+      "exceeds": [
+        "Javadoc @param point exceeds the human reference (human only asked for a test, which the PR contains)"
+      ],
+      "net": -2
+    },
+    "v5": {
+      "points": [
+        {"point": "Delegation pattern follows class convention (cites extractFormattedOptions 2-arg -> 3-arg delegation)", "verdict": "trivial", "score": 0, "note": "Praise; supporting detail inaccurate - the 2-arg extractFormattedOptions does not delegate to the 3-arg one, they are independent implementations. Overload-pair convention does exist."},
+        {"point": "Conditional emission correct, (true,true) output identical, no orphan newlines", "verdict": "trivial", "score": 0, "note": "Verified accurate, but it is praise/verification, not an issue."},
+        {"point": "Parameterized test exercises all 4 combinations", "verdict": "trivial", "score": 0},
+        {"point": "Test fixture omits WITH/partition/distribution combos with the flags; covered indirectly via 6-arg path", "verdict": "trivial", "score": 0, "note": "Accurate, explicitly no-action minor note."},
+        {"point": "No production caller exercises the new overload; consider wiring ShowCreateMaterializedTableOperation/config", "verdict": "good", "score": 1, "note": "Verified: ShowCreateMaterializedTableOperation.java:62 still calls the 6-arg overload; flags are otherwise dead."}
+      ],
+      "missed": [
+        "Javadoc on the new public overload duplicates the old one-liner and does not document the two new parameters"
+      ],
+      "exceeds": [
+        "Unused-API/wiring point exceeds the human reference"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v4": 1,
+    "v5": 0
+  },
+  "qualitative": "This is a small, clean additive PR where the main reviewable substance is API design (unwired speculative flags, undocumented params) rather than correctness. v4 found the real Javadoc gap but fabricated two issues: it claimed the 8-arg overload is package-private when the diff plainly shows it is public (an absence-fabrication), and invented a blank-line rendering bug that the PR's own (false,false) test disproves. v5 made no false issue claims and landed the most substantive design point - that the new flags have no production caller or wiring - though one praise point contains an inaccurate supporting detail (extractFormattedOptions overloads do not actually delegate) and it missed the Javadoc gap. Both exceeded the thin human reference, which only requested the test the PR already includes. v5 is clearly the safer and more accurate review; v4's confident fabrications would actively mislead an author."
+}

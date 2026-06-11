@@ -1,0 +1,48 @@
+{
+  "pr": 956,
+  "own_review": [
+    {"loc": "Website/app/disclaimer/page.tsx:3", "issue": "Fetch URL targets SaptarshiSarkar12/Drifty/master/disclaimer.txt — the MAIN repo's master, where disclaimer.txt does not exist until this PR merges. Until then every CI/preview build renders the raw '404: Not Found' body inside the <pre> (no ok-check). Chicken-and-egg; the PR description's note about 'loading from my fork' is stale — the diff already points at the main repo.", "severity": "medium"},
+    {"loc": "Website/app/disclaimer/page.tsx:2-5", "issue": "No error handling: no response.ok check, no try/catch, no fallback UI. A GitHub raw outage throws during prerender (failed build/500); a 404 silently renders the error body as the disclaimer. Same flaw exists in privacy-policy/terms pages, but this is new code.", "severity": "medium"},
+    {"loc": "Website/app/disclaimer/page.tsx:3", "issue": "master-branch URL is mutable; the sibling privacy-policy page pins a commit SHA (c86ce857...). Better still: disclaimer.txt lives in the same repo — read it locally (fs/import) at build time and drop the network dependency entirely.", "severity": "minor"},
+    {"loc": "Website/app/disclaimer/page.tsx", "issue": "Next 15 prerenders this static route at build time, so the 'always fresh from GitHub' rationale is illusory — disclaimer.txt edits on master only appear after a redeploy.", "severity": "minor"},
+    {"loc": "README.md:89-96 / disclaimer.txt", "issue": "Disclaimer text duplicated in README.md and disclaimer.txt; the two copies will drift.", "severity": "minor"},
+    {"loc": "Website/components/Footer.tsx:16", "issue": "Unrelated, undocumented styling change: ul flex-1 -> flex-auto and space-x-6 -> space-x-4 alters footer column balance site-wide (copyright and social columns remain flex-1).", "severity": "minor"},
+    {"loc": "Website/package-lock.json:289-317", "issue": "Unrelated @eslint/plugin-kit 0.3.1 -> 0.3.4 bump (plus nested @eslint/core 0.15.1) with no package.json change — scope creep, though incidentally it picks up a dev-only ReDoS fix.", "severity": "trivial"},
+    {"loc": "disclaimer.txt:8", "issue": "Missing trailing newline.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "page.tsx:2-4 no error handling on fetch; cites terms/privacy-policy sharing the flaw and the client-side download page's try/catch + loading + Retry as the better in-repo pattern", "grade": "good", "score": 1, "note": "Verified: terms/page.tsx and privacy-policy/page.tsx have no ok-check; download/page.tsx has try/catch (l.37-62), loading state (l.31), Retry button (l.102)."},
+        {"point": "page.tsx:3 master URL mutable; privacy-policy pins commit c86ce857 — recommend pinning post-merge", "grade": "good", "score": 1, "note": "Verified: privacy-policy fetches a commit-pinned raw URL."},
+        {"point": "disclaimer.txt:8 missing trailing newline", "grade": "trivial", "score": 0},
+        {"point": "README vs disclaimer.txt duplicated text, drift risk, suggests shared source or sync note", "grade": "good", "score": 1},
+        {"point": "package-lock.json unrelated @eslint/plugin-kit 0.3.1->0.3.4 bump, should be split out", "grade": "good", "score": 1, "note": "Verified: no package.json change in the PR."},
+        {"point": "Footer.tsx:16 flex-1->flex-auto + space-x-6->space-x-4 is an undocumented behavioral layout change; verify intent and narrow-screen layout", "grade": "good", "score": 1, "note": "Verified against base Footer.tsx; correctly flags both the flex-grow and spacing change."}
+      ],
+      "missed": [
+        {"finding": "Fetch URL 404s until merge: main-repo master does not contain disclaimer.txt at base, so preview/CI builds render '404: Not Found' as page content (own_review #1)", "score": -1}
+      ],
+      "exceeds": [
+        "Pointing to the in-repo download page (try/catch, loading state, Retry button) as the concrete remediation pattern — a verified, sharper reference than the human review (which had no findings) and my own review."
+      ],
+      "net": 4
+    },
+    "v5": {
+      "points": [
+        {"point": "page.tsx:4 claims the fetch URL 'points to the author's fork'", "grade": "wrong", "score": -1, "note": "False: SaptarshiSarkar12/Drifty is the main repo (PR author is AvinashAbbigeri). v5 echoed the stale PR-description note instead of verifying the diff, which already contains the main-repo URL. Counted as an absence-fabrication (claims link not-updated when the real PR contains the updated URL)."},
+        {"point": "page.tsx:4 recommend commit-pinned URL like privacy-policy (c86ce857); notes terms page also unpinned and fragile", "grade": "good", "score": 1, "note": "Verified: privacy-policy pins a SHA; terms fetches master/LICENSE unpinned."},
+        {"point": "page.tsx:1-15 no error handling (no response.ok / try/catch / fallback); matches existing pages, suggests guard across all three legal pages", "grade": "good", "score": 1, "note": "Verified. 'Will crash the build' is slightly overstated for a 404 (text() succeeds, error body rendered) but correct for network failures during prerender."},
+        {"point": "disclaimer.txt missing trailing newline", "grade": "trivial", "score": 0},
+        {"point": "README vs disclaimer.txt duplication, drift risk, suggests linking /disclaimer instead", "grade": "good", "score": 1},
+        {"point": "package-lock.json unrelated @eslint/plugin-kit bump, recommend reverting for scope", "grade": "good", "score": 1},
+        {"point": "Footer space-x-6->space-x-4 'reasonable, no objection'", "grade": "trivial", "score": 0, "note": "Raises no actionable concern and omits the flex-1->flex-auto behavioral half of the change that v4 caught."}
+      ],
+      "missed": [],
+      "exceeds": [],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v4": 0, "v5": 1},
+  "qualitative": "The human review is a bare approval with zero substantive findings, so both machine reviews trivially outperform it on this PR. v4, despite seeing only a truncated diff, produced the stronger review: every codebase reference checked out (privacy-policy's pinned SHA, terms' unpinned master fetch, the download page's try/catch+Retry pattern), and it correctly flagged the flex-1->flex-auto behavioral footer change. v5 covered nearly the same ground but committed one verified absence-fabrication: it asserted the fetch URL 'points to the author's fork' needing post-merge update, parroting the stale PR description when the actual diff already contains the main-repo URL. Neither candidate caught the sharpest issue — that main-repo master lacks disclaimer.txt until merge, so preview/CI builds render a raw '404: Not Found' as the disclaimer — though v5's URL point at least lands on the same remediation. Net: v4 +4, v5 +3; v4 wins on factual discipline."
+}

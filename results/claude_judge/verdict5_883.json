@@ -1,0 +1,69 @@
+{
+  "pr": 883,
+  "own_review": [
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "line": "115-150", "issue": "main() only checks args.length < 1 but unconditionally reads args[1], args[2] and Arrays.copyOfRange(args, 3, ...); invoking with 1-2 args throws ArrayIndexOutOfBoundsException/IllegalArgumentException instead of printing usage", "severity": "moderate"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java", "line": "243-248 (updateSharedConfig)", "issue": "Shared config now stores ALL properties except fluo.connection.* into Zookeeper, which includes fluo.accumulo.password/fluo.accumulo.user and any deprecated fluo.client.* props (they do not match CONNECTION_PREFIX). Plaintext Accumulo credentials land in ZK shared config; at base only fluo.app.* and tx rollback time were shared", "severity": "moderate-major"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoExec.java", "line": "66", "issue": "Stray statement `Arrays.copyOfRange(args, 3, args.length);` whose result is discarded (dead code)", "severity": "minor"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoOracle.java", "line": "50-56 (also FluoWorker.java)", "issue": "main() catches Exception, logs it, and falls out of main with exit code 0; startup failures are invisible to wrapper scripts/process supervisors", "severity": "minor"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoConfig.java", "line": "20-40", "issue": "Unused imports (URI, FileUtils, Hadoop Configuration/FileSystem/Path, SimpleConfiguration) and unused `log` field; same unused-import problem in FluoGetProp.java (incl. unused slf4j imports)", "severity": "minor"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoScan.java", "line": "36-95", "issue": "FluoScan.ScanOptions is a verbatim duplicate of the new AppRunner.ScanOptions inner class; scan option parsing now exists in multiple copies", "severity": "minor"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoGetJars.java", "line": "58-62", "issue": "Recursively deletes the user-supplied downloadPath directory (FileUtils.deleteDirectory) before copying jars; a mistyped path silently destroys data", "severity": "minor"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "line": "139 vs FluoScan.java:108", "issue": "Help flag exits with status 1 in FluoInit but 0 in FluoScan; inconsistent exit codes", "severity": "trivial"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "line": "168-174", "issue": "--update path is only reachable after the oracleExists() abort, so shared configuration can no longer be updated while an application is running (behavior regression vs intent of updateSharedConfig javadoc)", "severity": "low/question"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "docs/applications.md example incomplete, 'will fail at runtime' because hasRequiredClientProps needs user/password/instance", "grade": "wrong", "score": -1, "note": "Contradicted by the PR itself: the updated FluoFactory.newClient javadoc (visible in diff) states the only required property is fluo.connection.application.name; the new design fetches remaining config from Zookeeper. Claim was verified only against base-repo FluoClientImpl"},
+        {"point": "No public API for multi-file loading; load(InputStream) is private", "grade": "wrong", "score": -1, "note": "False: the PR makes load(InputStream) and load(File) public in SimpleConfiguration (visible in diff) precisely to enable layered loading"},
+        {"point": "FluoConfiguration constructors lack multi-file support, limiting split-config to 'choose one file'", "grade": "wrong", "score": -1, "note": "False: tests in the diff layer configs via new FluoConfiguration(connFile); config.load(appFile)"},
+        {"point": "docs/metrics.md reference to fluo.properties not updated", "grade": "wrong", "score": -1, "note": "False: the PR updates exactly those metrics.md references to fluo-app.properties (visible in diff)"},
+        {"point": "OracleRunnable/WorkerRunnable hardcode conf/fluo.properties; functional concern if PR does not address it", "grade": "trivial", "score": 0, "note": "Hedged, base-verified speculation about classes the PR explicitly deprecates; old YARN path intentionally keeps the legacy single-file format"},
+        {"point": "FluoInstall.getFluoPropsPath still returns fluo.properties and needs updating", "grade": "trivial", "score": 0, "note": "FluoInstall is @Deprecated in this PR; leaving the legacy path on the old file is intentional"}
+      ],
+      "missed": [
+        "human: FluoExec should pass old-style config through and have new config only set app name",
+        "FluoInit arg-handling crash with 1-2 args",
+        "Accumulo credentials/deprecated fluo.client.* props stored in ZK shared config",
+        "FluoExec dead Arrays.copyOfRange statement",
+        "FluoOracle/FluoWorker swallow exceptions and exit 0",
+        "Unused imports/log in FluoConfig and FluoGetProp",
+        "ScanOptions verbatim duplication",
+        "FluoGetJars recursive delete of user-supplied path"
+      ],
+      "exceeds": [],
+      "net": -12
+    },
+    "v5": {
+      "points": [
+        {"point": "FluoConfigurationTest:236 asserts applicationProps.exists() instead of just-declared connectionProps", "grade": "good", "score": 1, "note": "Verified in diff: copy-paste bug, real"},
+        {"point": "FluoAdmin.setClearZookeeper javadoc still references CLIENT_ZOOKEEPER_CONNECT_PROP", "grade": "wrong", "score": -1, "note": "False: the PR changes that javadoc to CONNECTION_ZOOKEEPERS_PROP (visible in diff)"},
+        {"point": "AppRunner.scan() return type changed long -> void, breaking API change", "grade": "good", "score": 1, "note": "Verified; class is deprecated but observation is accurate"},
+        {"point": "FluoScan.ScanOptions duplicates AppRunner.ScanOptions", "grade": "good", "score": 1, "note": "Verified verbatim duplication"},
+        {"point": "SimpleConfiguration load() private -> public API expansion", "grade": "good", "score": 1, "note": "Verified; minor quibble that PR description does mention multi-file loading"},
+        {"point": "hasRequiredAdminProps check moved from FluoAdminImpl constructor into initialize(), delaying failure", "grade": "good", "score": 1, "note": "Verified in diff"},
+        {"point": "FluoCommand @Deprecated lacks explanatory javadoc", "grade": "trivial", "score": 0, "note": "True but cosmetic; @Deprecated(since=) suggestion is anachronistic for this Java version"},
+        {"point": "getApplicationName() now throws NoSuchElementException instead of IllegalArgumentException when unset", "grade": "good", "score": 1, "note": "Verified: base threw IAE ('Application name cannot be null') via verifyApplicationName(null); new code throws NoSuchElementException. Attribution to getNonEmptyString is slightly off but the substance is correct"},
+        {"point": "hasRequiredProps dual-prefix checks need an explanatory comment", "grade": "trivial", "score": 0},
+        {"point": "FluoList static FluoAdminImpl.oracleExists - verify static conversion", "grade": "trivial", "score": 0, "note": "Properly hedged; definition is in the truncated portion"},
+        {"point": "NOTE listing methods defined beyond truncation", "grade": "trivial", "score": 0, "note": "Honest handling of truncation, not a finding"}
+      ],
+      "missed": [
+        "human: FluoExec should pass old-style config through and have new config only set app name",
+        "FluoInit arg-handling crash with 1-2 args",
+        "Accumulo credentials/deprecated fluo.client.* props stored in ZK shared config",
+        "FluoExec dead Arrays.copyOfRange statement",
+        "FluoOracle/FluoWorker swallow exceptions and exit 0",
+        "Unused imports/log in FluoConfig and FluoGetProp",
+        "FluoGetJars recursive delete of user-supplied path"
+      ],
+      "exceeds": [
+        "FluoConfigurationTest copy-paste assertion bug (missed by human and by my review)",
+        "getApplicationName exception-type change IAE -> NoSuchElementException (missed by human and by my review)"
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {"v4": 4, "v5": 1},
+  "qualitative": "v4 is dominated by absence-fabrications: four of its six points assert that the PR fails to do things the full diff visibly does (public load() methods for multi-file layering, updated metrics.md references, a doc example consistent with the new connection-only client design), all verified only against the 7k-truncated diff or the base repo. v5, working from the fuller diff, produced mostly real, verifiable findings, including a genuine test copy-paste bug and an exception-type behavior change that both the human reviewer and my own review missed, and it handled the remaining truncation honestly by hedging rather than fabricating; its one fabrication is claiming a javadoc was left stale when the PR updates it. Both candidates missed the more substantive issues: the FluoInit argument-handling crash, credentials being written into Zookeeper shared config by the new updateSharedConfig, and the human's FluoExec config pass-through design point. Net result: v5 (-2) clearly outperforms v4 (-12), with v5 exceeding the reference on two verified findings."
+}

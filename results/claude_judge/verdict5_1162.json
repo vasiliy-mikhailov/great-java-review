@@ -1,0 +1,75 @@
+{
+  "pr": 1162,
+  "own_review": [
+    {
+      "file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java:74-87",
+      "issue": "Expected violations regressed from `getCheckMessage(MSG_KEY, \"&&\", line, col)` (project-wide convention, used by the other test in the same class) to fully hardcoded English message strings. Duplicates messages.properties text, breaks on any message/i18n change. Should be e.g. \"41:49: \" + getCheckMessage(MSG_KEY, \"&&\", 41, 48).",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java:4-94",
+      "issue": "Rewrite leaves typeGuardAfterParenthesizedTrueSwitchStatement1/2 byte-identical duplicates (lines 4-21 vs 50-67) and the two IfStatement methods identical (41-48 vs 86-94); the 1/2 variants originally differed by '&&' at line-start vs line-end formatting, a distinction now gone. The four switch methods contain no &&/|| tokens at all, so they no longer exercise the check under test. Method names 'typeGuardAfterParenthesizedTrue...' no longer describe contents (no type guards or parenthesized patterns remain).",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java:116-121",
+      "issue": "New method typeGuardAfterParenthesizedPatternWithMethodCall reintroduces `case (String s) && s.isEmpty() ->` — Java 17/18 preview guarded-pattern syntax (JEP 406/420), removed in favor of `when` (JEP 441) and NOT valid Java 21 — directly contradicting the PR's stated goal of aligning inputs with Java 21. It does parse under checkstyle 12.3.1 (verified by running the check), but it keeps the test hostage to checkstyle continuing to support dead preview grammar; the same coverage branch (METHOD_CALL in second operand) could be hit with compilable code like `if (a && getValue())`.",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java",
+      "issue": "Loss of asserted violation INSIDE a pattern definition: old expectation 66:34 asserted the check fires on `&&` within a parenthesized case/instanceof pattern; in the new file the only pattern-level `&&` (line 118) correctly produces no violation, so the fires-inside-pattern path is no longer asserted.",
+      "severity": "low"
+    },
+    {
+      "file": "sevntu-checks/src/test/java/.../LogicConditionNeedOptimizationCheckTest.java (EOF)",
+      "issue": "Adds a blank line at end of the test file (git apply warns 'new blank line at EOF'); risks failing the project's self-applied upstream checkstyle config on test sources.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/.../InputLogicConditionNeedOptimizationCheck2.java:43,87,89",
+      "issue": "'// violation' marker comments are stale/inconsistent: line 89 keeps one marker but carries two violations; lines 41, 43 (two violations) and 87 have none.",
+      "severity": "minor"
+    },
+    {
+      "file": "VERIFICATION",
+      "issue": "Functional correctness confirmed empirically: compiled LogicConditionNeedOptimizationCheck against checkstyle 12.3.1 and ran it on the patched input — output is exactly the 7 expected violations (41:49/pos48, 43:56/pos55, 43:66/pos65, 87:49, 89:56, 89:66, 112:24) with byte-identical message text; the base file also still parses and yields exactly the old 2 expectations, so the PR motivation is jacoco branch coverage (pom requires 100% line/branch for this non-excluded class), not a parse failure.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "P1 'REGRESSION: pattern guard test coverage removed' — premised on guards being 'Java 21 pattern guard syntax' (false: it was removed Java 17/18 preview syntax; Java 21 uses `when`) and on guards being removed entirely (false: line 116-121 of the real PR adds `case (String s) && s.isEmpty()`); truncation artifact asserted as fact", "grade": "wrong", "score": -1},
+        {"point": "P2 PR description vs diff: 'removes Java 21 pattern guard constructs entirely' — same false 'removed entirely' premise and same syntax mislabeling; the rewrite toward `Integer i` type patterns and arrow cases IS the Java-21 alignment", "grade": "wrong", "score": -1},
+        {"point": "P3 violation-in-pattern-guard-context no longer exercised (old 32/66 expectations) — verified real kernel: old 66:34 asserted `&&` firing inside a parenthesized pattern, new file no longer asserts any violation inside a pattern (line 118 yields none); explanation of the trigger ('assignment before comparison') misstates the check's logic but conclusion holds", "grade": "good", "score": 1},
+        {"point": "P4 misleading method names 'typeGuardAfterParenthesizedTrue...' no longer match content — verified real, matches my own finding", "grade": "good", "score": 1},
+        {"point": "P5 'verify line numbers 41/43/87/89/112 are accurate... could cause silent test misalignment' — I verified they are exactly correct; also a mismatch would fail verify() loudly, not silently; unverified ask-to-check with mischaracterized failure mode", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Hardcoded message strings replacing getCheckMessage(MSG_KEY,...) convention in the test",
+        "Line 118 retains preview `&&` guard syntax contradicting the PR's Java-21 claim (was in the truncated tail, but graded on text merits)"
+      ],
+      "exceeds": [],
+      "net": -2
+    },
+    "v5": {
+      "points": [
+        {"point": "P1 line 118 `case (String s) && s.isEmpty()` is preview syntax, not Java 21, contradicting the PR description — verified real, the single most distinctive issue in this PR; however the proposed fix is wrong: it claims only the parentheses are the problem and that `case String s && s.isEmpty()` is final Java 21 syntax, when JEP 441 actually requires `case String s when s.isEmpty()`", "grade": "good", "score": 1},
+        {"point": "P2 line 82 switch expression 'missing default... non-exhaustive' — false: `case Object x` is a total (unconditional) pattern over an Object selector, the switch IS exhaustive; adding `default` alongside it would itself be a compile error; the 1-vs-2 default/Object-x asymmetry is cosmetic at most", "grade": "wrong", "score": -1},
+        {"point": "P3 praise: testCoverageCase covers branchContains(operands,1,METHOD_CALL) branch — accurate (verified violation 112:24 fires via that branch) but praise, not an actionable finding", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Hardcoded message strings replacing getCheckMessage(MSG_KEY,...) convention in the test",
+        "Duplicate/inert methods and misleading 'typeGuardAfterParenthesizedTrue...' names after the rewrite"
+      ],
+      "exceeds": [],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {
+    "v4": 2,
+    "v5": 0
+  },
+  "qualitative": "I verified the PR end-to-end by compiling the check against checkstyle 12.3.1 and running it on the patched input: it emits exactly the 7 expected violations with matching positions and message text, so the change is functionally sound and the real review surface is style/intent. v4's headline 'REGRESSION' narrative is a truncation artifact stated as fact — it twice asserts pattern guards were 'removed entirely' (the full PR adds one at line 118) and mislabels removed preview syntax as 'Java 21 syntax', though it salvages two real points (lost violation-inside-pattern assertion, misleading method names). v5 is leaner and nails the most distinctive finding — the retained preview `&&` guard contradicting the Java-21 claim — but prescribes an incorrect remedy (the real Java 21 form is `when`, not unparenthesized `&&`) and fabricates a non-exhaustiveness defect where `case Object x` is a total pattern. Both miss the clearest maintainer-style issue: hardcoding message strings instead of the project's getCheckMessage convention. The human reference point ('remove changes from non Test/Input files') does not map to the provided two-file diff and was not charged as a miss. Net scores tie at -2, but v5's review is more trustworthy: zero absence-fabrications versus v4's two."
+}

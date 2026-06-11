@@ -1,0 +1,50 @@
+{
+  "pr": 6304,
+  "own_review": [
+    {"file": "controller/src/main/java/org/jboss/as/controller/logging/ControllerLogger.java", "line": 3813, "issue": "New message id 518 contains garbled English: 'includes slot information in the module name only if the is slot is not 'main''. Stray 'is' (and the human reviewer also suggested clearer wording). User-facing error text should be fixed.", "severity": "low"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/parsing/ExtensionXml.java", "line": 98, "issue": "Behavioral/compatibility change: <extension module=\"name:main\"> (or any non-canonical form) previously parsed and booted fine (ModuleIdentifier.fromString canonicalized silently); now boot fails with XMLStreamException. Same enforcement added in ExtensionAddHandler.execute for management ops. Intentional per WFCORE-7116, but it breaks previously-valid configs and legacy CLI scripts and deserves explicit flagging/migration note.", "severity": "medium"},
+    {"file": "controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java", "line": 190, "issue": "Canonicalization is not idempotent for names containing escape sequences: parseCanonicalModuleIdentifier(\"org.jboss\\\\:foo\") -> \"org.jboss\\\\\\\\\\\\:foo\" (per the test's own TODO), and canonicalizing that result again yields yet another string. With the new enforcement in ExtensionAddHandler/ExtensionXml, the error message tells the user to use a 'canonical form' that would itself be rejected, making such names unusable. Unrealistic names in practice, but the check + non-idempotent canonicalization combination is a genuine edge-case flaw.", "severity": "low"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/ModuleIdentifierUtil.java", "line": 128, "issue": "MODULE_NAME_CORRECTOR public field is left un-deprecated while every method around it is @Deprecated(forRemoval=true); it internally calls the now-deprecated canonicalModuleIdentifier(String). It has zero usages in this repo. Inconsistent deprecation surface.", "severity": "trivial"},
+    {"file": "controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java", "line": 191, "issue": "No newline at end of file (also ModuleIdentifierUtil.java); copied javadoc typos '@{code null}' instead of '{@code null}' and 'an  identifier' double space; utility class lacks a private constructor.", "severity": "trivial"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/extension/ExtensionAddHandler.java", "line": 62, "issue": "Verified correct: ModuleLoader.loadModule(String) and Module.loadServiceFromCallerModuleLoader(String, Class) overloads exist in jboss-modules 2.1.6.Final used by the build; log id 518 does not collide; all four extension-loading sites (ExtensionAddHandler base already String-based, DeferredExtensionContext, TransformerRegistry, ApplyExtensionsHandler) are consistently converted; deprecated ModuleIdentifierUtil facade keeps the 17 external main-code callers in server/, elytron/, domain-http/ compiling.", "severity": "info"}
+  ],
+  "versions": {
+    "v4": {
+      "points": [
+        {"point": "Rename parseCanonicalModuleIdentifier to canonicalModuleIdentifier for consistency", "grade": "trivial", "value": 0, "note": "Pure naming preference; the new class deliberately distinguishes the parse variant from the (name, slot) variant."},
+        {"point": "Code duplication with ModuleIdentifierUtil; add comment referencing ModuleIdentifierUtil as canonical implementation to keep them synchronized", "grade": "wrong", "value": -1, "note": "False premise from the truncated diff: the real PR guts ModuleIdentifierUtil into a deprecated delegating facade, so there are no parallel implementations to synchronize and ModuleIdentifierUtil is explicitly NOT the canonical one. Absence-fabrication."},
+        {"point": "String moduleId change correct, verify :main-stripping behavioral difference in ModuleLoader.loadModule", "grade": "trivial", "value": 0, "note": "Accurate observation plus a hedge; ModuleIdentifier.fromString canonicalized identically, no real issue identified."},
+        {"point": "Base ExtensionAddHandler:107 already uses String loadServiceFromCallerModuleLoader; verify all 4 sites consistently updated", "grade": "trivial", "value": 0, "note": "Factually correct about the base (verified line 107) but it is a verification request, not a finding; the PR does update all sites."},
+        {"point": "ApplyExtensionsHandler diff truncated; ensure ModuleIdentifier.fromString at line 198 was converted", "grade": "trivial", "value": 0, "note": "The real PR converts exactly that line. Claim grounded only in the base repo due to truncation. Absence-fabrication."},
+        {"point": "Test should cover :main canonicalization and escape-sequence cases", "grade": "trivial", "value": 0, "note": "The renamed test already contains exactly these cases (org.jboss.foo:main -> org.jboss.foo, escaped-colon cases). Implies missing coverage that the PR contains. Absence-fabrication."}
+      ],
+      "missed": [
+        "Typo/garbled wording in new log message 518 ('the is slot') — the human's main point",
+        "Boot-time compatibility break: previously-valid non-canonical extension names in XML/management ops now fail",
+        "Non-idempotent canonicalization for escaped names makes the suggested 'canonical form' in the error itself rejectable"
+      ],
+      "exceeds": [],
+      "net": -4
+    },
+    "v5": {
+      "points": [
+        {"point": "Typo in message 518: 'only if the is slot is not main' — double/stray 'is'", "grade": "good", "value": 1, "note": "Verified in the diff; matches the human's only substantive point."},
+        {"point": "MODULE_NAME_CORRECTOR unused (grep-verified) and left un-deprecated in a class deprecated for removal", "grade": "good", "value": 1, "note": "Verified: zero usages in the repo beyond its declaration; field calls a now-deprecated method yet carries no @Deprecated. Minor inaccuracy ('the class is deprecated' — only its methods are) does not undermine the finding."},
+        {"point": "JBossModulesNameUtil.java missing trailing newline", "grade": "trivial", "value": 0, "note": "True (diff shows 'No newline at end of file') but cosmetic."},
+        {"point": "Deprecation cascade: ~14 external callers in server/, elytron/, domain-http/ will see warnings and need controller-client to migrate", "grade": "good", "value": 1, "note": "Verified: 17 main-code call sites in those exact modules; count slightly off but substance correct and verified against the repo."},
+        {"point": "Canonical-name enforcement in ExtensionAddHandler/ExtensionXml is an intentional breaking change for existing configs on boot — confirm acceptable", "grade": "good", "value": 1, "note": "Verified real behavior change; the most important reviewer concern in this PR."},
+        {"point": "TODO on escape-sequence test cases inherited; behavior matches ModuleIdentifier.fromString — fine to leave", "grade": "trivial", "value": 0, "note": "Accurate observation, no action requested."}
+      ],
+      "missed": [
+        "Non-idempotent canonicalization for escaped names makes the suggested 'canonical form' in the error itself rejectable"
+      ],
+      "exceeds": [
+        "MODULE_NAME_CORRECTOR orphaned/un-deprecated field — verified finding absent from both the human review and beyond my trivial note (v5 verified zero usages)",
+        "Deprecation-warning cascade across server/elytron/domain-http with migration-path implication — absent from human review and my own"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v4": 3, "v5": 0},
+  "qualitative": "v5 is clearly the stronger review: it found the human's one substantive point (the garbled id-518 message), correctly flagged the boot-time compatibility break from canonical-name enforcement (the PR's most consequential behavior change), and added two verified findings neither the human nor my own first pass surfaced (the orphaned un-deprecated MODULE_NAME_CORRECTOR and the deprecation-warning cascade across dependent modules). v4, working from a 7k-truncated diff, produced no verified findings at all: half its points are 'verify/ensure' requests about parts of the PR it could not see, and its one concrete recommendation (treat ModuleIdentifierUtil as the canonical implementation to keep synchronized) is contradicted by the actual PR, which deprecates and guts that class. v4 also implied missing test cases and unconverted call sites that the real PR contains, yielding three absence-fabrications versus zero for v5. Both candidates missed the subtle non-idempotent-canonicalization edge case where the error message recommends a 'canonical' form that would itself be rejected."
+}

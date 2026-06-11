@@ -1,0 +1,63 @@
+{"pr": 982,
+ "own_review": [
+  {"point": "System.exit(-1) added inside shared core-module utility ScanUtil; it is called not only from FluoScan.main but also from the deprecated-but-shipped AppRunner.scan (modules/cluster), an instance method on a library class. Killing the JVM from a util prevents callers from handling failure; should throw and let the CLI entry point decide exit codes.", "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:131,170", "severity": "normal"},
+  {"point": "In scanFluo the new System.exit(-1) sits inside the try-with-resources for FluoClient; System.exit does not unwind the stack, so client.close() never runs (unclean ZK/Accumulo shutdown).", "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:131", "severity": "normal"},
+  {"point": "The 'Scanning...' headers and 'No data found' feedback are deleted outright; per the issue intent (clean pipeable stdout) they could be printed to System.err instead — silent empty output is a UX regression.", "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:92,125", "severity": "normal"},
+  {"point": "Stray blank lines left at the start of both method bodies and where entriesFound++ was removed (style).", "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:93,128,141", "severity": "normal"},
+  {"point": "No tests added/updated for the behavior change; existing ScanTest only covers getSpan/getColumns.", "file": "modules/command/src/test/java/org/apache/fluo/command/ScanTest.java", "severity": "normal"},
+  {"point": "(matches human) The stderr/System.exit change is unrelated to the stated goal of issue #981 (removing meta output) — it is a separate exit-code bug fix bundled into the PR and worth calling out as out of scope.", "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java:131", "severity": "normal"}
+ ],
+ "versions": {
+  "v1": {
+   "points": [
+    {"point": "PR title misleading, changes REMOVE meta info rather than restore it", "verdict": "wrong", "why": "Misreading: title 'stopped printing meta info' describes what the PR does (issue's stated goal was removal, confirmed by human review); no contradiction exists."},
+    {"point": "Removing 'No data found' leaves users with no feedback on empty scan", "verdict": "good", "why": "Real UX regression; matches my own finding."},
+    {"point": "stderr+exit(-1) aligns with BaseOpts/FluoExec/FluoCommand conventions", "verdict": "trivial", "why": "Praise/restating the diff (claims verified, but still praise)."},
+    {"point": "Same error-handling improvement in scanAccumulo is consistent", "verdict": "trivial", "why": "Duplicate praise."},
+    {"point": "System.exit in utility methods can be surprising; suggest explanatory comment", "verdict": "good", "why": "Flags the real library-code exit risk, though it defuses it as 'acceptable'."},
+    {"point": "entriesFound counter cleanly removed, no dangling refs", "verdict": "trivial", "why": "Restates the diff / praise."}
+   ],
+   "missed": ["Human's point: exit-code change is unrelated to issue #981 scope (separate bug fix)", "System.exit inside try-with-resources skips FluoClient.close()", "No test coverage for changed behavior"],
+   "exceeds": [],
+   "net": -2
+  },
+  "v2": {
+   "points": [
+    {"point": "Title mismatch: title contradicts the diff, title or changes need correcting", "verdict": "wrong", "why": "Asserts an outright contradiction that doesn't exist; removal IS the issue's stated goal."},
+    {"point": "Loss of CLI status feedback (scan mode/app name); callers print nothing else", "verdict": "good", "why": "Real UX consideration backed by verified caller analysis; matches my stderr-instead-of-delete finding."},
+    {"point": "Removal of 'No data found' leaves success vs silent-failure ambiguous", "verdict": "good", "why": "Real UX regression; matches my finding."},
+    {"point": "stderr+exit aligns with FluoExec/FluoInit/BaseOpts/FluoCommand convention", "verdict": "trivial", "why": "Praise (claims verified but adds nothing actionable)."},
+    {"point": "License-header whitespace cleanup is benign", "verdict": "trivial", "why": "Restates the diff."}
+   ],
+   "missed": ["Human's point: exit-code change out of scope of issue #981", "System.exit in shared util can kill non-CLI callers (AppRunner) — not mentioned at all", "System.exit inside try-with-resources skips FluoClient.close()", "No test coverage"],
+   "exceeds": [],
+   "net": -3
+  },
+  "v3": {
+   "points": [
+    {"point": "PR title contradicts the diff; fix should restore messages, not remove them", "verdict": "wrong", "why": "Same misreading as v1/v2; removal is the issue's intent."},
+    {"point": "System.exit(-1) may terminate non-CLI callers (AppRunner instance method); suggest throwing instead; correctly notes IAE exit is pre-existing", "verdict": "good", "why": "Verified: AppRunner.scan (cluster module) calls scanFluo; strongest statement of the library-exit risk, with the right fix."},
+    {"point": "Same System.exit concern for scanAccumulo", "verdict": "trivial", "why": "Duplicate of the previous point."},
+    {"point": "Removal of 'No data found' may confuse users", "verdict": "good", "why": "Real UX regression; matches my finding."},
+    {"point": "Good: errors now go to System.err per conventions", "verdict": "trivial", "why": "Praise."},
+    {"point": "No test coverage for scanFluo/scanAccumulo; ScanTest only covers getSpan/getColumns", "verdict": "good", "why": "Verified: ScanTest tests only getSpan/getColumns; actionable gap."}
+   ],
+   "missed": ["Human's point: exit-code change out of scope of issue #981", "System.exit inside try-with-resources skips FluoClient.close()"],
+   "exceeds": [],
+   "net": 0
+  },
+  "v4": {
+   "points": [
+    {"point": "stderr+exit consistent with FluoCommand/BaseOpts/FluoExec pattern", "verdict": "trivial", "why": "Praise."},
+    {"point": "scanAccumulo same; callers have no try-catch so exit terminates JVM, 'appropriate for CLI tools'", "verdict": "trivial", "why": "Restates behavior and explicitly defuses the real AppRunner embedding concern."},
+    {"point": "CommandUtil.java:28-30,38-40 still prints errors to stdout — follow-up for consistency", "verdict": "good", "why": "Verified: CommandUtil uses System.out.println + exit(-1) for errors, and FluoScan.main calls verifyAppRunning; real adjacent inconsistency."},
+    {"point": "Pre-existing test gap: removed message and exit behavior untested", "verdict": "good", "why": "Verified gap, actionable."},
+    {"point": "IAE handler already used stderr+exit; PR makes others match", "verdict": "trivial", "why": "Restates the diff."}
+   ],
+   "missed": ["Human's point: exit-code change out of scope of issue #981", "System.exit in shared util harms non-CLI callers (actively argued it's fine)", "System.exit inside try-with-resources skips FluoClient.close()", "Removed 'Scanning...'/'No data found' output UX regression — not mentioned at all"],
+   "exceeds": ["CommandUtil.java stdout-error inconsistency (verified; neither human nor my review found it)"],
+   "net": -2
+  }
+ },
+ "qualitative": "v3 is the best here (net 0): it is the only candidate to clearly state the real risk — System.exit(-1) added to a shared core-module utility that the deprecated AppRunner embeds — with the correct remedy (throw instead), and it also caught the test-coverage gap and the No-data-found UX regression. v1 hedged the same exit concern into 'acceptable, add a comment' and padded with praise; v2 never mentioned the exit risk at all and spent its points on UX and convention praise. v4 actively argued the exit was 'appropriate' and ignored the message-removal UX entirely, but it earned the only genuine 'exceeds' finding: the verified CommandUtil stdout-error inconsistency on the very code path FluoScan uses. Characteristically, v1, v2 and v3 all fabricated the same 'PR title contradicts the diff' complaint — a misreading, since the issue's stated goal (confirmed by the human review) was precisely to stop printing meta info. All four missed the human's actual point (the exit-code change is an unrelated bundled bug fix) and the subtler defect that System.exit inside the try-with-resources skips FluoClient.close()."
+}
