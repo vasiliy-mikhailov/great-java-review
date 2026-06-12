@@ -1,0 +1,61 @@
+{
+  "pr": 14487,
+  "own_review": [
+    {"loc": "IoUringFileRegion.java:53-55 (spliceToPipe)", "issue": "long-to-int truncation: `int len = (int)(count() - transferred())` and `int offset = (int)(position() + transferred())`; `transferred` is also an int field. Regions/offsets > 2GB get truncated (negative/wrapped) offsets and lengths -> wrong data spliced for large files. newSplice accepts long off_in, so the cast is gratuitous.", "severity": "high"},
+    {"loc": "AbstractIoUringStreamChannel.java scheduleWriteSingle (open() catch)", "issue": "Returns 0 after fileRegion.open() throws; caller AbstractIoUringChannel.scheduleWrite has `assert numOutstandingWrites > 0` -> AssertionError with -ea (e.g. in CI); without assertions doWrite silently does not set WRITE_SCHEDULED while handleWriteError closes the channel.", "severity": "medium-high"},
+    {"loc": "AbstractIoUringStreamChannel.java writeComplete0 file-region branch", "issue": "ECANCELED regression: ByteBuf path special-cases Native.ERRNO_ECANCELED_NEGATIVE and returns true; file-region path feeds it to ioResult() which throws -> handleWriteError -> channel close on a mere cancellation of an outstanding splice.", "severity": "medium"},
+    {"loc": "netty_io_uring_native.c JNI_OnLoad", "issue": "JNI_OnLoad now hard-fails (ret=JNI_ERR via done:) if sun/nio/ch/FileChannelImpl or its 'fd' field cannot be resolved -> the entire io_uring native lib fails to load on JDKs where these internals differ, breaking the whole transport, not just FileRegion. Local class refs (fileRegionCls etc.) also never deleted.", "severity": "medium"},
+    {"loc": "IoUringIoOps.java public constructor", "issue": "Breaking change to public API: public IoUringIoOps constructor gained an int spliceFdIn parameter; external callers of the old 9-arg constructor break.", "severity": "medium"},
+    {"loc": "AbstractIoUringStreamChannel.java writeComplete0", "issue": "`result == 0 && fileRegion.count() > 0` uses total count instead of remaining (count() - transferred() > 0); also returning false triggers schedulePollOut which asserts a non-blocking socket.", "severity": "low"},
+    {"loc": "IoUringSocketFileRegionTest.java", "issue": "Leftover commented-out `//@Disabled(\"Fix me\")` above a pointless override that only calls super; copyright header says 2014 (copy-paste).", "severity": "trivial"},
+    {"loc": "SubmissionQueue.java:45-46", "issue": "SQE_FIXED_BUFFER and SQE_PERSONALITY constants added but unused (layout documentation at best).", "severity": "trivial"},
+    {"loc": "AbstractIoUringStreamChannel.java filterOutboundMessage", "issue": "Only DefaultFileRegion is supported and only when splice is available; custom FileRegion (supported by epoll/kqueue via transferTo) hits UnsupportedOperationException('unsupported message type'). Documented via supportsCustomFileRegion()=false but a runtime limitation worth flagging.", "severity": "low"},
+    {"loc": "Native.java getFd(DefaultFileRegion fileChannel)", "issue": "Parameter misnamed 'fileChannel' though it is a DefaultFileRegion.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "scheduleWriteSingle returns 0 on open() failure vs caller assert > 0", "grade": "good", "score": 1, "note": "Verified: assert numOutstandingWrites > 0 in AbstractIoUringChannel.scheduleWrite. Matches my finding."},
+        {"point": "ECANCELED not handled gracefully for IoUringFileRegion", "grade": "good", "score": 1, "note": "Verified real inconsistency vs ByteBuf path."},
+        {"point": "Pipe FD leak on error paths (closePipeIfNeeded only in release())", "grade": "wrong", "score": -1, "note": "False: on write error handleWriteError -> close/failFlushed -> ChannelOutboundBuffer safe-releases the IoUringFileRegion, whose release() closes the pipe. No leak path demonstrated."},
+        {"point": "Unused SQE_FIXED_BUFFER/SQE_PERSONALITY constants", "grade": "trivial", "score": 0},
+        {"point": "Integer truncation for files > 2GB in spliceToPipe", "grade": "critical", "score": 2, "note": "Verified blocker: silently corrupts offset/length for >2GB regions; fix (use long) is correct since newSplice takes long off_in."},
+        {"point": "validateFileRegion not called for splice-to-pipe returning 0", "grade": "wrong", "score": -1, "note": "False: the `result == 0 && count() > 0` check in writeComplete0 runs before handleResult for BOTH phases; a 0-byte splice-to-pipe completion does reach validateFileRegion."},
+        {"point": "filterOutboundMessage only handles DefaultFileRegion (doc suggestion)", "grade": "good", "score": 1, "note": "Real limitation, verified."},
+        {"point": "handleResult data-field conflict speculation", "grade": "trivial", "score": 0, "note": "Speculative; the short data is op-local and fully controlled by this code."},
+        {"point": "Test coverage gaps list", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "JNI_OnLoad hard dependency on sun.nio.ch.FileChannelImpl internals can fail the entire native lib load (whole io_uring transport unavailable)",
+        "Breaking change to public IoUringIoOps constructor signature (added spliceFdIn)"
+      ],
+      "exceeds": [],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {"point": "Resource leak in open() if pipe() throws; suggested fileRegion.release() in catch", "grade": "wrong", "score": -1, "note": "False: DefaultFileRegion.open() does not retain (no refcount increment), and the region in the outbound buffer is safe-released on failure/close; the suggested fix would cause a double-release."},
+        {"point": "IoUringFileRegionTest missing availability/splice assumption guard", "grade": "good", "score": 1, "note": "Verified: the new test has no @BeforeAll assumeTrue(IoUring.isAvailable()) nor a splice-support check; it will fail rather than skip on unsupported systems. Neither human nor my review caught this."},
+        {"point": "pipeLen assert not defensive enough", "grade": "trivial", "score": 0, "note": "Kernel cannot splice more out of the pipe than was put in; style-level."},
+        {"point": "ECANCELED handling inconsistency for splice vs regular writes", "grade": "good", "score": 1, "note": "Core inconsistency verified real; the buffer-cleanup speculation is hedged but the substance stands."},
+        {"point": "filterOutboundMessage only accepts DefaultFileRegion, unlike epoll/kqueue transferTo fallback", "grade": "good", "score": 1, "note": "Verified; epoll does support generic FileRegion via transferTo."},
+        {"point": "JNI reflection on internal JDK classes is fragile", "grade": "good", "score": 1, "note": "Real concern (overlaps my JNI_OnLoad finding), though it understates the consequence: a failed lookup aborts the whole native lib load."},
+        {"point": "transfered() 'typo' / deprecated method usage", "grade": "trivial", "score": 0, "note": "transfered() is the long-standing deprecated FileRegion API method, not a typo introduced here; the migration nit is cosmetic."}
+      ],
+      "missed": [
+        "long-to-int truncation in spliceToPipe for regions > 2GB (the most serious bug in the PR)",
+        "scheduleWriteSingle returning 0 on open() failure violating the caller's assert numOutstandingWrites > 0",
+        "Breaking change to public IoUringIoOps constructor signature (added spliceFdIn)"
+      ],
+      "exceeds": [
+        "IoUringFileRegionTest missing assumeTrue availability/splice guard - verified real, absent from both the human review and my own"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 2,
+    "v6": 1
+  },
+  "qualitative": "The human reference contains a single condition-ordering nit on filterOutboundMessage that is already satisfied in the diff as shown (the splice-support check comes first), so it was not counted against either candidate. v5 is the stronger review on substance: it caught the two most important correctness bugs (the >2GB long-to-int truncation, graded critical, and the scheduleWriteSingle zero-return assert violation) plus the ECANCELED regression, but it fabricated two absences (a pipe-FD leak that release() via outbound-buffer cleanup actually prevents, and a 'skipped' validateFileRegion check that in fact runs for both splice phases). v6 missed both top bugs entirely and fabricated one absence (the open() leak with a fix that would double-release), but it uniquely found the missing test availability guard - a verified finding that exceeds both the human and my own review - and correctly characterized the epoll/kqueue custom-FileRegion divergence. Net: v5 +1, v6 0; v5 wins on bug-finding depth despite a higher absence-fabrication count."
+}

@@ -1,0 +1,58 @@
+{
+  "pr": 11706,
+  "own_review": [
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 49,
+      "issue": "Added import java.util.Optional is never used anywhere in the file (leftover from an earlier Optional-based revision of the fix); dead import, may trip checkstyle/IDE warnings.",
+      "severity": "minor"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 478,
+      "issue": "'-> empty' marker is printed only when the list is null; a non-null empty list prints nothing under the header, so log output is inconsistent between the two 'no values' states (same at ~line 490 for collections).",
+      "severity": "trivial"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 469,
+      "issue": "No regression test added; the Hibernate bot checklist item 'Add test reproducing the bug' is unchecked and the author explicitly asks whether one is needed. Debug-logging-only NPE, so arguably acceptable.",
+      "severity": "trivial"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 470,
+      "issue": "Fix verified correct: both LoadedValuesCollectorImpl implementations (FollowOnLockingAction.java:330-341 and CollectionLockingAction.java:196-204) lazily initialize entitiesToLock/collectionsToLock and return the raw fields, so the getters genuinely return null when nothing was registered (e.g. nothing matches pathsToLock); the NPE in HHH-20121 is real and the null guards fix it. Downstream segmentLoadedValues (~line 497) and segmentLoadedCollections (~line 510) already guard null, so the logging path was the only unguarded caller.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Unused import java.util.Optional — added but not used anywhere; remove to avoid compiler warnings (line 49)", "grade": "good", "note": "Verified real: Optional is never referenced in LockingHelper.java; identical to my own finding."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Caught the unused Optional import, which the human reference (written against the earlier lambda-based revision) never flagged.",
+        "Summary correctly notes the fix is consistent with existing null-check patterns elsewhere in the same file."
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {"point": "Unused import java.util.Optional — never referenced anywhere in the file; remove it (line 49)", "grade": "good", "note": "Verified real; identical to my own finding."},
+        {"point": "Affirmation that the null-safety fix is correct, citing lazy init in both FollowOnLockingAction.LoadedValuesCollectorImpl and CollectionLockingAction.LoadedValuesCollectorImpl, plus existing null guards in segmentLoadedValues (~496), segmentLoadedCollections (~510), and FollowOnLockingAction.java:202", "grade": "trivial", "note": "Every citation checks out (I verified each line), but it is an affirmation of correctness, not an actionable finding — same treatment as the equivalent v4 points in the prior round."},
+        {"point": "No test case included; suggests a regression test that triggers follow-on locking where nothing matches the pathsToLock filter so the collector lists stay null", "grade": "trivial", "note": "Real (bot checklist item is unchecked) and the proposed reproduction scenario is technically accurate, but it largely echoes the author's own question in the PR description and concerns a debug-logging-only NPE; I rated this trivial in my own review."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Caught the unused Optional import not present in the human reference.",
+        "Verified the NPE root cause across both LoadedValuesCollectorImpl implementations with accurate file:line citations to the existing null-guard pattern.",
+        "Proposed a concrete, technically correct reproduction scenario for a regression test (lists remain null when nothing matches pathsToLock)."
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "qualitative": "Tiny, clean PR adding null guards around lazily-initialized collector lists to fix a debug-logging NPE; the only residual actionable defect is the dead java.util.Optional import, and both candidates caught exactly it, landing both at net +1 with zero fabrications and zero counted misses (the '-> empty' inconsistency and missing test are trivial-severity items I did not count). v6 is clearly the stronger review qualitatively: its tool access shows — it traced the root cause through both LoadedValuesCollectorImpl implementations, cited the pre-existing null guards at accurate line numbers (all of which I verified), and proposed a concrete, correct test scenario based on the pathsToLock filter. v5 is terse but precise and entirely correct. On this PR the rubric cannot separate them numerically, but v6's verified depth carries more reviewer value than v5's single-line review."
+}

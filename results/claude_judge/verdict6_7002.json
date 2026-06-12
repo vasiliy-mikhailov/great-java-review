@@ -1,0 +1,79 @@
+{
+  "pr": 7002,
+  "own_review": [
+    {
+      "file": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt",
+      "line": "118-140",
+      "issue": "KDoc on the new expect declarations still links [TimeUnit.SECONDS], but java.util.concurrent.TimeUnit is JVM-only and not imported in commonMain; the links are broken for non-JVM targets and should say [DurationUnit.SECONDS].",
+      "severity": "minor"
+    },
+    {
+      "file": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt",
+      "line": "153-176",
+      "issue": "Design: the JVM Builder now exposes two parallel overload sets, maxAge/maxStale/minFresh(Int, TimeUnit) and (Int, DurationUnit). With Kotlin 1.6.10 DurationUnit is a standalone enum (not a TimeUnit typealias) so it compiles, but every time-based method is doubled on the JVM API surface, and multiplatform callers cannot share code that passes TimeUnit. This is the human maintainer's sole comment ('we're actually stuck doubling our methods').",
+      "severity": "major"
+    },
+    {
+      "file": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt",
+      "line": "181-184",
+      "issue": "Missed opportunity: FORCE_CACHE (onlyIfCached + maxStale(Int.MAX_VALUE, SECONDS)) is still JVM-only and commented out in commonMain (CacheControl.kt:168), yet maxStale is now available in common code via DurationUnit, so FORCE_CACHE could be promoted to common in this PR.",
+      "severity": "minor"
+    },
+    {
+      "file": "okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt",
+      "line": "46-68",
+      "issue": "Verified non-issue: toDuration(unit).inWholeSeconds saturates at Duration's infinite bound (inWholeSeconds -> Long.MAX_VALUE) and is then clamped by commonClampToInt, matching the old TimeUnit.toSeconds saturation + clampToInt semantics. Claims of new overflow behavior would be wrong.",
+      "severity": "note"
+    },
+    {
+      "file": "okhttp/src/commonTest/kotlin/okhttp3/CacheControlTest.kt",
+      "line": "47-66",
+      "issue": "Common test only exercises DurationUnit.SECONDS; the unit-conversion and clamp paths (e.g. MINUTES/DAYS, Int.MAX_VALUE clamping, negative rejection) are covered only by the JVM-only CacheControlJvmTest and never run on non-JVM targets.",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "commonMain KDoc [TimeUnit.SECONDS] broken / should be DurationUnit.SECONDS (lines 122, 132, 142)", "grade": "good", "score": 1, "note": "Verified: TimeUnit not imported in commonMain; matches my finding."},
+        {"point": "Common test covers only DurationUnit.SECONDS; JVM test covers DAYS/MILLISECONDS but no non-JVM conversion test", "grade": "good", "score": 1, "note": "Verified against CacheControlJvmTest.kt:174-206 and commonTest; accurate and actionable."},
+        {"point": "commonClampToInt has no underflow branch; rename or add Int.MIN_VALUE branch", "grade": "trivial", "score": 0, "note": "Self-acknowledged unreachable; naming nit."},
+        {"point": "Verify Integer.MAX_VALUE vs Int.MAX_VALUE equivalence in bytecode (states it is fine)", "grade": "trivial", "score": 0, "note": "Non-issue presented and immediately dismissed; noise."},
+        {"point": "KDoc should note value is interpreted in the given DurationUnit before conversion", "grade": "trivial", "score": 0, "note": "Marginal doc polish."}
+      ],
+      "missed": [
+        "JVM method-doubling design problem / multiplatform callers cannot use the API portably (human's sole comment)",
+        "FORCE_CACHE can now be promoted to common since maxStale is common"
+      ],
+      "exceeds": [
+        "Broken [TimeUnit.SECONDS] KDoc links in commonMain",
+        "Non-JVM unit-conversion test gap"
+      ],
+      "net": 0
+    },
+    "v6": {
+      "points": [
+        {"point": "commonMain KDoc references [TimeUnit.SECONDS] which is not imported; update to [DurationUnit.SECONDS]", "grade": "good", "score": 1, "note": "Verified; matches my finding."},
+        {"point": "commonClampToInt belongs in -UtilCommon.kt next to toNonNegativeInt per repo convention", "grade": "good", "score": 1, "note": "Verified: toNonNegativeInt at -UtilCommon.kt:262 is the existing general clamping utility; concrete, repo-grounded organization point."},
+        {"point": "Test coverage thin: add other units, negative-value require() test, and Int.MAX_VALUE clamp-path test in commonTest", "grade": "good", "score": 1, "note": "Verified: commonTest exercises only SECONDS; negative/clamp paths exist only in JVM-only test."},
+        {"point": "commonClampToInt asymmetric with toNonNegativeInt (no negative clamp)", "grade": "trivial", "score": 0, "note": "Self-acknowledged unreachable due to require(); consistency nit."},
+        {"point": "build() positional-to-named-parameter reformat is cosmetic diff noise", "grade": "trivial", "score": 0, "note": "Real observation but cosmetic; named args arguably an improvement."}
+      ],
+      "missed": [
+        "JVM method-doubling design problem / multiplatform callers cannot use the API portably (human's sole comment)",
+        "FORCE_CACHE can now be promoted to common since maxStale is common"
+      ],
+      "exceeds": [
+        "Broken [TimeUnit.SECONDS] KDoc links in commonMain",
+        "Utility placement convention (-UtilCommon.kt)",
+        "Common-test coverage of clamp/negative/unit-conversion paths"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Both candidates found the substantive broken [TimeUnit.SECONDS] KDoc links in commonMain and the thin common-test coverage, and neither fabricated anything: every cross-file claim (CacheControlJvmTest contents, toNonNegativeInt in -UtilCommon.kt, the OkHttpClient TimeUnit+Duration overload precedent) checked out against the repo. Crucially, both missed the human maintainer's sole comment - the JVM method-doubling design problem that leaves multiplatform callers unable to use the time APIs portably - and both summaries actually framed the doubling approvingly as backward compatibility / an established pattern. Both also missed that FORCE_CACHE could now be promoted to common since maxStale is. Neither made the wrong overflow claim; v5 explicitly avoided it and v6's clamp discussion was accurate. v6 edges out v5 by converting its repo access into an extra verified, convention-grounded point (utility placement) and a more complete test-gap analysis, while v5 padded with a dismissed bytecode non-issue."
+}

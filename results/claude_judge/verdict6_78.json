@@ -1,0 +1,111 @@
+{
+  "pr": 78,
+  "own_review": [
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": 505,
+      "issue": "New wildcard branch emits the bound as a literal class: block.add(\", $T.$L($T.class)\", Types.class, method, target). If the wildcard bound is itself parameterized (e.g. Set<? extends List<String>>), JavaPoet renders Types.subtypeOf(List<String>.class) (verified by running JavaPoet 1.7.0: '$T.class' on a ParameterizedTypeName emits 'java.util.List<java.lang.String>.class'), which is not valid Java — the generated adapter will not compile. Should recurse via makeType(target) with $L, mirroring the existing ParameterizedTypeName branch. Same defect for type-variable bounds (? extends T renders T.class).",
+      "severity": "major"
+    },
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": 286,
+      "issue": "PR title says 'Handle wildcard types in generics', but the genericTypeNames branch (lines 286-294) is untouched: for a generic @AutoValue class with a property like Set<? extends T>, getTypeIndexInArray() on the WildcardTypeName returns a negative binarySearch result that is emitted literally, producing types[-1] in generated code (runtime ArrayIndexOutOfBoundsException). Wildcards combined with class-level type variables remain broken; the fix only covers makeType().",
+      "severity": "medium"
+    },
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": 500,
+      "issue": "The IllegalArgumentException branch is effectively unreachable: JavaPoet WildcardTypeName always carries exactly one upper bound (verified: WildcardTypeName.subtypeOf(Object).upperBounds == [Object]) and the Java language forbids multi-bound wildcards in source. Also, an uncaught exception in an annotation processor surfaces as a processor crash with a stack trace rather than a Messager-reported compile error.",
+      "severity": "trivial"
+    },
+    {
+      "file": "auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java",
+      "line": 75,
+      "issue": "Tests mutate the existing Set<String> and Map<String, Set<String>> cases into wildcard variants instead of adding new properties, dropping coverage of the plain single-argument parameterized path (Map<String, Number> still covers the multi-arg plain path). No case covers a wildcard whose bound is itself parameterized, which would have exposed the major bug above.",
+      "severity": "minor"
+    },
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": 496,
+      "issue": "Verification notes (no bug): checking lowerBounds before upperBounds is required and correct — in JavaPoet '? super X' has lowerBounds=[X] AND upperBounds=[Object]. Unbounded '?' maps to Types.subtypeOf(Object.class), which Moshi handles. Types.subtypeOf/supertypeOf verified PRESENT in Moshi 1.4.0 (javap on the actual 1.4.0 jar from Maven Central), the exact version pinned in dependencies.gradle.",
+      "severity": "note"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Lost type parameters when wildcard bound is parameterized; should recurse via makeType(target)",
+          "grade": "good",
+          "value": 1,
+          "note": "Bug is real and the proposed fix is correct — matches my own top finding. Mechanism description is partly wrong: $T.class on a ParameterizedTypeName does not 'resolve to the raw type' / silently generate Types.subtypeOf(Map.class); verified with JavaPoet 1.7.0 it emits Map<String, Integer>.class, a compile error in the generated code. Real defect, slightly mis-explained, so good not critical."
+        },
+        {
+          "point": "Moshi version incompatibility: Types.subtypeOf/supertypeOf added in 1.5.0, project on 1.4.0",
+          "grade": "wrong",
+          "value": -1,
+          "note": "FABRICATED. javap on the actual moshi-1.4.0.jar from Maven Central shows both subtypeOf(Type) and supertypeOf(Type) present. dependencies.gradle does pin 1.4.0, but the claimed API absence is false. Known v5 fabrication class on this repo, repeated."
+        },
+        {
+          "point": "Test coverage gap for nested parameterized wildcard bounds",
+          "grade": "good",
+          "value": 1,
+          "note": "Real gap; such a test would have caught the genuine bug in point 1. Verified: no test exercises a wildcard with a parameterized bound."
+        },
+        {
+          "point": "Lower-bound check order is correct but worth noting",
+          "grade": "trivial",
+          "value": 0,
+          "note": "Accurate observation (verified: JavaPoet supertypeOf carries Object upper bound), but identifies no issue."
+        }
+      ],
+      "missed": [
+        "Human: generated/test code coerces the adapter type (Set<String> adapter used as JsonAdapter<Set<? extends String>>) — Moshi's adapter() generics are trusted, slight cheat worth flagging",
+        "Own: genericTypeNames branch (AutoValueMoshiExtension.java:286-294) still mishandles wildcards in generic @AutoValue classes (negative index emitted as types[-1]) despite the PR title 'Handle wildcard types in generics'"
+      ],
+      "exceeds": [],
+      "net": -1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "BLOCKER: Moshi 1.4.0 lacks Types.subtypeOf()/supertypeOf(), dependency must be bumped to 1.5.0+",
+          "grade": "wrong",
+          "value": -1,
+          "note": "FABRICATED, and promoted to headline 'most critical issue'. Verified false via javap on moshi-1.4.0.jar: both methods exist in 1.4.0. v6 had git tools available and still asserted a checkable falsehood about an API's absence."
+        },
+        {
+          "point": "Error message slightly misleading for multi-bound/unbounded wildcard case",
+          "grade": "trivial",
+          "value": 0,
+          "note": "The unbounded-'?' analysis is correct (goes through upperBounds branch, verified), but the criticism is incoherent: the message accurately describes the multi-bound case it guards, and that branch is unreachable anyway since Java forbids multi-bound wildcards. No actionable issue."
+        },
+        {
+          "point": "No test for unbounded wildcards (Set<?>)",
+          "grade": "good",
+          "value": 1,
+          "note": "Real, verifiable coverage gap for a code path the PR newly exercises; suggested expectation Types.subtypeOf(Object.class) is correct."
+        },
+        {
+          "point": "No negative test for multi-bound wildcards (? extends Comparable & Serializable)",
+          "grade": "trivial",
+          "value": 0,
+          "note": "Infeasible suggestion: Java source cannot declare multi-bound wildcards (only type variables take multiple bounds), so the exception path cannot be triggered from a compile-testing input. Reflects a misunderstanding but fabricates no code fact."
+        }
+      ],
+      "missed": [
+        "Human: adapter type coercion in tests/generated code (Set<String> adapter coerced to Set<? extends String>)",
+        "Own/v5: the major bug — wildcard bound emitted as $T.class breaks for parameterized bounds (Set<? extends List<String>> generates non-compiling Types.subtypeOf(List<String>.class)); needs recursive makeType",
+        "Own: genericTypeNames branch still mishandles wildcards in generic @AutoValue classes (types[-1] generated)"
+      ],
+      "exceeds": [],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 1
+  },
+  "qualitative": "Both candidates repeated the known Moshi dependency-version fabrication — claiming Types.subtypeOf/supertypeOf were added in 1.5.0 and absent from the pinned 1.4.0, which javap on the real 1.4.0 jar disproves — and v6 made it worse by branding it the BLOCKER headline of its whole review. v5 is clearly stronger on substance: it found the one genuine bug in the diff (wildcard bounds emitted as $T.class break for parameterized bounds, fixable by recursing through makeType), matching my own top finding, though it mis-described the failure mode as silent raw-type erasure when it is actually non-compiling generated code. v6 found nothing of consequence: beyond the fabricated blocker it offered one decent test-gap suggestion, one incoherent error-message nit, and one infeasible test suggestion for a wildcard form Java cannot express. Neither caught the human reviewer's adapter-coercion concern nor the fact that the genericTypeNames branch still emits types[-1] for wildcards in generic classes despite the PR title promising 'wildcard types in generics'. Net: v5 -1, v6 -3 — v5 wins on the strength of one real major finding despite sharing the same fabrication."
+}

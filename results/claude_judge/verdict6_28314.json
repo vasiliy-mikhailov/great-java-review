@@ -1,0 +1,66 @@
+{
+  "pr": 28314,
+  "own_review": [
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/ (17 renamed files: grpc/7, vertx/8, restclient/1, reactivemessaging/1)",
+      "issue": "Systematic typo in new package name: 'intrumentation' (missing 's') instead of 'instrumentation'. Test packages use the correct spelling (deployment.instrumentation) while runtime packages use the misspelled one — inconsistent, and since the whole point of the PR is package naming, this bakes in a typo that will require another breaking rename later. Also referenced in 6 import statements (OpenTelemetryProcessor, TracerProcessor, TracerRecorder).",
+      "severity": "major"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/config/TracerRuntimeConfig.java:20",
+      "issue": "resourceAttributes widened from package-private to public. Verified necessary: TracerUtil stays in runtime.tracing while TracerRuntimeConfig moved to runtime.config, so cross-package access requires public. Not a bug, but a semantic-surface change in a PR described as a 'pure refactor' — worth a note.",
+      "severity": "minor"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/instrumentation/GrpcOpenTelemetryTest.java:35-55",
+      "issue": "Moving the test out of io.quarkus.opentelemetry.deployment forces 18 explicit imports of proto-generated classes (Greeter, GreeterBean, HelloProto, ...) that remain generated into the old package. The proto java_package should be aligned as part of the reorganization to avoid this import wall (this is the human reviewer's point).",
+      "severity": "minor"
+    },
+    {
+      "file": "repo-wide verification",
+      "issue": "No stale references: grepped entire repo at base — every reference to the moved classes lives inside extensions/opentelemetry/opentelemetry and is updated in the diff; integration-test string references to DelayedAttributes stay valid because that class did not move; removal of OpenTelemetryProcessor.isClassPresent is fully compensated by the static import of QuarkusClassLoader.isClassPresentAtRuntime in TracerProcessor (the 'breaks TracerProcessor' claim from earlier rounds is false). Config root names are annotation-driven and unchanged, so no user-visible config property changes.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "BLOCKER: 'intrumentation' typo across all new instrumentation subpackages", "verdict": "critical", "score": 2, "note": "Verified real, the central issue of the PR; says 'missing e' (actually missing 's') but the finding stands."},
+        {"point": "resourceAttributes made public, unnoted visibility change, confirm deliberate", "verdict": "good", "score": 1, "note": "Real change; stated rationale (SmallRye reflection) is wrong — the actual reason is cross-package access from TracerUtil — but flagging it is legitimate."},
+        {"point": "Package naming diverges from claimed Micrometer alignment (Micrometer uses 'binder')", "verdict": "good", "score": 1, "note": "Verified: extensions/micrometer/runtime/.../binder/{grpc,kafka,vertx,...} exists; matches the human reviewer's 'binder vs intrumenter' remark."},
+        {"point": "isClassPresent helper removal is a clean simplification", "verdict": "trivial", "score": 0, "note": "Correct affirmation, no action."},
+        {"point": "WithSpanInterceptor 'remains in the base tracing package' while TracerProducer moved to cdi — inconsistency", "verdict": "wrong", "score": -1, "note": "False: WithSpanInterceptor was already in runtime/tracing/cdi/ at base (only its import changed); TracerProducer's move INTO cdi makes them consistent."}
+      ],
+      "missed": [
+        "Proto-generated gRPC classes (Greeter, HelloProto, etc.) still generated into the old io.quarkus.opentelemetry.deployment package, forcing 18 explicit imports in the relocated GrpcOpenTelemetryTest — proto package should be aligned too (human's point)."
+      ],
+      "exceeds": [
+        "intrumentation typo (human only alluded via 'binder vs intrumenter')",
+        "Micrometer 'binder' naming divergence",
+        "resourceAttributes visibility change"
+      ],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {"point": "'intrumentation' typo in 17 renamed runtime files plus 6 import statements in OpenTelemetryProcessor/TracerProcessor/TracerRecorder", "verdict": "critical", "score": 2, "note": "Verified real and the counts are exactly right (grpc 7 + vertx 8 + restclient 1 + reactivemessaging 1 = 17; 2 imports in each of 3 files = 6). Same minor 'missing e' slip as v5."},
+        {"point": "resourceAttributes public is correct — matches Micrometer config convention and the class's other public @ConfigItem fields", "verdict": "good", "score": 1, "note": "Verified: Micrometer config fields are public; suppressNonApplicationUris/includeStaticResources already public. Accurate cross-referenced verification of the one semantic change."},
+        {"point": "isClassPresent removal with direct static import is a clean simplification", "verdict": "trivial", "score": 0, "note": "Correct affirmation, no action."},
+        {"point": "Test helpers correctly moved to common subpackage with all imports updated", "verdict": "trivial", "score": 0, "note": "Correct affirmation, no action."}
+      ],
+      "missed": [
+        "Proto-generated gRPC classes still in the old package, causing the 18-import wall in GrpcOpenTelemetryTest — proto package alignment (human's point)."
+      ],
+      "exceeds": [
+        "intrumentation typo with exact file/import counts",
+        "resourceAttributes visibility verification against Micrometer conventions"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 0
+  },
+  "qualitative": "Both candidates nailed the PR's one real defect — the pervasive 'intrumentation' package typo — and both correctly handled the previously-contested isClassPresent removal as a safe simplification rather than a breakage. v5 is broader: its Micrometer 'binder' naming-divergence point is verified and aligns with the human reviewer's actual remark, but it fabricates an inconsistency about WithSpanInterceptor 'remaining in the base tracing package' when that class was already in tracing/cdi (1 absence-fabrication). v6 is narrower but flawless: every claim verifies, including the exact 17-file/6-import typo count and the Micrometer config-visibility cross-check, with zero fabrications. Both missed the human's point that the proto-generated gRPC classes' package should be aligned too (v6's extra miss on binder naming is offset only in the qualitative read, as it falls outside human-plus-judge findings used for scoring). Nets tie at +2; v6 wins on reliability, v5 on coverage."
+}

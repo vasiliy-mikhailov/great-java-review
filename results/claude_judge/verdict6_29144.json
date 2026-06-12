@@ -1,0 +1,65 @@
+{
+  "pr": 29144,
+  "own_review": [
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1338,
+      "issue": "getFileScanPartitionSpec uses requireNonNull(spec, \"Table specs doesn't contain specId: \" + specId): (a) the message string is concatenated eagerly on every call, on the per-file hot path this perf PR is optimizing; (b) NPE is the wrong exception type for a guaranteed-invariant/metadata condition -- checkState/verifyNotNull is more idiomatic (matches the human reviewer's checkState comment); (c) grammar: 'specs doesn't' should be 'specs don't'.",
+      "severity": "minor"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java",
+      "line": 447,
+      "issue": "In pruneFileScanTask the spec lookup is hoisted above the pathDomain and fileModifiedTimeDomain early-return branches, so the lookup is wasted when those prune the task. Only a HashMap.get, so negligible.",
+      "severity": "trivial"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1335,
+      "issue": "Behavior change: task.spec() always succeeded (spec string is carried with the task), whereas the map lookup throws if the file's specId is absent from table.specs(). Safe in practice -- planFiles only yields files whose spec exists in current metadata, and IcebergSplitSource:361 already assumes this for delete files -- but worth noting.",
+      "severity": "info"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/StructLikeWrapperWithFieldIdToIndex.java",
+      "line": 33,
+      "issue": "Verified at base commit: the removed createStructLikeWrapper(FileScanTask) overload had exactly 3 callers (IcebergMetadata:942, IcebergSplitSource:416, PartitionsTable:181) and the re-signatured (StructType->PartitionSpec) overload had 1 caller (FilesTablePageSource:324); all 4 are updated in the PR and there are no test usages, so no compile breaks. Likewise the removed getPartitionKeys(FileScanTask) overload's only caller (IcebergSplitSource:464) is updated. task.spec() is lazily parsed but cached per task, so the per-task JSON-parse savings claimed by the PR are real.",
+      "severity": "positive"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Grammar in error message: 'Table specs doesn't contain' should be plural", "grade": "trivial", "score": 0, "note": "Real but cosmetic."},
+        {"point": "Confirmed all 4 callers of the removed/re-signatured createStructLikeWrapper overloads are updated; no external breakage", "grade": "good", "score": 1, "note": "Verified true against base commit (3 callers of the 1-arg overload + FilesTablePageSource:324)."},
+        {"point": "Confirmed removed getPartitionKeys(FileScanTask) overload had a single caller, updated in the PR; other callers already used the 2-arg form", "grade": "good", "score": 1, "note": "Verified true (IcebergSplitSource:464; IcebergStatistics:95, IcebergPageSourceProvider:325, IcebergMetadata:956/3415 use the 2-arg form)."},
+        {"point": "Verified specsById is a final field initialized in the constructor from icebergTable.specs(); all new usages are in instance methods", "grade": "good", "score": 1, "note": "Verified true (field at line 178, init at line 221)."},
+        {"point": "requireNonNull guard is a good fail-fast defensive check", "grade": "trivial", "score": 0, "note": "Accurate praise, but the human reviewer's actual ask (checkState) goes unmade."}
+      ],
+      "missed": [
+        "Human: use checkState instead of requireNonNull for the guaranteed-present spec -- IcebergUtil.java:1338 (v5 discussed the guard but endorsed it rather than flagging the idiom/eager-message issue)"
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {"point": "requireNonNull with descriptive message is a good defensive check; Iceberg guarantees all file spec IDs are registered so it should never be null in practice", "grade": "trivial", "score": 0, "note": "Accurate praise and correctly states the invariant, but stops one step short of the human's actual ask: since it IS guaranteed, checkState is the right idiom, not requireNonNull."},
+        {"point": "Exactly one existing two-parameter createStructLikeWrapper call site (FilesTablePageSource:324), correctly updated; no orphaned callers", "grade": "good", "score": 1, "note": "Verified true against base commit -- grep confirms FilesTablePageSource:324 is the only (StructType, StructLike) caller."},
+        {"point": "getPartitionKeys(FileScanTask) overload correctly removed; only caller IcebergSplitSource:464 updated to the two-parameter form", "grade": "good", "score": 1, "note": "Verified true."},
+        {"point": "IcebergMetadata: fetching specsById once outside the loop is the correct pattern", "grade": "trivial", "score": 0, "note": "Accurate but merely restates the diff; no verification beyond it."},
+        {"point": "PartitionsTable: same correct pattern, specsById fetched once and reused per task", "grade": "trivial", "score": 0, "note": "Accurate diff restatement."},
+        {"point": "IcebergSplitSource lines 410/447/489/733 consistently replace spec() with map lookup; specsById field already populated in the constructor from icebergTable.specs()", "grade": "good", "score": 1, "note": "Verified true (field at 178, init at 221); line references match the base file."}
+      ],
+      "missed": [
+        "Human: use checkState instead of requireNonNull for the guaranteed-present spec -- IcebergUtil.java:1338 (v6 explicitly stated the spec is guaranteed present yet endorsed requireNonNull instead of drawing the checkState conclusion; also missed the eagerly-concatenated message on the hot path)"
+      ],
+      "exceeds": [],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Both candidates are fully grounded with zero fabrications: every caller-migration and field-initialization claim checks out against the base commit. v5 earns its points on three verified compile-safety/initialization checks and adds only a trivial grammar nit; v6 covers the diff more systematically with line-precise references (410/447/489/733 all match the base file) and the same three verified claims, but pads its review with diff-restating praise that adds no information. Strikingly, v6 articulates the exact premise of the human reviewer's comment -- the spec is guaranteed to be present -- yet endorses requireNonNull instead of concluding that checkState is the right idiom, so both candidates take the same single miss. Neither notes the eagerly-concatenated error message on the very hot path this perf PR targets. Net result is a tie at +2: equally accurate, with v6 broader but no sharper."
+}

@@ -1,0 +1,143 @@
+{
+  "pr": 956,
+  "data_note": "The 'human' field in cand6_956.json is mismatched: it reviews Apache Fluo cache-config code (FluoConfigurationImpl.java), not Drifty PR #956. Per prior round, the real human review for this PR was a bare approval with no findings. Missed-baseline therefore = my own verified findings.",
+  "own_review": [
+    {
+      "loc": "Website/app/disclaimer/page.tsx:2-4",
+      "issue": "Fetch URL targets SaptarshiSarkar12/Drifty/master/disclaimer.txt — the MAIN repo's master, where disclaimer.txt does not exist until this PR merges (verified absent at base commit). Until merge, every CI/preview build (including the linked Vercel preview) renders GitHub's raw '404: Not Found' body inside the <pre> as the disclaimer. Chicken-and-egg; the PR description's 'loaded from my fork' note is stale — the diff already points at the main repo.",
+      "severity": "medium"
+    },
+    {
+      "loc": "Website/app/disclaimer/page.tsx:2-5",
+      "issue": "No error handling: no response.ok check, no try/catch, no fallback UI. A raw.githubusercontent outage throws during prerender; a 404 silently renders the error body as legal text. Same flaw exists in privacy-policy/terms pages, but this is new code; the in-repo download page (try/catch l.37, ok-check l.41, Retry l.102) shows the better pattern.",
+      "severity": "medium"
+    },
+    {
+      "loc": "Website/app/disclaimer/page.tsx:3",
+      "issue": "master-branch URL is mutable; sibling privacy-policy page pins a commit SHA (c86ce857...). Better still: disclaimer.txt lives in the same repo — read it locally at build time and drop the network dependency.",
+      "severity": "minor"
+    },
+    {
+      "loc": "README.md:89-96 / disclaimer.txt:1-8",
+      "issue": "Disclaimer text duplicated in README.md and disclaimer.txt; copies will drift.",
+      "severity": "minor"
+    },
+    {
+      "loc": "Website/components/Footer.tsx:16",
+      "issue": "Unrelated, undocumented styling change: ul flex-1 -> flex-auto and space-x-6 -> space-x-4 alters footer column balance site-wide (copyright and social columns remain flex-1).",
+      "severity": "minor"
+    },
+    {
+      "loc": "Website/package-lock.json:289-317",
+      "issue": "Unrelated @eslint/plugin-kit 0.3.1 -> 0.3.4 bump (plus nested @eslint/core 0.15.1) with no package.json change — scope creep (incidentally a dev-only ReDoS fix).",
+      "severity": "trivial"
+    },
+    {
+      "loc": "disclaimer.txt:8",
+      "issue": "Missing trailing newline.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "page.tsx:4 claims the fetch URL 'points to the author's fork' and should be updated",
+          "grade": "wrong",
+          "score": -1,
+          "note": "False: SaptarshiSarkar12/Drifty is the main repo (PR author is AvinashAbbigeri). v5 echoed the stale PR-description note instead of verifying the diff, which already contains the main-repo URL. Counted as an absence-fabrication."
+        },
+        {
+          "point": "page.tsx:4 recommend commit-pinned URL like privacy-policy (c86ce857); notes terms page also unpinned/fragile",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: privacy-policy pins a SHA; terms fetches master/LICENSE unpinned."
+        },
+        {
+          "point": "page.tsx:1-15 no error handling (no response.ok / try/catch / fallback); matches existing pages; suggests guard across all three legal pages",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified. 'Crash the build' is overstated for a 404 (text() succeeds, error body rendered) but correct for network failures during prerender."
+        },
+        {
+          "point": "disclaimer.txt missing trailing newline",
+          "grade": "trivial",
+          "score": 0
+        },
+        {
+          "point": "README vs disclaimer.txt duplication, drift risk, suggests linking /disclaimer instead",
+          "grade": "good",
+          "score": 1
+        },
+        {
+          "point": "package-lock.json unrelated @eslint/plugin-kit bump, recommend reverting for scope",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: no package.json change in the PR."
+        },
+        {
+          "point": "Footer space-x-6 -> space-x-4 'reasonable, no objection'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Raises no actionable concern and omits the flex-1 -> flex-auto behavioral half of the change."
+        }
+      ],
+      "missed": [
+        {
+          "finding": "disclaimer.txt does not exist on main-repo master at base, so pre-merge preview/CI builds render '404: Not Found' as the disclaimer (own_review #1). v5's pin-before-merge remediation is adjacent but it never states the file is absent today — and its 'fork' misread shows it did not actually check.",
+          "score": -1
+        }
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "page.tsx:3-4 no error handling on fetch; cites in-repo download/page.tsx pattern (try/catch, response.ok, error UI with Retry) as the remediation; suggests retrofitting privacy-policy/terms",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: download/page.tsx has try/catch (l.37), ok-check (l.41), Retry button (l.102). 'Crashes at build/SSG time' on a 404 is slightly overstated (404 body renders silently), correct for network failure."
+        },
+        {
+          "point": "page.tsx:3 PR description contradicts the code: URL already points to main repo SaptarshiSarkar12/Drifty, not a fork; asks to clarify which is correct",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified and exactly right — this is the discrepancy v5 turned into a fabrication. v6 read the diff instead of parroting the stale description."
+        },
+        {
+          "point": "disclaimer.txt:8 missing trailing newline",
+          "grade": "trivial",
+          "score": 0
+        },
+        {
+          "point": "README vs disclaimer.txt duplicated content, drift risk, consolidate to single source of truth",
+          "grade": "good",
+          "score": 1
+        },
+        {
+          "point": "Footer.tsx:16 space-x-6 -> space-x-4 incidental change; call out if intentional, revert if not",
+          "grade": "good",
+          "score": 1,
+          "note": "Accurate and actionable, though it omits the flex-1 -> flex-auto half of the same line's change."
+        }
+      ],
+      "missed": [
+        {
+          "finding": "disclaimer.txt does not exist on main-repo master at base, so pre-merge preview/CI builds render '404: Not Found' as the disclaimer (own_review #1). v6 names 404 as a hypothetical failure mode and even inspected the URL/fork question, but never states the file is absent on master today.",
+          "score": -1
+        }
+      ],
+      "exceeds": [
+        "Catching that the PR description's 'loaded from my fork' note is stale against the actual diff — the exact trap the other candidate fell into; verified correct.",
+        "Citing the in-repo download page (try/catch + response.ok + Retry UI) as a concrete, verified remediation pattern beyond anything in the human reference."
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 0
+  },
+  "qualitative": "The supplied human reference is mismatched (an Apache Fluo review), so both candidates were judged against my own verified findings; the real human review from prior rounds was a bare approval. v6 is the stronger review: it correctly identified that the fetch URL already points to the main repo and flagged the stale PR description, precisely where v5 committed its one absence-fabrication by asserting the URL 'points to the author's fork'. v6 also grounded its error-handling point in the repo's own download-page pattern (verified: try/catch, ok-check, Retry button) and made its footer scope-creep point actionable, though it missed the unrelated package-lock churn that v5 caught. Neither candidate landed the sharpest finding — disclaimer.txt is absent from master at base, so every pre-merge build renders GitHub's raw '404: Not Found' as the legal disclaimer — and both were charged one miss for it (applied symmetrically this round, unlike round 5's leniency toward v5). Net: v5 +2, v6 +3; v6 wins on factual discipline and verified depth, v5 on breadth of scope-creep coverage."
+}

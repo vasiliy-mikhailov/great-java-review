@@ -1,0 +1,42 @@
+{
+  "pr": 1162,
+  "own_review": [
+    {"file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java", "line": "74-87", "issue": "Expected violations use hardcoded full message strings ('Condition with && at line N position M need optimization...') instead of the getCheckMessage(MSG_KEY, \"&&\", line, col) convention used by test() in the same class and across the codebase; brittle against message/i18n changes. The MSG_KEY static import is still used by the other method, so the inconsistency is glaring.", "severity": "major"},
+    {"file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "line": "118", "issue": "New method typeGuardAfterParenthesizedPatternWithMethodCall uses 'case (String s) && s.isEmpty()' — the removed JDK 17/18 preview &&-pattern-guard syntax (Java 21/JEP 441 uses 'when'). This reintroduces the exact syntax the PR claims to be eliminating ('align with Java 21'), directly contradicting the stated purpose.", "severity": "major"},
+    {"file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "line": "4-21 vs 50-67, 23-38 vs 69-84", "issue": "typeGuardAfterParenthesizedTrueSwitchStatement1 and ...2 are now byte-identical duplicates (they originally differed by && line placement, which no longer exists); the switch-expression pair is identical modulo 'default' vs 'case Object x'. Method names 'typeGuardAfterParenthesized...' are misleading: the bodies contain no parenthesized type guards and no && conditions, so these methods are inert with respect to the check.", "severity": "medium"},
+    {"file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "line": "whole file", "issue": "The original test purpose — violations firing inside instanceof/case pattern guards (old 32:17 and 66:34) — is lost; the 7 new expected violations come from plain if-chains and ordinary boolean expressions, weakening pattern-matching-specific coverage this file exists for. (Functional correctness verified empirically in prior rounds: all 7 expected violations fire.)", "severity": "medium"},
+    {"file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java", "line": "EOF", "issue": "Stray blank line added after the closing brace (git apply warns 'new blank line at EOF'); likely to trip the project's own checkstyle rules.", "severity": "minor"},
+    {"file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "line": "89 vs 41/43/87/112", "issue": "'// violation' marker kept only on line 89; lines 41, 43, 87, 112 also carry expected violations but have no marker — inconsistent annotation.", "severity": "minor"},
+    {"file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java", "line": "36 vs 82", "issue": "Twin switch expressions end differently ('default ->' vs 'case Object x ->') for no reason; purely stylistic since 'case Object x' is a total pattern and the switch is exhaustive either way (file is noncompilable resources anyway).", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Input line 118 retains preview pattern syntax, contradicting the 'align with Java 21' claim", "grade": "good", "value": 1, "note": "Location and headline verified real (matches own finding #2). However the diagnosis blames 'parentheses around type pattern' and the proposed fix 'case String s && s.isEmpty()' is itself invalid Java 21 — JEP 441 uses 'when' guards, not &&. Right catch, wrong remediation."},
+        {"point": "Input line 82: switch expression 'missing a default case... non-exhaustive'", "grade": "wrong", "value": -1, "note": "Verified false: 'case Object x' is a total/unconditional pattern, so the switch expression IS exhaustive and compiles fine (and the file is noncompilable resources regardless). The buried consistency observation is real but trivial; the headline technical claim is fabricated."},
+        {"point": "Input line 112 testCoverageCase praise ('good coverage improvement')", "grade": "trivial", "value": 0, "note": "Accurate commentary, not an actionable finding."}
+      ],
+      "missed": [
+        "Hardcoded violation message strings replacing getCheckMessage(MSG_KEY,...) convention in LogicConditionNeedOptimizationCheckTest.java:74-87 (the main legitimate review ask)",
+        "SwitchStatement1/2 now byte-identical inert duplicates with misleading 'typeGuardAfterParenthesized...' names; original pattern-guard violation coverage (32:17, 66:34) lost"
+      ],
+      "exceeds": ["Line 118 preview-syntax contradiction (human reference contains no technical findings)"],
+      "net": -2
+    },
+    "v6": {
+      "points": [
+        {"point": "Test lines 76-85: hardcoded inline violation strings instead of getCheckMessage(MSG_KEY,...), breaking project convention", "grade": "good", "value": 1, "note": "Verified real and the most important legitimate finding (matches own finding #1); precise file/line and correct remedy."},
+        {"point": "Input line 81/82: 'case Object x' vs 'default' inconsistency between twin switch expressions; 'default is safer (handles null)'", "grade": "trivial", "value": 0, "note": "The consistency observation is real but cosmetic. The supporting claim that default 'handles null' is false — in pattern switches null throws NPE unless 'case null' is present; default does not match null. Leads with the true part, so scored trivial rather than wrong."},
+        {"point": "Original parenthesized pattern guards removed entirely (old violations 32/66 gone), only one guard remains; suggests retaining pattern-guard tests since the file validates pattern-matching behavior", "grade": "good", "value": 1, "note": "Verified real (matches own finding #4 — loss of the file's original test purpose). Does not, however, flag that the one remaining guard at 118 itself contradicts the Java 21 claim."}
+      ],
+      "missed": [
+        "Line 118 'case (String s) && s.isEmpty()' reintroduces the removed preview &&-guard syntax, contradicting the PR's Java 21 alignment claim (v6 mentions line 118 neutrally as a guard 'remaining' rather than flagging it as the inconsistency)"
+      ],
+      "exceeds": ["Hardcoded getCheckMessage convention violation", "Lost pattern-guard coverage purpose"],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "human_reference_note": "Human comment ('please remove all changes from non Test and non Input') is inapplicable to the diff as provided — only a Test and an Input file are changed (likely refers to an earlier PR revision); not counted as missable for either candidate.",
+  "qualitative": "v6 is clearly the stronger review on this PR: it lands the single most important legitimate finding (hardcoded message strings replacing the getCheckMessage convention) with precise locations and the right fix, and it correctly identifies that the rewrite destroyed the file's original pattern-guard coverage purpose; its only real gap is treating line 118's leftover preview guard as something to preserve rather than the contradiction it is, plus a false 'default handles null' aside. v5 finds the line-118 contradiction — the one substantive issue v6 soft-pedals — but undermines it with a wrong remediation (suggesting && guard syntax that is equally invalid in Java 21), fabricates a non-exhaustiveness claim about a total 'case Object x' pattern, pads with a praise point, and misses both the hardcoded-message convention violation and the duplicated inert methods. Neither candidate fabricated absences. Net: v6 +1, v5 -2."
+}

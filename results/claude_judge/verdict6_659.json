@@ -1,0 +1,59 @@
+{
+  "pr": 659,
+  "own_review": [
+    {"file": ".github/workflows/build.yml", "line": "136-139", "issue": "No readiness gate: server is started with 'nohup java ... &' and the conformance suite runs immediately afterwards with no health-check/wait loop; whether the server is up when npx connects is a race (partially masked by npx download time) -> flaky CI", "severity": "major"},
+    {"file": ".github/workflows/build.yml", "line": "141-144", "issue": "'Stop test server' is gated on steps.start_test_server.outcome == 'success' but lacks always(); the implicit success() means the step is skipped whenever the conformance step fails, which is exactly when cleanup is needed. Should be if: always() && steps.start_test_server.outcome == 'success'", "severity": "major"},
+    {"file": ".github/workflows/build.yml", "line": "139", "issue": "npx @modelcontextprotocol/conformance is unpinned, so every CI run pulls the latest package version; a breaking release of the conformance suite breaks CI for unrelated PRs (the human reviewer's point: latest is a deliberate interim choice until a stable release exists, then pin)", "severity": "major"},
+    {"file": ".github/workflows/build.yml", "line": "131-134", "issue": "The 'Start test server' step backgrounds the JVM, so it always exits 0 even if the jar crashes on startup; the outcome=='success' guard is therefore meaningless, and nohup.out is never uploaded, so startup failures surface only as opaque conformance-step failures", "severity": "minor"},
+    {"file": "conformance/src/main/resources/application.properties", "line": "6", "issue": "CORS origin 'http://::1' is not a syntactically valid origin (IPv6 literal must be bracketed); the correct 'http://[::1]' is already in the list, so this entry is dead", "severity": "trivial"},
+    {"file": "conformance/pom.xml", "line": "60-117", "issue": "Copied archetype boilerplate: quarkus-junit5 test dependency, surefire/failsafe configuration and the native profile, but the module contains no tests; native-image-agent goal likewise unused", "severity": "trivial"},
+    {"file": ".github/workflows/build.yml", "line": "124,127", "issue": "Trailing whitespace on the 'Build with Maven' run line and after 'mvn -B clean install'; single-value os/java matrices are noise", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Stop test server skipped when conformance step fails; needs always()", "grade": "good", "score": 1, "note": "Verified real: implicit success() in the if expression skips cleanup exactly on test failure"},
+        {"point": "No readiness check before running conformance tests; also flags 2s dynamic-registration window", "grade": "good", "score": 1, "note": "Verified real race; the key CI reliability issue. Bundles the dynamic-registration timing concern correctly"},
+        {"point": "Node.js 24 may not be resolvable / 'not yet a stable LTS release'", "grade": "wrong", "score": -1, "note": "Stale-knowledge fabrication: Node 24 IS an LTS release; setup-node resolves it fine"},
+        {"point": "Module excluded from parent reactor; suggest README", "grade": "trivial", "score": 0, "note": "Accurate observation, intentional design (like samples/), no defect"},
+        {"point": "ProgressTracker advance additive-vs-absolute rumination", "grade": "trivial", "score": 0, "note": "Self-resolving: ProgressTracker.advance javadoc says 'Advance the progress BY the specified value' (additive); code is correct, no issue raised"},
+        {"point": "ElicitationRequest schema constructors verified", "grade": "trivial", "score": 0, "note": "Verification note, not a finding; arities do match the records"},
+        {"point": "Dynamic resource name vs URI mismatch — 'verify'", "grade": "trivial", "score": 0, "note": "Speculative; name is the internal feature id, URI is set separately by design"},
+        {"point": "CORS origins lack ports, conformance client may be rejected", "grade": "trivial", "score": 0, "note": "Speculative hedge; CORS only applies if the CLI sends an Origin header, and the PR was merged with these origins working"}
+      ],
+      "missed": [
+        "npx @modelcontextprotocol/conformance package version unpinned — the human's sole point (latest-for-now vs pinning)"
+      ],
+      "exceeds": [
+        "always() cleanup condition (real, beyond human review)",
+        "readiness gate before conformance run (real, beyond human review)"
+      ],
+      "net": 0
+    },
+    "v6": {
+      "points": [
+        {"point": "Node.js version 24 does not exist; latest are 20.x and 22.x", "grade": "wrong", "score": -1, "note": "Flat fabrication from stale knowledge: Node 24 exists and is LTS. Asserted unhedged as the top 'critical' finding"},
+        {"point": "Stop test server only on success, orphaned process; use always()", "grade": "good", "score": 1, "note": "Verified real"},
+        {"point": "No server readiness check before conformance run", "grade": "good", "score": 1, "note": "Verified real; correct fix proposed"},
+        {"point": "Missing needs: [build] — conformance job may fail to resolve 999-SNAPSHOT if run in parallel", "grade": "wrong", "score": -1, "note": "False: GitHub jobs run on separate runners with separate local Maven repos, so needs:[build] would provide nothing; the conformance job is self-contained — its own 'Build with Maven' step (mvn clean install -DskipTests at root) installs 999-SNAPSHOT before the conformance module builds. There is no cross-job artifact dependency"},
+        {"point": "2-second dynamic registration delay may cause conformance failures", "grade": "trivial", "score": 0, "note": "Speculative timing concern overlapping the readiness point; conformance suite handles list_changed notifications, and merged PR passes"},
+        {"point": "CORS origins may be too restrictive; 'requests without an Origin header ... may be rejected'", "grade": "trivial", "score": 0, "note": "Speculative and partly inaccurate: with no Origin header the CORS filter does not apply at all"},
+        {"point": "@Scheduled/quarkus-scheduler is a new pattern, zero prior uses", "grade": "trivial", "score": 0, "note": "Absence claim verified TRUE via repo grep, but purely informational ('this works')"},
+        {"point": "Standalone module without parent pom is intentional", "grade": "trivial", "score": 0, "note": "Correct, informational"}
+      ],
+      "missed": [
+        "npx @modelcontextprotocol/conformance package version unpinned — the human's sole point"
+      ],
+      "exceeds": [
+        "always() cleanup condition (real, beyond human review)",
+        "readiness gate before conformance run (real, beyond human review)"
+      ],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 1
+  },
+  "qualitative": "Both candidates found the two genuine CI defects (missing always() on the cleanup step and the absent readiness gate) and both missed the human's sole point about pinning the npx conformance package, and both repeated the stale-knowledge Node-24 fabrication — but with different confidence: v5 hedged ('may not be resolvable', 'verify'), while v6 asserted 'Node.js version 24 does not exist' unhedged as its lead critical finding, which is the more damaging form. v6 added a second outright-wrong point (needs: [build]) that misunderstands both GitHub Actions job isolation and the fact that the conformance job rebuilds the root reactor itself, despite v6 having git tools that show the 'Build with Maven' step in the same job. v6's tool access did show through positively in verified absence/presence claims (zero @Scheduled uses, 15 @Startup uses — both exactly correct), but those were informational rather than findings. v5's extra verification notes (schema constructor arities, reactor exclusion) were accurate filler; its ProgressTracker rumination self-resolved harmlessly. Net: v5 edges out v6 because it fabricated less confidently and avoided the bogus needs:[build] claim."
+}

@@ -1,0 +1,128 @@
+{
+  "pr": 28116,
+  "own_review": [
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "142-165",
+      "issue": "The new 8-arg overload has no production caller in this PR; the only caller (ShowCreateMaterializedTableOperation.java:62) still uses the 6-arg form. The flags are speculative API until wired through the operation/config layer.",
+      "severity": "medium"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "181-186",
+      "issue": "Suppressing FRESHNESS/REFRESH_MODE means SHOW CREATE output no longer round-trips to an equivalent table (re-executing it falls back to platform defaults). Verified the parser grammar makes both clauses optional ([<FRESHNESS>...] in parserImpls.ftl ~line 2033), so the output still parses; this is a fidelity/documentation concern, not a syntax break.",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "142-150",
+      "issue": "8 positional parameters including 4 booleans (isTemporary, createOrAlter, includeFreshness, includeRefreshMode) hurt call-site readability; an options object or enum set would be safer against transposition.",
+      "severity": "minor"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "126/141",
+      "issue": "Identical javadoc duplicated on both overloads; the 6-arg one could state it delegates with both clauses included.",
+      "severity": "trivial"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/test/java/org/apache/flink/table/api/internal/ShowCreateUtilTest.java",
+      "line": "150-192",
+      "issue": "Positive: new parameterized test verified correct and deterministic — FROM_BEGINNING start mode avoids the timestamp-normalization the other materialized-table tests need; expected strings match extractFreshness/extractRefreshMode/extractStartMode output exactly; createResolvedMaterialized helper signature matches; CsvSource import added. Conditional newline handling in the production change is correct (true,true output identical to before).",
+      "severity": "positive"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Delegation pattern follows existing convention; 'extractFormattedOptions has a similar 2-arg -> 3-arg delegation'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Fabricated supporting detail: verified the 2-arg extractFormattedOptions (line 412) does NOT delegate to the 3-arg (line 446); they are independent implementations that even differ (2-arg sorts keys via TreeSet, 3-arg does not)."
+        },
+        {
+          "point": "Conditional emission correct, no orphan newlines, (true,true) identical to original",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate confirmation of correct-as-is code; no action."
+        },
+        {
+          "point": "Parameterized test covers all 4 flag combinations, dynamically built expected string",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate praise."
+        },
+        {
+          "point": "Test does not validate flags alongside WITH/partitioning/distribution; those combos only covered via 6-arg (true,true) path",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified accurate coverage-gap observation; the new test uses a bare table (no options/partitions/distribution)."
+        },
+        {
+          "point": "No production callers exercise the new 8-arg overload; consider wiring flags into ShowCreateMaterializedTableOperation from config",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: only caller is ShowCreateMaterializedTableOperation.java:62 using the 6-arg form. Matches my own finding; actionable."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Coverage-gap note on flag x WITH/partition/distribution combinations",
+        "No-production-caller observation with concrete wiring suggestion"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "6-arg -> 8-arg delegation correct, backward compatible; single production caller identified",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate confirmation; caller claim verified true."
+        },
+        {
+          "point": "Conditional output clean; both-false case yields START_MODE then AS with no blank lines, well-formed SQL",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Formatting claim verified true; 'well-formed SQL' is defensible since the parser grammar makes FRESHNESS/REFRESH_MODE optional (verified in parserImpls.ftl), though round-trip fidelity is still reduced."
+        },
+        {
+          "point": "Overload is public but class is @Internal (consistent); caller has no fields/constructor params to carry the flags — downstream integration is a follow-up",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: @Internal at ShowCreateUtil.java:60; ShowCreateMaterializedTableOperation has only tableIdentifier and createOrAlter fields. Surfaces the unused-flags gap with concrete grounding."
+        },
+        {
+          "point": "Boolean-flag pattern diverges from class's Optional.ifPresent convention; justified because extractFreshness/extractRefreshMode always return non-empty; suggest javadoc explaining flags",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: extractFreshness (line 342) and extractRefreshMode (line 349) unconditionally return formatted strings. Accurate, mildly actionable design observation."
+        },
+        {
+          "point": "CsvSource test covers all four permutations with dynamically built expected output",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate praise."
+        },
+        {
+          "point": "Test fixture sets IntervalFreshness.ofMinute(2) and RefreshMode.CONTINUOUS so there is content to emit/suppress",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate but minor praise."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "@Internal visibility check and caller-field inspection grounding the unused-flags gap",
+        "Optional-vs-boolean convention analysis with verified non-empty extractors"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "This is a clean additive PR; the human reference only asked for a test in ShowCreateUtilTest, and the diff already contains exactly that, so there were no material misses available — grading turned on accuracy of analysis. Both candidates correctly identified the most substantive issue (the new flags have no production caller), and neither produced absence fabrications. v5 is undermined by one fabricated repo claim: it asserts extractFormattedOptions has a 'similar 2-arg -> 3-arg delegation' as precedent, but the two overloads are independent, non-delegating implementations. v6 is more deeply grounded — its @Internal annotation check, caller-field inspection, and the verified observation that extractFreshness/extractRefreshMode always return non-empty strings are all accurate, and even its 'well-formed SQL' claim survives scrutiny since the parser grammar makes both clauses optional. v6 edges out v5 on verified depth without false claims."
+}

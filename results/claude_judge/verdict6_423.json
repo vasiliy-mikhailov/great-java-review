@@ -1,0 +1,78 @@
+{
+  "pr": 423,
+  "own_review": [
+    {
+      "file": "rubix-bookkeeper/src/main/java/com/qubole/rubix/bookkeeper/LocalDataTransferServer.java",
+      "line": "179-190 (post-patch)",
+      "issue": "Bounded ThreadPoolExecutor with SynchronousQueue keeps the default AbortPolicy. When all (default 4096) workers are busy, threadPool.execute() throws RejectedExecutionException, a RuntimeException not covered by the existing catch blocks (AsynchronousCloseException/IOException), so the accept loop dies and the server silently stops accepting connections. The rejected SocketChannel is also never closed (fd leak). Needs CallerRunsPolicy or catch+close.",
+      "severity": "critical"
+    },
+    {
+      "file": "rubix-bookkeeper/src/main/java/com/qubole/rubix/bookkeeper/LocalDataTransferServer.java",
+      "line": "53 (import block)",
+      "issue": "Static import of CacheConfig.getServerMaxThreads is added but never used in the file. Checkstyle config src/checkstyle/checks.xml:164 enables UnusedImports and runs at the validate phase, so this fails the build.",
+      "severity": "major (build-breaking)"
+    },
+    {
+      "file": "rubix-spi/src/main/java/com/qubole/rubix/spi/CommonUtilities.java",
+      "line": "19 (import block)",
+      "issue": "Static import of Executors.defaultThreadFactory is added but never used (ThreadFactoryBuilder does not need it). Same UnusedImports checkstyle violation, build-breaking.",
+      "severity": "major (build-breaking)"
+    },
+    {
+      "file": "rubix-spi/src/main/java/com/qubole/rubix/spi/CacheConfig.java",
+      "line": "161",
+      "issue": "Changing DEFAULT_SERVER_MAX_THREADS from Integer.MAX_VALUE to 4096 silently changes BookKeeperServer's thrift TThreadPoolServer maxWorkerThreads (BookKeeperServer.java:141) for all deployments not setting rubix.cache.bookkeeper.max-threads. Intentional per title but undocumented; the new getLocalTransferServerMaxThreads also reuses the same constant, coupling the two servers' defaults.",
+      "severity": "medium"
+    },
+    {
+      "file": "rubix-spi/src/main/java/com/qubole/rubix/spi/CacheConfig.java",
+      "line": "72",
+      "issue": "New key 'rubix.local.transfer.max-threads' is inconsistent with existing naming ('rubix.network.local.transfer.server.port', 'rubix.cache.bookkeeper.max-threads') and is not documented.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "threadPool local to run(), never shut down on stop(); promote to field and shutdown", "grade": "good", "value": 1, "note": "Verified real (stop() only closes listener). Minor inaccuracy: loop exits via the AsynchronousCloseException handler, not the IOException handler. Pre-existing pattern (cached pool was also never shut down) but the PR touches the line."},
+        {"point": "SynchronousQueue + maxThreads + default AbortPolicy -> uncaught RejectedExecutionException crashes the accept loop", "grade": "critical", "value": 2, "note": "Verified blocker: catch blocks cover only AsynchronousCloseException/IOException; a saturated pool kills the server's accept thread."},
+        {"point": "DEFAULT_SERVER_MAX_THREADS change silently caps BookKeeperServer thrift pool (BookKeeperServer.java:141)", "grade": "good", "value": 1, "note": "Verified: getServerMaxThreads feeds TThreadPoolServer.maxWorkerThreads."},
+        {"point": "Praise for separate config key", "grade": "trivial", "value": 0},
+        {"point": "Javadoc/ThreadFactoryBuilder sequential-counter musing", "grade": "trivial", "value": 0}
+      ],
+      "missed": [
+        "Unused static import getServerMaxThreads in LocalDataTransferServer.java (checkstyle UnusedImports is build-breaking at validate phase)",
+        "Unused static import defaultThreadFactory in CommonUtilities.java (same build-breaking violation)",
+        "Human's point on the 60s/1m keep-alive choice at LocalDataTransferServer.java:184"
+      ],
+      "exceeds": [
+        "Missing executor shutdown on server stop — verified real, present in neither the human reference nor my own review"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {"point": "Unused import getServerMaxThreads in LocalDataTransferServer", "grade": "good", "value": 1, "note": "Verified real; v6 framed it as 'confusion' and missed that checkstyle UnusedImports makes it build-breaking, so good not critical."},
+        {"point": "threadPool never shut down; cites ObjectPool.java:110-122 and ObjectPoolPartition.java:225-236 shutdown conventions", "grade": "good", "value": 1, "note": "Verified, including the cited line ranges (both shutdown() methods exist exactly there). Correctly identifies AsynchronousCloseException as the exit path."},
+        {"point": "DEFAULT_SERVER_MAX_THREADS change caps BookKeeperServer thrift pool by default", "grade": "good", "value": 1, "note": "Verified."},
+        {"point": "Shared default between local transfer and BookKeeper servers; consider dedicated default", "grade": "trivial", "value": 0, "note": "Real but soft design suggestion, no defect."},
+        {"point": "Javadoc clarification for threadsNamed", "grade": "trivial", "value": 0}
+      ],
+      "missed": [
+        "CRITICAL: uncaught RejectedExecutionException from the bounded pool (SynchronousQueue + AbortPolicy) kills the accept loop when saturated — the most important defect in the PR",
+        "Unused static import defaultThreadFactory in CommonUtilities.java (build-breaking checkstyle violation)",
+        "Human's point on the 60s/1m keep-alive choice at LocalDataTransferServer.java:184"
+      ],
+      "exceeds": [
+        "Missing executor shutdown with accurate codebase shutdown-convention citations — present in neither the human reference nor my own review"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "v5 wins on substance: it is the only candidate to catch the PR's genuine blocker — the bounded pool's default AbortPolicy throwing an uncaught RejectedExecutionException that kills the accept loop under saturation — and it also correctly traces the BookKeeperServer default-cap side effect. v6 is more meticulous (accurate ObjectPool line citations, correct AsynchronousCloseException exit path, caught the unused getServerMaxThreads import) but misses the critical crash scenario entirely, which is the difference between the two. Both candidates missed the second unused import in CommonUtilities, which together with the first will fail the build via the enforced UnusedImports checkstyle rule, and neither engaged with the human reviewer's keep-alive discussion. Neither candidate fabricated any absence claims; every 'never called/never shut down' assertion verified true against the base repo."
+}

@@ -1,0 +1,89 @@
+{
+  "pr": 27570,
+  "own_review": [
+    {
+      "loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:130",
+      "issue": "NaN-NDV -> 1.0 bug: when other.distinctValues is NaN, minExcludeNaN(NaN / this.distinctValues, 1) returns 1.0 (verified MoreMath.minExcludeNaN returns the non-NaN argument). ComparisonStatsCalculator builds inequality/range filter ranges with NDV=NaN, so any range predicate on a sparse column now gets filterFactor 1.0 (no filtering at all) instead of a small overlap. The PR enshrines this in testLowDensityOverlapWithSparseRightRange (range(1,3662098119,14) vs range(1,4,NaN) asserted = 1).",
+      "severity": "critical"
+    },
+    {
+      "loc": "core/trino-main/src/test/java/io/trino/cost/TestFilterStatsCalculator.java:855",
+      "issue": "The new integration test testSparseColumnInPredicateOverlap FAILS: FilterStatsCalculator.visitIn decomposes IN into EQUAL comparisons; estimateExpressionEqualToLiteral builds point filter ranges [c,c], so lengthOfIntersect == 0 and the pre-existing 1/max(NDV,1)=1/14 path is taken — the new heuristic (which requires lengthOfIntersect > 0) never fires. Actual output is 1e6 * 4/14 ≈ 285,714 rows, not the asserted 1,000,000. Corollary: the heuristic does not fix the PR's motivating IN example at all. (The test's symbolStats assertions, including distinctValuesCount(4), are consistent; only the row count assertion fails.)",
+      "severity": "critical"
+    },
+    {
+      "loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:128-131",
+      "issue": "Containment-blind overestimation: the heuristic returns other.distinctValues / this.distinctValues without regard to how much of `other` actually lies in the intersection. A sliver intersection yields overlap 1.0 whenever other.NDV >= this.NDV. testVeryLowDensity enshrines 0.5 overlap for a filter covering 1e-7 of the range.",
+      "severity": "major"
+    },
+    {
+      "loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:126",
+      "issue": "Asymmetry is NOT benign: the density check uses only this.distinctValues/length(). FilterStatsCalculator.estimateFilterRange (line 134) uses a single-direction overlapPercentWith directly as the filter factor — no max() smoothing — so A-vs-B and B-vs-A estimates diverge wildly and directly change filter selectivity.",
+      "severity": "major"
+    },
+    {
+      "loc": "core/trino-main/src/main/java/io/trino/cost/StatisticRange.java:128",
+      "issue": "Exact floating-point equality guard `lengthOfIntersect != length()` is fragile; also a discontinuous cliff at the 1e-3 density threshold: density just below threshold can return ~1.0 via the NDV ratio while density at threshold returns ~1e-3 via uniform overlap.",
+      "severity": "medium"
+    },
+    {
+      "loc": "core/trino-main/src/test/java/io/trino/cost/TestStatisticRange.java:62-67,102-109",
+      "issue": "Tests are misleading/weak: testLowDensityOverlapWithSparseLeftRange never exercises the heuristic (NaN density skips it; the 1.0 comes from uniform 3/3); testDensityWithZeroDistinctValues exercises the pre-existing distinctValues==0 early return; testDensityThresholdBoundary only covers the non-firing side of the boundary.",
+      "severity": "medium"
+    },
+    {
+      "loc": "testing/trino-tests/src/test/resources/sql/trino/tpcds/iceberg/partitioned/q84.plan.txt",
+      "issue": "TPC-DS q84 plan flips broadcast -> partitioned join with no evidence the new plan is better; combined with the undocumented, arbitrary 1e-3 threshold this shows a broad blast radius on plan baselines.",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "IN predicates never reach the density heuristic (visitIn -> point-range EQUALs, lengthOfIntersect==0); PR description's motivating example is misleading", "grade": "good", "score": 1, "note": "Verified true and matches my finding; correctly traces visitIn decomposition. But v5 stops at 'update the description' and never checks the new test's expectation against this very analysis."},
+        {"point": "Range predicates fire the heuristic with other.distinctValues = NaN -> minExcludeNaN(NaN/ndv, 1) returns 1.0, treating range predicates as non-selective", "grade": "good", "score": 1, "note": "This IS the critical NaN-NDV->1.0 bug with the correct mechanism and ComparisonStatsCalculator line refs — but v5 blesses it as 'a reasonable heuristic... worth noting', failing to flag a verified blocker, so it earns good not critical."},
+        {"point": "Asymmetry is benign because all callers query both directions and combine with max(); no behavioral regression expected", "grade": "wrong", "score": -1, "note": "Disproven: FilterStatsCalculator.estimateFilterRange:134 uses single-direction overlapPercentWith directly as the filter factor. The benign-by-max() claim is false."},
+        {"point": "No tests cover the heuristic's effect on JoinStatsRule or ComparisonStatsCalculator output", "grade": "wrong", "score": -1, "note": "False: the PR's testSparseColumnInPredicateOverlap in TestFilterStatsCalculator exercises exactly the ComparisonStatsCalculator path (and fails). Absence-fabrication; the JoinStatsRule half is true but the central claim is false and caused v5 to overlook the failing test."},
+        {"point": "testAddAndCollapseDistinctValues lacks low-density coverage", "grade": "trivial", "score": 0, "note": "Accurate but marginal coverage suggestion."},
+        {"point": "DENSITY_HEURISTIC_THRESHOLD = 1e-3 unjustified; add comment or make configurable", "grade": "good", "score": 1, "note": "Real, aligns with human's request for explanatory comments."}
+      ],
+      "missed": [
+        "Failing new test: expects 1,000,000 rows but actual ≈285,714 (blocker)",
+        "Containment-blind overestimation: NDV ratio ignores intersection extent, sliver overlaps -> 1.0",
+        "lengthOfIntersect != length() exact-equality guard concern (human raised it) / threshold discontinuity",
+        "New TestStatisticRange tests don't actually exercise the heuristic (left-range test has NaN density; zero-NDV test hits pre-existing early return)"
+      ],
+      "exceeds": [
+        "IN-predicates-never-reach-heuristic insight (beyond human reference)",
+        "NaN filter-range NDV mechanism traced to ComparisonStatsCalculator lines (beyond human reference)"
+      ],
+      "net": -3
+    },
+    "v6": {
+      "points": [
+        {"point": "Heuristic overestimates when other.NDV >= this.NDV: this=(0,1e9,10) vs other=(0,1000,100) returns 1.0 though the 10 values may lie outside the intersection; suggests blending instead of hard switch", "grade": "good", "score": 1, "note": "Verified — this is the containment-blind overestimation; example math checks out."},
+        {"point": "DENSITY_HEURISTIC_THRESHOLD = 1e-3 lacks rationale comment", "grade": "good", "score": 1, "note": "Real, aligns with human's comment request."},
+        {"point": "testLowDensityOverlapWithSparseLeftRange misleadingly named: NaN density means the heuristic never triggers, result is uniform 3/3", "grade": "good", "score": 1, "note": "Verified — exactly right about which branch executes."},
+        {"point": "testSparseColumnInPredicateOverlap expects 1,000,000 but IN decomposes to point-range EQUALs hitting 1/14 each, yielding ~28.6% ≈ 286,000 rows — heuristic path never reached", "grade": "critical", "score": 2, "note": "Verified blocker: the test fails (actual ≈285,714). Single point captures both the failing test and the heuristic-never-fires-for-IN insight, with correct mechanism."},
+        {"point": "testDensityThresholdBoundary sits exactly at threshold with strict inequality, so it only validates the non-firing path; add a just-below-threshold test", "grade": "good", "score": 1, "note": "Verified (10/10000 = 1e-3, condition is strict <)."}
+      ],
+      "missed": [
+        "NaN-NDV -> 1.0 critical bug: range/inequality filters carry NDV=NaN, minExcludeNaN(NaN,1)=1 makes sparse-column range predicates non-selective (the most severe runtime defect)",
+        "Asymmetry of the heuristic and its direct effect via single-direction use in estimateFilterRange",
+        "lengthOfIntersect != length() exact-equality guard concern (human raised it)"
+      ],
+      "exceeds": [
+        "Containment-blind overestimation with concrete counterexample",
+        "Failing-test detection with correct ~286k row computation",
+        "Misleading test name / heuristic-not-exercised analysis",
+        "Threshold-boundary test gap"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 0
+  },
+  "qualitative": "v6 is clearly stronger: every one of its five points verified true, including the single most actionable blocker — it computed that the PR's own TestFilterStatsCalculator test must produce ~286k rows, not the asserted 1,000,000, while also nailing the containment-blind overestimation and two genuine test-quality defects. v6's notable gap is the NaN-NDV->1.0 bug (range predicates on sparse columns become non-selective), the worst runtime defect, plus the asymmetry issue. v5 found that NaN->1.0 mechanism and the IN-never-fires insight, but then neutralized its own findings: it called the NaN behavior 'a reasonable heuristic', falsely declared the asymmetry benign via a disproven all-callers-use-max() claim, fabricated the absence of an integration test (the PR contains one — which fails), and consequently missed the failing test entirely while its summary even claimed the fix was 'verified by the q84.plan.txt improvement'. Net effect: v5 reads plausibly but would mislead a maintainer into merging; v6 would block the merge for the right reason."
+}

@@ -1,0 +1,76 @@
+{
+  "pr": 16132,
+  "own_review": [
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 392,
+      "issue": "New block in verifyRemoteLogTopicConfigs uses `topicConfig.contains(TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG)` — Properties/Hashtable.contains is a VALUE lookup, not a key lookup. Every other check in this method uses containsKey. Since no property value ever equals the string \"remote.log.disable.policy\", the guard is always false and the new policy assertion silently never executes; the integration test passes without verifying anything.",
+      "severity": "major"
+    },
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 160,
+      "issue": "Test name testCreateRemoteTopicWithDisablePolicyRetain is misleading — the @CsvSource covers both retain AND delete; should be named testCreateRemoteTopicWithDisablePolicy.",
+      "severity": "minor"
+    },
+    {
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java",
+      "line": 327,
+      "issue": "remote.log.disable.policy is accepted regardless of remote.log.storage.enable state — no validation couples the policy to tiered storage being enabled (unlike validateRemoteStorageOnlyIfSystemEnabled for the enable flag). Likely fine for a plumbing-only KIP-950 increment, but worth noting.",
+      "severity": "trivial"
+    },
+    {
+      "file": "(diff-wide)",
+      "line": 0,
+      "issue": "Verified NOT issues: the .define() registration, CONFIGS_WITH_NO_SERVER_DEFAULTS entry, toString() update, and remoteLogDisablePolicy() accessor are ALL present in the full diff; `in` is statically imported in LogConfig.java (line 69). Any claim these are missing is a fabrication. The human's accessor request is satisfied in the final diff.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Test name testCreateRemoteTopicWithDisablePolicyRetain misleading (covers retain+delete), suggest rename", "verdict": "good", "score": 1, "note": "Verified real; matches my finding."},
+        {"point": "Naming inconsistency remote.storage.enable vs remote.log.disable.policy prefix", "verdict": "trivial", "score": 0, "note": "Factually accurate (verified TopicConfig.java:82), but the name is KIP-950-mandated; not actionable in this PR."},
+        {"point": "Invalid test value \"true\" in assertPropertyInvalid unusual; suggest case-sensitivity values", "verdict": "trivial", "score": 0, "note": "Pure test-value style preference."},
+        {"point": "remoteLogDisablePolicy has no broker-level override path; document in KIP", "verdict": "trivial", "score": 0, "note": "Accurate restatement of CONFIGS_WITH_NO_SERVER_DEFAULTS semantics; informational, not actionable."},
+        {"point": "verifyRemoteLogTopicConfigs uses .equals() vs assertEquals; 'the logic is correct'", "verdict": "trivial", "score": 0, "note": "Style nit on the exact buggy line while declaring the logic correct — it walked past the contains-vs-containsKey bug (penalized under missed, not double-counted here)."}
+      ],
+      "missed": [
+        "RemoteTopicCrudTest.scala:392 Properties.contains (value lookup) instead of containsKey — new policy assertion never executes (-1)"
+      ],
+      "exceeds": [
+        "Misleading test name (not in human reference)"
+      ],
+      "net": 0
+    },
+    "v6": {
+      "points": [
+        {"point": "Praise: CONFIGS_WITH_NO_SERVER_DEFAULTS entry correct", "verdict": "trivial", "score": 0, "note": "Accurate praise; correctly avoids the absence-fabrication trap."},
+        {"point": "Praise: .define() follows patterns, safe 'retain' default", "verdict": "trivial", "score": 0},
+        {"point": "Praise: RemoteLogConfig field/constructor/toString consistent", "verdict": "trivial", "score": 0, "note": "Accurate; counters prior fabrications."},
+        {"point": "Praise: CsvSource coverage of quorums and policies", "verdict": "trivial", "score": 0},
+        {"point": "Praise: verifyRemoteLogTopicConfigs 'correctly extended... ensuring end-to-end persistence verification'", "verdict": "wrong", "score": -1, "note": "Verified false — the guard uses Properties.contains (value lookup) so the new assertion never runs; the helper verifies nothing for this config."},
+        {"point": "\"remove\" tested redundantly in testFromPropsInvalid and testInvalidRemoteLogDisablePolicy", "verdict": "trivial", "score": 0, "note": "Accurate but explicitly minor/harmless."},
+        {"point": "Praise: keep/remove are sensible invalid values", "verdict": "trivial", "score": 0},
+        {"point": "Praise: accessor returns String, consistent exposure", "verdict": "trivial", "score": 0, "note": "Correctly confirms the accessor exists."},
+        {"point": "Missing test for updating the policy via incremental alter configs on existing topic", "verdict": "good", "score": 1, "note": "Real coverage gap; update-path tests exist for other remote configs but not this one."},
+        {"point": "Future callers UnifiedLog.scala:1991 and TierStateMachine.java:189 will consume the policy; PR correctly scoped to schema only", "verdict": "trivial", "score": 0, "note": "Both citations verified exact in the base repo — strong grounding from git tools, but informational."}
+      ],
+      "missed": [
+        "RemoteTopicCrudTest.scala:392 Properties.contains vs containsKey bug — worse, v6 affirmatively praised this line as correct (-1)",
+        "Misleading test name testCreateRemoteTopicWithDisablePolicyRetain covering both policies (-1)"
+      ],
+      "exceeds": [
+        "Missing alter-configs update test (not in human reference)",
+        "Verified production-caller citations (UnifiedLog.scala:1991, TierStateMachine.java:189)"
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Neither candidate fabricated absences this round — both correctly treated the .define(), CONFIGS_WITH_NO_SERVER_DEFAULTS entry, toString(), and accessor as present, and v6's git tools showed in its perfectly accurate cross-file citations (UnifiedLog.scala:1991, TierStateMachine.java:189 both verified exact). However, both missed the one real bug: Properties.contains is a value lookup, so the new verifyRemoteLogTopicConfigs assertion never executes — and v6 actively made it worse by praising that exact line as 'correctly extended... ensuring end-to-end persistence verification', converting a miss into a false claim. v5 lands at net 0 on the strength of the misleading-test-name catch, while v6's heavy praise-to-finding ratio (8 of 10 points are praise or informational) left it at net -2 despite one genuine coverage-gap finding. The human reference's only point (add an accessor) is satisfied in the final diff, so it was not counted as missable.",
+  "human_reference_note": "Human's sole point (add remoteLogDisablePolicy() accessor) is present in the final diff (LogConfig.java @@508); treated as addressed, not missable."
+}

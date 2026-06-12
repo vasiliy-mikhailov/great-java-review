@@ -1,0 +1,56 @@
+{
+  "pr": 13489,
+  "own_review": [
+    {"loc": ".github/workflows/build-and-test-pr.yml:345,449 (samples-test-result / integration-test-result)", "issue": "These jobs keep `if: always()`, so adding `needs: check-format` does not gate them: when check-format fails everything upstream is skipped, but the result-merge jobs still run, find no test-result artifacts, and fail with confusing errors. The intended 'format gate' is silently bypassed for exactly these two jobs and produces red noise.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml (needs: check-format on all jobs)", "issue": "Hard-gating the entire pipeline on a full `mvn spotless:check` serializes every job behind it and means a single formatting nit hides all build/test feedback from contributors. Independent jobs (license, error-code-inspecting, native-image-inspecting) gain nothing from the gate. Also `needs: check-format` is redundant on unit-test/samples-test-job/integration-test-job/jacoco-result-merge, which already depend on it transitively via build-source.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:31 (run: mvn --log-file mvn.log spotless:check)", "issue": "Uses system `mvn` instead of the repo's `./mvnw` (used by every other job), has no Maven repository cache (other jobs use actions/cache), and lacks --batch-mode/--no-transfer-progress, so the log fills with download progress and the job is slower and less reproducible.", "severity": "minor"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:42-44 (failure summary pipeline)", "issue": "Log post-processing is fragile: `head -n -11` is a magic number; the first sed pattern targets the Actions-UI log prefix ('Check if code needs formatting    Check if code aligns with code style   <timestamp>') which never appears in a `--log-file` capture, so it is dead code; and any non-formatting mvn failure (e.g. dependency download error) is reported as 'Formatting issues found!'.", "severity": "minor"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:33-37", "issue": "Naming mismatches: the artifact/step are called 'checkstyle-result'/'Upload checkstyle result' but the tool is Spotless; the step named 'Setup Maven' actually installs a JDK.", "severity": "trivial"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:22-27,45-47", "issue": "New job uses checkout@v4/setup-java@v4/upload-artifact@v4 while all five existing workflow files use @v3; `actions/github-script@v7.0.1` with an explicit github-token just to call core.setFailed is overkill versus `run: exit 1` (or dropping continue-on-error and moving summary steps to `if: always()`).", "severity": "trivial"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:33-37", "issue": "mvn.log artifact is uploaded unconditionally, including on success where it has no value; an `if: ${{ steps.check.outcome == 'failure' }}` would suffice.", "severity": "trivial"},
+    {"loc": "pom.xml:848-940 (verification)", "issue": "Verified: spotless-maven-plugin 2.42.0 is declared in the `java11+` profile, so with JDK 21 a direct `mvn spotless:check` resolves and runs correctly at the base commit; the command itself is sound.", "severity": "info"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Action version inconsistency (@v4 in new job vs @v3 everywhere; claim '100% @v3' verified across all 5 workflow files)", "grade": "trivial", "score": 0},
+        {"point": "Missing `name:` field on check-format job", "grade": "wrong", "score": -1, "note": "Fabricated absence: the diff adds `name: Check if code needs formatting` to the job; also 'all other jobs have explicit name' is false (samples-test-prepare, integration-test-prepare, both *-result jobs, jacoco-result-merge, error-code-inspecting, native-image-inspecting are unnamed at base; license/build-source only get names in this very PR)."},
+        {"point": "Fragile sed/head log parsing for the step summary", "grade": "good", "score": 1},
+        {"point": "Redundant `needs: check-format` on jobs with transitive dependency via build-source", "grade": "good", "score": 1},
+        {"point": "check-format as a gate for ALL jobs serializes independent checks (license, error-code-inspecting, native-image-inspecting)", "grade": "good", "score": 1}
+      ],
+      "missed": [
+        "if: always() on samples-test-result/integration-test-result defeats the check-format gate and yields confusing failures on missing artifacts",
+        "uses system mvn instead of ./mvnw (and no Maven cache), unlike every other job"
+      ],
+      "exceeds": [
+        "Fragile sed/head log parsing",
+        "Redundant transitive needs",
+        "Over-gating/serialization of independent jobs"
+      ],
+      "net": 0
+    },
+    "v6": {
+      "points": [
+        {"point": "Over-gating: independent jobs (license, error-code-inspecting, native-image-inspecting) needlessly serialized behind check-format", "grade": "good", "score": 1},
+        {"point": "Fragile error-summary pipeline (hardcoded step-name sed pattern, head -n -11 assumption); suggests native ::error annotations", "grade": "good", "score": 1},
+        {"point": "Action version inconsistency v4 vs v3", "grade": "trivial", "score": 0},
+        {"point": "Uses `mvn` instead of `./mvnw` used by every other job (mvnw verified present; pins Maven version)", "grade": "good", "score": 1},
+        {"point": "continue-on-error + github-script core.setFailed is convoluted; simpler to let the step fail and run summary steps with if: always()", "grade": "good", "score": 1},
+        {"point": "mvn.log artifact uploaded unconditionally even on success; suggest if failure only", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "if: always() on samples-test-result/integration-test-result defeats the check-format gate and yields confusing failures on missing artifacts"
+      ],
+      "exceeds": [
+        "Over-gating/serialization",
+        "Fragile log parsing",
+        "mvn vs ./mvnw inconsistency",
+        "continue-on-error/github-script complexity"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v6": 0},
+  "qualitative": "The human reference is a single conversational reply with no extractable findings, so both machine reviews are graded chiefly against the judge's own verified review. v6 is clearly stronger: five of its six points are real and verified (over-gating, fragile log parsing, mvn-vs-mvnw, the convoluted continue-on-error/setFailed pattern, unconditional artifact upload), with no fabrications. v5 shares the two best structural points (over-gating, fragile sed parsing) and adds a valid redundant-needs observation, but it fabricates an absence — claiming the check-format job lacks a `name:` field when the diff plainly adds one, plus a false 'all other jobs are named' assertion — which costs it credibility and a point. Both candidates missed the subtlest real bug: `if: always()` on samples-test-result/integration-test-result bypasses the new gate and will fail noisily on missing artifacts whenever check-format fails."
+}

@@ -1,0 +1,43 @@
+{
+  "pr": 17565,
+  "own_review": [
+    {"file": "build.gradle", "line": "795-803", "issue": "Only forbiddenApisMain is wired into test.dependsOn; forbiddenApisTest is omitted, asymmetric with the existing checkstyleMain+checkstyleTest pattern on the same line. (Note the plugin does auto-wire all forbiddenApis* tasks into `check`, so the gap only affects builds that invoke `test` directly.)", "severity": "minor"},
+    {"file": "build.gradle", "line": "799-800", "issue": "bundledSignatures = ['jdk-unsafe'] is unversioned. The Gradle plugin resolves the signature version from project.targetCompatibility, which Kafka never sets (it uses options.release = minJavaVersion / 11 instead), so it defaults to whatever JDK runs the build. The checked signature set therefore varies by build JDK, and on a JDK newer than the plugin supports the check silently skips (failOnUnsupportedJava defaults to false). Pin 'jdk-unsafe-11' (or set targetCompatibility) for deterministic behavior.", "severity": "medium"},
+    {"file": "build.gradle", "line": "46", "issue": "Plugin id added without `apply false`, unlike spotbugs/scoverage/shadow. Since the root project also applies 'java-library', the plugin is applied to the root project where the forbiddenApis extension is never configured (the configuration lives only in subprojects{}). Inconsistent with build conventions; should be `apply false` given it is explicitly applied in subprojects anyway.", "severity": "nit"},
+    {"file": "build.gradle", "line": "3859", "issue": "Trailing newline at end of file removed ('\\ No newline at end of file') — accidental, unrelated whitespace change; base file ends with a newline.", "severity": "nit"},
+    {"file": "build.gradle", "line": "800", "issue": "ignoreFailures = true makes the check purely advisory; intentional per PR description and necessary because nearly every module currently has violations (matches reviewer discussion), but needs a tracked follow-up to ever become enforcing.", "severity": "info"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": ":core silently excluded — 'forbiddenapis resolves sources from the Java source set, forbiddenApisMain will have ZERO sources for :core'", "grade": "wrong", "score": -1, "note": "Fabricated plugin semantics (the known :core build-semantics fabrication class). The setup facts are real (core sets java srcDirs = [] at build.gradle:1336-1352, 19 Java files exist), but forbidden-apis is a bytecode checker: the Gradle plugin runs CheckForbiddenApis on sourceSet.output.classesDirs. Gradle's joint compilation puts both the Scala- and Java-derived classes of :core into main's output, so :core IS analyzed. No coverage gap."},
+        {"point": "ignoreFailures = true non-enforcing; add follow-up to enforce", "grade": "good", "score": 1, "note": "Verified; aligns with the human reviewer's discussion of ignoreFailures."},
+        {"point": "forbiddenApisTest not added alongside forbiddenApisMain", "grade": "good", "score": 1, "note": "Verified real asymmetry with the checkstyle pattern on the same line."},
+        {"point": "Plugin applied unconditionally to all subprojects incl. code-less :connect", "grade": "trivial", "score": 0, "note": "Factually true (build.gradle:297 comment confirms 'connect is just a folder') but checkstyle/spotbugs are already applied the same way; v5 itself says not harmful."},
+        {"point": "Only jdk-unsafe signature; plan more later", "grade": "trivial", "score": 0, "note": "Restates the PR description."}
+      ],
+      "missed": [
+        "Trailing newline removed at EOF (build.gradle:3859)",
+        "Unversioned 'jdk-unsafe' depends on targetCompatibility Kafka never sets — signature set varies by build JDK / can silently skip"
+      ],
+      "exceeds": ["forbiddenApisTest omission"],
+      "net": -1
+    },
+    "v6": {
+      "points": [
+        {"point": "forbiddenApisTest not included in dependency chain", "grade": "good", "score": 1, "note": "Verified real."},
+        {"point": "ignoreFailures = true never blocks; consider property gate for enforcement", "grade": "good", "score": 1, "note": "Substance verified and aligns with human discussion; 'never produce actionable output' is slightly overstated (violations are still logged) but the core claim is right."},
+        {"point": "Consider additional bundled signatures (jdk-system-out, jdk-deprecated)", "grade": "trivial", "score": 0, "note": "Restates PR description's incremental plan."},
+        {"point": "Missing trailing newline at end of file", "grade": "good", "score": 1, "note": "Verified: base file ends with newline; PR removes it. Real unintended change."},
+        {"point": "No suppression mechanism: plugin supports suppression files via signaturesFiles and inline @SuppressWarnings(\"forbiddenapis\")", "grade": "wrong", "score": -1, "note": "Fabricated tool mechanics: signaturesFiles ADDS forbidden signatures, it is not a suppression file; and @SuppressWarnings has SOURCE retention so a bytecode analyzer cannot see it (forbidden-apis uses class-retained annotations like @SuppressForbidden via suppressAnnotations)."}
+      ],
+      "missed": [
+        "Unversioned 'jdk-unsafe' depends on targetCompatibility Kafka never sets — signature set varies by build JDK / can silently skip"
+      ],
+      "exceeds": ["forbiddenApisTest omission", "trailing newline removal"],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v6": 0},
+  "qualitative": "Tiny build-only PR (forbidden-apis plugin, jdk-unsafe, ignoreFailures=true); the human's sole point validates ignoreFailures as necessary. v5's headline finding is the recurring :core fabrication class: it correctly reads the srcDirs=[] joint-compilation setup but invents the claim that forbidden-apis 'resolves sources from the Java source set' — it is a bytecode checker on output.classesDirs, so :core is fully covered and the 'silently excluded' claim is an absence-fabrication. v6 is cleaner: it catches the forbiddenApisTest gap, the ignoreFailures concern, and the accidental EOF-newline removal, but loses a point for fabricated suppression mechanics (signaturesFiles is not a suppression file; @SuppressWarnings is source-retention and invisible to a bytecode analyzer). Both missed that the unversioned 'jdk-unsafe' signature floats with the build JDK because Kafka sets options.release rather than targetCompatibility. v6 clearly outperforms v5 here."
+}

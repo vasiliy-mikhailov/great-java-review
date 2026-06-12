@@ -1,0 +1,40 @@
+{
+  "pr": 982,
+  "own_review": [
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java", "line": "131-133 (scanFluo) / 171-172 (scanAccumulo)", "issue": "System.exit(-1) added inside a core-module utility class. ScanUtil lives in fluo-core (a library jar), not the command module; any embedder calling scanFluo/scanAccumulo gets its JVM killed on a scan failure. Within the repo only CLI entry points call it (FluoScan.java:105,107; AppRunner.java:76,78, nothing after the call), and the same file already uses System.exit(-1) for arg validation (base lines 107/159), so impact is contained, but it remains a library-design smell. Additionally, System.exit inside the try-with-resources in scanFluo skips FluoClient/Snapshot close().", "severity": "medium"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java", "line": "137-139 (removed)", "issue": "Removal of the entriesFound counter and the 'No data found' message: an empty scan now produces zero output, indistinguishable from a successful-but-empty result for interactive users. Removing meta info is the stated goal of #981 (clean pipeable output), but printing the notice to stderr would have preserved UX without polluting stdout.", "severity": "minor"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java", "line": "141 / 178", "issue": "Positive: redirecting 'Scan failed - ...' from stdout to stderr is correct and consistent with error reporting elsewhere in the codebase (BaseOpts, FluoInit, FluoWorkerImpl, FluoOracleImpl); previously a failed scan returned exit code 0 with the error mixed into data output.", "severity": "positive"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java", "line": "93 / 167 (new)", "issue": "Leftover blank line at the top of scanFluo and scanAccumulo where the println was deleted; style noise.", "severity": "trivial"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java", "line": "4-9", "issue": "Whitespace-only edits to the license header (trailing-space removal) are unrelated diff noise.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "PR title ambiguity - does #981 want meta info restored or removed?", "grade": "trivial", "score": 0, "note": "Phrased as a clarification question offering both readings, one of which is correct (the PR intentionally stops printing meta info to fix #981, confirmed by the human discussion: removal IS the stated goal). Not a code finding."},
+        {"point": "stderr redirect is correct, consistent with FluoWorkerImpl:87/94, FluoOracleImpl:90/97 and ScanUtil's own handlers at 106/158", "grade": "good", "score": 1, "note": "All cited references verified accurate against the base repo."},
+        {"point": "System.exit(-1) safe: matches existing pattern (107/159), callers FluoScan.main and AppRunner.scan have no code after the call", "grade": "good", "score": 1, "note": "Verified: FluoScan.main ends right after the scan branch; AppRunner.scan likewise. Engages the substance of the human point (no error return code before)."},
+        {"point": "Same stderr+exit assessment for scanAccumulo", "grade": "trivial", "score": 0, "note": "Duplicate of the previous two points applied to the second method."},
+        {"point": "Removal of entriesFound / 'No data found' makes empty scans silent and indistinguishable", "grade": "good", "score": 1, "note": "Real UX regression, matches my finding. The 'indistinguishable from failed silently' phrasing slightly overstates (failure now exits non-zero with stderr), but the core point is valid."},
+        {"point": "Removal of 'Scanning snapshot...' header removes startup feedback, consider progress indication", "grade": "trivial", "score": 0, "note": "Removing the header is the explicit goal of issue #981; suggesting it back as stdout feedback runs against the PR intent."}
+      ],
+      "missed": [
+        "System.exit(-1) inside the try-with-resources blocks in scanFluo skips FluoClient/Snapshot close(), and ScanUtil is core-module library code - v5 asserted the exit is flatly 'safe' without noting the cleanup nuance (my finding, also caught by v6)"
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {"point": "PR title contradicts the diff; title implies the fix restores meta info but the diff removes it", "grade": "wrong", "score": -1, "note": "Asserted as fact rather than a question. The natural reading - confirmed by the human review thread ('the stated goal of this issue' is the removal) - is that the PR stopped printing meta info, fixing #981. No contradiction exists."},
+        {"point": "Loss of 'No data found' feedback for empty scans", "grade": "good", "score": 1, "note": "Real UX regression, matches human-adjacent concern and my finding."},
+        {"point": "stderr+exit consistent with BaseOpts.java:33-35, FluoInit.java:125-126, FluoWorkerImpl.java:87-88; callers FluoScan.java:105,107 and AppRunner.java:76,78 verified as CLI entry points", "grade": "good", "score": 1, "note": "Every cited file:line verified exact against the base repo. Engages the substance of the human point about the missing error return code."},
+        {"point": "System.exit(-1) inside try-with-resources skips client.close()/s.close(); acceptable for CLI but worth noting", "grade": "good", "score": 1, "note": "Verified real and correctly caveated; matches my own finding A, beyond the human reference."}
+      ],
+      "missed": [],
+      "exceeds": [],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "qualitative": "This is a tiny CLI-cleanup PR where the only substantive review angles are the exit-code fix, the System.exit-in-library/try-with-resources nuance, and the lost 'No data found' UX. Both candidates engaged the human reference point (the unrelated exit-code bug fix) and both caught the empty-scan UX regression. v6 is the tighter review: every one of its many file:line citations verified exactly, and it uniquely caught the try-with-resources cleanup skip, but it torpedoed itself by asserting as fact that the PR title contradicts the diff - a misreading, since stopping the meta-info printing IS the fix for #981 as the human thread confirms. v5 hedged the same title confusion as a question (no penalty beyond zero credit) and its consistency citations also all verified, but it padded with a duplicate point and an anti-intent suggestion, and flatly declared the exit 'safe' while missing the resource-cleanup nuance. Net result is a tie at +2: v6 trades v5's miss for one outright false assertion; neither fabricated any absence claims."
+}

@@ -1,0 +1,77 @@
+{
+  "pr": 727,
+  "own_review": [
+    {
+      "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java",
+      "line": 111,
+      "issue": "Unguarded NPE: new condition `shell != ideShell && shell.getData().getClass().getName().startsWith(WIZARD_CLASSNAME_TEMPLATE)` dereferences shell.getData() with no null check. This runs inside a global display.addFilter(SWT.Paint, ...) that fires for every painted Composite on the display; shells with no data set (tooltips, hovers, content-assist popups, progress shells) return null from getData(), throwing NPE inside the SWT event loop during the test. Needs `shell.getData() != null &&` guard.",
+      "severity": "blocker"
+    },
+    {
+      "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java",
+      "line": 111,
+      "issue": "The guard matches on internal Eclipse class-name prefix 'org.eclipse.ltk.internal.ui.refactoring.Refactoring' (internal LTK API, no LTK references elsewhere in the repo). Brittle across Eclipse releases; additionally, the 'Refactoring'-titled error dialog branch may become unreachable if that dialog is a plain JFace MessageDialog whose data class does not match the LTK prefix (uncertain, not independently verifiable from this repo).",
+      "severity": "minor"
+    },
+    {
+      "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java",
+      "line": 112,
+      "issue": "`Set<String> buttons = getButtons(c)` now performs a full recursive widget-tree traversal with HashSet allocations on every Paint event before knowing whether the result is needed; the old hasButton short-circuited and was only called inside the relevant branches. Negligible for a test but strictly worse per-event work.",
+      "severity": "minor"
+    },
+    {
+      "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java",
+      "line": 89,
+      "issue": "Sleep bumped 2000ms->5000ms is a timing band-aid; adds 3s to every run (longest fixed sleep in the suite; TestAngular's 4000ms was previously the max). Polling for LS readiness would be more robust.",
+      "severity": "trivial"
+    },
+    {
+      "file": "pom.xml",
+      "line": 169,
+      "issue": "download-maven-plugin 1.6.1->1.6.7 bump is unrelated to the PR's stated purpose (test fix); scope creep, undocumented rationale.",
+      "severity": "trivial"
+    },
+    {
+      "file": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java",
+      "line": 164,
+      "issue": "`static private` modifier order is unconventional (`private static`); constant name WIZARD_CLASSNAME_TEMPLATE is misleading — it is a class-name prefix, not a template.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"file": "TestJsTs.java", "line": 111, "verdict": "critical", "score": 2, "note": "Unguarded shell.getData() NPE inside global SWT.Paint filter — the known real blocker; correct mechanism (filter fires for all widgets, data-less shells) and correct fix."},
+        {"file": "TestJsTs.java", "line": 88, "verdict": "trivial", "score": 0, "note": "Sleep 2000->5000 CI-time observation. The cross-suite claim ('next longest is 4000ms in TestAngular') was verified TRUE by grep, so accurate — but the point itself is a non-defect timing nit."},
+        {"file": "TestJsTs.java", "line": 54, "verdict": "good", "score": 1, "note": "Internal LTK API class-name prefix fragility — real, verified (org.eclipse.ltk.internal.ui.refactoring is internal)."},
+        {"file": "pom.xml", "line": 169, "verdict": "trivial", "score": 0, "note": "Unrelated version bump / scope-creep observation — accurate but process nit."},
+        {"file": "TestJsTs.java", "line": 164, "verdict": "trivial", "score": 0, "note": "`static private` ordering nit — accurate but style-only."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Found the shell.getData() NPE blocker (not in human reference)",
+        "Flagged internal LTK API fragility",
+        "Verified cross-suite sleep comparison (TestAngular 4000ms) — checked true against the repo"
+      ],
+      "net": 3
+    },
+    "v6": {
+      "points": [
+        {"file": "TestJsTs.java", "line": 110, "verdict": "critical", "score": 2, "note": "Unguarded shell.getData() NPE — the known real blocker; strongest writeup: notes the listener path has no try-catch unlike pressOk/pressCancel, gives exact fix."},
+        {"file": "TestJsTs.java", "line": 110, "verdict": "good", "score": 1, "note": "Internal LTK API via string; absence claim 'no LTK references exist anywhere in this repo' verified TRUE by repo-wide grep."},
+        {"file": "pom.xml", "line": 167, "verdict": "trivial", "score": 0, "note": "Version bump rationale nit. Its '6 modules / VSCode, Chrome debug adapter, ESLint LS, Node.js archives' claim verified TRUE (6 pom files; fetch-vscode, fetch-chrome-debug-adapter, fetch-eslint-ls executions plus node embedders) — accurate but the point is a process nit."},
+        {"file": "TestJsTs.java", "line": 89, "verdict": "trivial", "score": 0, "note": "Sleep-is-heuristic observation with poll-for-readiness suggestion; reasonable, non-defect."},
+        {"file": "TestJsTs.java", "line": 166, "verdict": "trivial", "score": 0, "note": "getButtons HashSet-per-recursion allocation; accurate and self-labeled cosmetic. Misses the stronger angle (unconditional traversal on every Paint event), but harmless."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Found the shell.getData() NPE blocker (not in human reference)",
+        "Repo-wide verified absence of LTK references supporting the internal-API point",
+        "Enumerated download-maven-plugin usage across modules — checked true against the repo"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "qualitative": "Both candidates found the one real blocker — the unguarded shell.getData() NPE inside the global SWT.Paint filter (TestJsTs.java:111) — with correct mechanism and fix; v6's writeup is marginally stronger (contrasts with the try-catch protection in pressOk/pressCancel). The human reference point targets META-INF/MANIFEST.MF, a file not present in the provided diff, so it was excluded from missed-point scoring. Every verifiable factual claim in both reviews checked out against the repo: v5's 'next-longest sleep is 4000ms in TestAngular' is true, and v6's 'no LTK references anywhere in this repo' and '6 modules use download-maven-plugin' are both true — zero absence-fabrications on either side. Beyond the blocker, both add one solid verified point (internal LTK API fragility) plus accurate but trivial nits (sleep bump, pom scope creep, style/allocation), landing them in a dead heat at net +3 each. v6 shows slightly deeper repo grounding from its git tools, but it did not translate into additional scored findings."
+}

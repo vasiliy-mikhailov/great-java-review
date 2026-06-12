@@ -1,0 +1,127 @@
+{
+  "pr": 25868,
+  "own_review": [
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions (next.put in loop)",
+      "issue": "Duplicate-NAR leak: when two NAR files declare the same function name, the second next.put(name, ...) overwrites the first entry; if the first occurrence reused the previous OPEN FunctionArchive (matching path+MD5), that archive ends up neither in the result map nor in functionsToClose, leaking its classloader. Old code closed all prior archives, so this is a new leak. Same latent flaw exists in base ConnectorUtils.reloadConnectors.",
+      "severity": "medium"
+    },
+    {
+      "file": "pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java",
+      "line": "reloadFunctions",
+      "issue": "Unsynchronized read-modify-write on volatile 'functions': concurrent reloadFunctions calls (REST-triggered) or reload racing close() can both read the same old map; the losing writer's freshly created archives leak and reused archives can be double-handled. volatile gives visibility only; method needs synchronization. Mirrors the same flaw in base ConnectorsManager.",
+      "severity": "medium"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionArchive.java",
+      "line": "5-arg constructor",
+      "issue": "Constructor now performs full-file MD5 I/O and wraps IOException in UncheckedIOException; inside searchForFunctions the per-archive catch(Throwable) turns a transient I/O error into a silently dropped built-in function (fail-open). Previously the constructor could not fail. Also doubles file reads at startup (definition extraction + MD5).",
+      "severity": "medium"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "computeArchiveMd5Hex/calculateMd5Hex",
+      "issue": "MD5 helpers duplicated verbatim from ConnectorUtils (ConnectorUtils.java:59-67); ReloadFunctionsResult likewise mirrors ReloadConnectorsResult and the whole reload algorithm is copy-pasted. Should be extracted to a shared utility to avoid divergence (matches the human reviewer's point).",
+      "severity": "low"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions",
+      "issue": "TOCTOU: MD5 is computed before the lazy classloader open; the file can change between definition read, MD5 read, and later getFunctionPackage(), pinning a stale def/MD5. Minor; same as connectors.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Missing test for a NAR newly added between scans",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: the four tests cover unchanged/changed/removed/missing-dir only; the new-name branch is untested."
+        },
+        {
+          "point": "computeArchiveMd5Hex->calculateMd5Hex indirection cleanup, noting ConnectorUtils has the identical two-level helper",
+          "grade": "good",
+          "score": 1,
+          "note": "Real minor cleanup at the exact spot of the human's duplication concern; flags the cross-cutting parallel, though it recommends collapsing rather than sharing."
+        },
+        {
+          "point": "UncheckedIOException from MD5 in constructor is swallowed by searchForFunctions' catch(Throwable), silently skipping the function (fail-open)",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real and substantive; matches my own finding."
+        },
+        {
+          "point": "Swap-then-close ordering means old+new archives coexist briefly",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate observation, self-labeled non-concern."
+        }
+      ],
+      "missed": [
+        "Duplicate-NAR overwrite in reloadFunctions can leak a reused open FunctionArchive (neither retained nor closed)",
+        "Unsynchronized read-modify-write reload race on the volatile functions field (concurrent reload / reload-vs-close)"
+      ],
+      "exceeds": [
+        "UncheckedIOException fail-open in searchForFunctions",
+        "Missing added-NAR test case"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "volatile on functions field is correct; cites FunctionsImpl.reloadBuiltinFunctions and ThreadRuntime.getFunctionClassLoader",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Call sites verified real (FunctionsImpl.java:754, ThreadRuntime.java:114) but it is praise only and overlooks that volatile does not fix the reload RMW race."
+        },
+        {
+          "point": "MD5 pattern identical to ConnectorUtils 'confirming correctness'; precomputed hash avoids double compute",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Notices the verbatim duplication but endorses it instead of flagging the shared-util extraction the human asked for."
+        },
+        {
+          "point": "Add Objects.requireNonNull(previous)",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Defensive nit."
+        },
+        {
+          "point": "Duplicate NAR handling: 'the replaced old archive goes into toClose even if file contents are identical. This is acceptable'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "False on both counts: identical path+MD5 means prev is REUSED (never closed), and in the duplicate-name case the second next.put overwrites WITHOUT adding anything to toClose - the exact leak bug. v6 fabricates closing behavior and blesses the defect."
+        },
+        {
+          "point": "closeFunctions refactor praise; 'values are either reused in the new map or explicitly closed via toClose'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Praise; the either/or claim is also false in the duplicate-name case but that error is already penalized in point 4."
+        },
+        {
+          "point": "Tests cover all four scenarios end-to-end",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Restates the PR description; misses the absent added-NAR case that v5 caught."
+        }
+      ],
+      "missed": [
+        "MD5 helper duplication from ConnectorUtils should be extracted to shared utils (the human's sole point - v6 saw the identical code and praised it)",
+        "Duplicate-NAR overwrite leak of a reused open FunctionArchive",
+        "Unsynchronized read-modify-write reload race despite volatile",
+        "UncheckedIOException fail-open silently dropping functions in searchForFunctions"
+      ],
+      "exceeds": [],
+      "net": -5
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "v5 is the clearly stronger review: it lands three verified points, including the substantive UncheckedIOException fail-open behavior and a genuine test-coverage gap, and its cleanup note sits exactly on the duplicated MD5 helper the human reviewer flagged. v6 is almost entirely verification-praise; its citations are real (no absence fabrications), but its one analytical claim about duplicate-NAR handling is factually wrong in both directions - it asserts replaced archives always reach toClose when the code actually reuses identical archives and silently leaks the overwritten open instance, declaring 'acceptable' the very leak a careful reviewer should have caught. Both candidates missed the unsynchronized reload read-modify-write race and the duplicate-NAR classloader leak; v6 additionally missed the fail-open issue and converted the human's duplication complaint into a compliment. Net: v5 +1, v6 -5."
+}

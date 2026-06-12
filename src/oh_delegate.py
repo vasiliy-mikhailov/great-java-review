@@ -84,12 +84,40 @@ _SEARCH_GUIDE = (
 # path normalization + PR-added-file manifest. Same calm register throughout.
 _V4 = bool(os.environ.get("OH_V4"))
 _V5 = bool(os.environ.get("OH_V5"))
+_V6 = bool(os.environ.get("OH_V6"))
+_V7 = bool(os.environ.get("OH_V7"))
+if _V7:
+    _V6 = True              # v7 includes the v6 PR tools
+if _V6:
+    _V5 = True              # v6 includes everything v5 has
 if _V5:
     _V4 = True              # v5 includes everything v4 has
+
+# v7: lean subagent context. Subagents keep the full diff (with the complete changed-file
+# list in the header) but no longer carry the 240k changed-files block — the base content
+# of any file is one file_editor/search call away, and the pr tools cover the PR side.
+# This frees ~64k tokens of every subagent call for investigation view + output.
+_V7_SUB_GUIDE = (
+    "\n\nYour context carries the pull request's diff and the complete list of files it "
+    "changes; the repository at the base commit is on disk. When you need the base "
+    "content of a changed file, read it with file_editor or search — it is not in this "
+    "prompt. The diff above is the change itself; the tools give you everything around it.")
 if _V4:
     import path_norm
     path_norm.install()
     _V2 = True              # v4 includes the search tool wiring
+
+# v6: the PR as a queryable object — `pr_files` (complete changed-file list) and
+# `pr_file_diff` (the complete diff of one file from git). Closes the last truncation
+# gap: even v5's 150k inline diff is cut on the biggest PRs, and subagents otherwise
+# have no way to see past the cut.
+_V6_SUB_GUIDE = (
+    "\n\nTwo further tools describe the pull request itself: `pr_files` lists every "
+    "file the PR changes (status and line counts), and `pr_file_diff` returns the "
+    "complete diff the PR makes to one file, straight from git — including anything "
+    "cut from the diff text above. When the inline diff is marked truncated, or you "
+    "need certainty about what the PR does to a specific file, ask git rather than "
+    "infer: what `pr_file_diff` returns is the whole change to that file.")
 
 # v5 fixes #2 + #4 (subagent side), derived from Claude-judge fabrication tracing:
 # asymmetric verification (a base-repo check can never prove the PR lacks something)
@@ -298,8 +326,10 @@ def _register_subagents():
     if _SUBAGENTS_READY:
         return
     from search_tool import SearchTool
+    from pr_diff_tool import PrFilesTool, PrFileDiffTool
     for n, cls in (("grep", GrepTool), ("glob", GlobTool), ("file_editor", FileEditorTool),
-                   ("search", SearchTool)):
+                   ("search", SearchTool), ("pr_files", PrFilesTool),
+                   ("pr_file_diff", PrFileDiffTool)):
         try:
             register_tool(n, cls)
         except Exception:  # noqa: BLE001  (already registered)
@@ -307,6 +337,8 @@ def _register_subagents():
     read_tools = [Tool(name="grep"), Tool(name="glob"), Tool(name="file_editor")]
     if _V2:
         read_tools = [Tool(name="search")] + read_tools     # search first = preferred
+    if _V6:
+        read_tools = read_tools + [Tool(name="pr_files"), Tool(name="pr_file_diff")]
     task_spec = [t for t in get_default_tools(enable_browser=False, enable_sub_agents=True)
                  if getattr(t, "name", None) == "task_tool_set"]
 
@@ -321,7 +353,13 @@ def _register_subagents():
         # v5 adds the asymmetric-verification + findings-ledger guidance on top.
         guide = (_SEARCH_GUIDE if _V2 else "") + \
             (_FOCUS_GUIDE if (_FOCUS or _V4) else "") + \
-            (_V5_SUB_GUIDE if _V5 else "")
+            (_V5_SUB_GUIDE if _V5 else "") + \
+            (_V6_SUB_GUIDE if _V6 else "") + \
+            (_V7_SUB_GUIDE if _V7 else "")
+        if _V7:   # lean context: diff + complete file list only; base content via tools
+            return base_sys + guide + "\n\n--- PULL REQUEST (title + complete changed-file " \
+                "list + diff; base content of any file is on disk — read it with tools) ---\n" + \
+                (_CURRENT_PR.get("sub") or _CURRENT_PR["input"])[:240000]
         return base_sys + guide + "\n\n--- PULL REQUEST (title + diff + FULL CHANGED FILES; the " \
             "changed files are HERE, investigate SURROUNDING code only) ---\n" + \
             _CURRENT_PR["input"][:240000]
@@ -407,6 +445,7 @@ def oh_review_delegate(repo_dir, pr_input, profile="qwen", max_steps=MAX_ORCH_ST
                        "code (callers, conventions, existing impls elsewhere). ===\n"
                        + _files) if _files else "")
     _CURRENT_PR["input"] = ctx        # orchestrator + subagents all get diff + full changed files
+    _CURRENT_PR["sub"] = pr_input if _V7 else None   # v7: subagents get the diff only
     _register_subagents()    # code-explorer (leaf) + investigator (depth-2 capable)
     llm = _llm(profile)
     all_tools = get_default_tools(enable_browser=False, enable_sub_agents=True)

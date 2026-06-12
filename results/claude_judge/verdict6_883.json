@@ -1,0 +1,246 @@
+{
+  "pr": 883,
+  "own_review": [
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java",
+      "line": "117-127",
+      "issue": "Usage guard checks args.length < 1 but code unconditionally executes Arrays.copyOfRange(args, 3, args.length) and reads args[1]/args[2]; invoking with 1-2 args throws IllegalArgumentException/ArrayIndexOutOfBoundsException stack trace instead of the usage message (guard should be < 3). Even 'FluoInit conn.props -h' crashes before help can print.",
+      "severity": "critical"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java",
+      "line": "242-252",
+      "issue": "updateSharedConfig now copies EVERY property not prefixed fluo.connection.* into ZK CONFIG_SHARED - this includes fluo.accumulo.user and fluo.accumulo.password (and deprecated fluo.client.accumulo.password). Plaintext Accumulo credentials are persisted in Zookeeper shared config, downloadable by anything that can read ZK, and mergeZookeeperConfig then silently overrides locally-supplied credentials in every client/worker/oracle.",
+      "severity": "critical/security"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoClientImpl.java",
+      "line": "55-65",
+      "issue": "FluoClientImpl/FluoOracleImpl/FluoWorkerImpl each call FluoAdminImpl.mergeZookeeperConfig, and Environment calls it again - duplicate ZK round-trip per process; also ZK values take precedence over locally passed config, so local overrides become impossible.",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoExec.java",
+      "line": "68",
+      "issue": "Dead statement 'Arrays.copyOfRange(args, 3, args.length);' whose result is discarded (the later method.invoke correctly recomputes it). Harmless but should be removed.",
+      "severity": "trivial"
+    },
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoOracle.java",
+      "line": "44-55",
+      "issue": "main() catches all exceptions, logs, and falls out of main -> JVM exits with status 0 on failure; the fluo script has already written a pid file and printed 'Started Oracle', so failures are silent. Same in FluoWorker.java.",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoGetJars.java",
+      "line": "70-75",
+      "issue": "Catch block logs and returns normally (exit 0). setup_service in the fluo script relies on this command to populate the app lib dir; on failure the worker/oracle would start without observer jars and the script would not notice.",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/distribution/src/main/scripts/fluo",
+      "line": "stop case",
+      "issue": "stop sends SIGKILL (kill -s KILL) to pid files - no graceful shutdown for workers with in-flight transactions, and stale-pid reuse can kill unrelated processes.",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/distribution/src/main/scripts/fluo",
+      "line": "setup_service/exec case",
+      "issue": "setup_service references global $app which is only exported for oracle|worker|init commands; for 'exec' it is empty, so run/log dirs are computed as $basedir/run/ and $FLUO_LOG_DIR/ (mkdir of wrong dirs).",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/api/src/test/java/org/apache/fluo/api/config/FluoConfigurationTest.java",
+      "line": "286-287",
+      "issue": "Copy-paste bug: declares 'File connectionProps = ...fluo-conn.properties' then asserts 'applicationProps.exists()' (already asserted earlier) instead of connectionProps.exists().",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java",
+      "line": "384-388",
+      "issue": "getJarsFromClasspath casts the ClassLoader to URLClassLoader - throws ClassCastException on Java 9+ (era-appropriate for Java 8 but fragile).",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/distribution/src/main/lib/fetch.sh",
+      "line": "~95",
+      "issue": "Comment link rewritten from apache/fluo issue to https://github.com/apache/incubator/issues/820 - wrong repository, looks like a bad search/replace.",
+      "severity": "trivial"
+    },
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoConfig.java",
+      "line": "19-34",
+      "issue": "Several unused imports (URI, FileUtils, SimpleConfiguration, FluoAdminImpl, hadoop Configuration/FileSystem/Path) and unused 'log' field; FluoGetProp has the same plus a usage-string typo ('FluoGetProps'); FluoInit -h exits with status 1 instead of 0.",
+      "severity": "trivial"
+    },
+    {
+      "file": "modules/command/src/main/java/org/apache/fluo/command/FluoScan.java",
+      "line": "33-118",
+      "issue": "ScanOptions JCommander class is duplicated verbatim between FluoScan and the (deprecated) AppRunner inner class, plus a third data-holder ScanUtil.ScanOpts - one shared definition would do.",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "FluoConfigurationTest wrong-variable assertion (cited :236)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real at pr-head lines 286-287: connectionProps declared, applicationProps asserted. Right file, exact description; line number off but locatable."
+        },
+        {
+          "point": "FluoAdmin.java:42 javadoc 'still references' CLIENT_ZOOKEEPER_CONNECT_PROP",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False - the PR updated this exact javadoc to CONNECTION_ZOOKEEPERS_PROP (visible in the inline diff and confirmed on pr-883-head). Claims something was not updated when it was."
+        },
+        {
+          "point": "AppRunner.scan() return type long->void breaking change",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real; public abstract class, compile-time break for callers using the count."
+        },
+        {
+          "point": "FluoScan.ScanOptions duplicates AppRunner.ScanOptions (3 copies)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: identical JCommander blocks in FluoScan and AppRunner plus ScanUtil.ScanOpts holder."
+        },
+        {
+          "point": "SimpleConfiguration load() private->public, 'verify javadoc'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Observation real but javadoc with @since 1.2.0 was already added; no actionable issue."
+        },
+        {
+          "point": "FluoAdminImpl constructor validation moved to initialize()",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real behavioral change (delayed failure)."
+        },
+        {
+          "point": "FluoCommand @Deprecated lacks javadoc pointing to replacement",
+          "verdict": "trivial",
+          "score": 0
+        },
+        {
+          "point": "getApplicationName() now throws NoSuchElementException instead of IllegalArgumentException",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: old path threw IllegalArgumentException('Application name cannot be null') via verifyApplicationName; new code throws NoSuchElementException. Real public-API exception-type change."
+        },
+        {
+          "point": "hasRequiredMiniFluoProps dual-prefix - add comment",
+          "verdict": "trivial",
+          "score": 0
+        },
+        {
+          "point": "FluoList static oracleExists 'verify it does not require connection state'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Hedged verify-ask; static overload exists and is self-contained."
+        }
+      ],
+      "missed": [
+        "FluoInit arg-crash: args.length<1 guard vs unconditional args[1]/args[2]/copyOfRange(args,3,..) - crashes with stack trace on 1-2 args (visible in truncated inline diff)",
+        "Accumulo credentials (fluo.accumulo.user/password) written into ZK shared config by new updateSharedConfig non-connection-prefix filter (the filter change WAS visible in the inline diff at its tail)",
+        "Human point: FluoExec should pass the connection config through / only set app name on the new config (FluoExec.java:66)"
+      ],
+      "exceeds": [
+        "FluoConfigurationTest wrong-variable assertion",
+        "AppRunner.scan() return-type break",
+        "FluoAdminImpl constructor validation removal",
+        "getApplicationName exception-type change",
+        "ScanOptions duplication"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "FluoExec 'Bug': discarded copyOfRange means invoked class receives ALL arguments",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "The dead statement is real, but the stated consequence is fabricated: method.invoke on the next lines passes a fresh Arrays.copyOfRange(args, 3, args.length), so the target main receives only trailing args. Labeled a Bug on a false premise."
+        },
+        {
+          "point": "FluoAdminImpl constructor validation removed",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real."
+        },
+        {
+          "point": "hasRequiredConnectionProps only checks application name",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Factually true, but in the new design accumulo creds intentionally come from ZK shared config after merge; suggested fix is misguided."
+        },
+        {
+          "point": "FluoConfig.java unused imports 'URI and Map'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "URI is unused, but Map IS used (Map.Entry loop at line 58); half-false and misses the larger set of genuinely unused imports."
+        },
+        {
+          "point": "FluoGetJars silent failure, exit 0",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real; script depends on it for populating app lib dir."
+        },
+        {
+          "point": "FluoGetProp usage typo 'FluoGetProps'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Real but cosmetic."
+        },
+        {
+          "point": "ScanTest.java:195 assertion on wrong variable",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "The described copy-paste bug is real but lives in FluoConfigurationTest.java:286-287; ScanTest.java is 107 lines long and contains no such code. Misattributed file+line despite having git tools - unusable as a review comment, but the underlying defect exists."
+        },
+        {
+          "point": "AppRunner.scan() return type long->void",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real."
+        },
+        {
+          "point": "getAccumuloPassword error-message inconsistency",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Fabricated failure mode: verifyNotNull only throws when the consulted value is null; if the old property is set and read successfully no error is produced, so 'error will say ... even though the code successfully reads it' cannot happen."
+        },
+        {
+          "point": "docs/applications.md example missing required Accumulo user/password/instance",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False: under the new design FluoClientImpl only requires connection props (app name) up front, then merges Accumulo creds from ZK shared config; the trimmed example is the PR's intent and works."
+        },
+        {
+          "point": "Distribution config files 'cannot be verified in visible portion, confirm added'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Properly hedged, but v6 had pr_files/pr_file_diff and could simply have verified; the files are present (fluo-conn.properties, fluo-app.properties, fluo.properties.deprecated all added)."
+        }
+      ],
+      "missed": [
+        "FluoInit arg-crash (args.length<1 guard) - visible in inline diff and via git tools",
+        "Accumulo credentials written into ZK shared config by updateSharedConfig prefix filter",
+        "Human point: FluoExec config pass-through design (v6 commented on FluoExec but about a different, partly fabricated issue)"
+      ],
+      "exceeds": [
+        "FluoAdminImpl constructor validation removal",
+        "FluoGetJars silent failure",
+        "AppRunner.scan() return-type break"
+      ],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 0
+  },
+  "qualitative": "Both candidates missed the two highest-value defects - the FluoInit argument-count crash and Accumulo credentials being persisted into Zookeeper shared config - even though both were visible in the truncated inline diff, and both also missed the human's FluoExec config pass-through point. v5 is the cleaner review: four solid verified findings (the FluoConfigurationTest assertion bug, the scan() return-type break, constructor-validation removal, and the exception-type change) against one absence-fabrication (claiming the FluoAdmin javadoc still referenced the old property when the PR updated it). v6, despite having full per-file git access, fabricated three findings (a false 'all args passed to invoked main' bug in FluoExec, an impossible getAccumuloPassword error scenario, and a wrong claim that the docs example is missing required credentials) and misattributed the real test-assertion bug to ScanTest.java:195, a location that does not exist. v6's extra tooling produced no accuracy gain - its strongest unique point (FluoGetJars silent failure) is outweighed by hallucinated bug mechanics, so v5 wins on precision."
+}

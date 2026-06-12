@@ -1,0 +1,118 @@
+{
+  "pr": 645,
+  "own_review": [
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 150,
+      "issue": "Argument counting via dot.getNextSibling().getChildCount(TokenTypes.EXPR) undercounts when a lambda is passed as an argument: verified empirically against checkstyle 8.8 AST that lambda arguments appear directly under ELIST as LAMBDA nodes, NOT wrapped in EXPR (e.g. forbidden(x -> x) counts 0 args, forbidden(\"a\", x -> x) counts 1). So argumentCount matching is wrong for any call with lambda args. Note: the obvious 'fix' of raw ELIST.getChildCount() would be worse (counts COMMA tokens); correct approach is COMMA-count+1 as in OverridableMethodInConstructorCheck.getMethodParamsCount.",
+      "severity": "medium"
+    },
+    {
+      "file": "eclipsecs-sevntu-plugin/src/com/github/sevntu/checkstyle/checks/coding/checkstyle-metadata.properties",
+      "line": 56,
+      "issue": "Doc/behavior mismatch on constructors: metadata desc says 'This check reads method & constructor names' and isForbiddenMethod javadoc says 'Check if the method/constructor call against defined rules', but the check registers only TokenTypes.METHOD_CALL — constructor calls (LITERAL_NEW, CTOR_CALL, SUPER_CTOR_CALL) are never checked, so e.g. 'new Thread()' cannot be forbidden despite the advertised capability.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 215,
+      "issue": "Stale IntRange javadoc: field docs say 'No lower limit when null' / 'No upper limit when null' and constructor doc says 'null is equivalent to 0/infinity', but lowerLimit/upperLimit are primitive int and can never be null.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 235,
+      "issue": "IntRange.from declares/documents CheckstyleException for invalid ranges, but a non-numeric single value without '-' (e.g. 'badArgCount') leaks an unchecked NumberFormatException from Integer.parseInt (tests only pass because TreeWalker wraps any setter exception). Also setArgumentCount clears argumentCountRanges before the loop, leaving the check in a partially-populated state if a later token is invalid.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 213,
+      "issue": "Javadoc typo 'vaild ranges' (should be 'valid'); also isForbiddenMethod @param doc 'ruleName of the the method' has a doubled 'the' and names the parameter wrongly.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Argument counting 'fragile AST traversal'; getNextSibling assumes ELIST is immediate sibling; replace with findFirstToken(ELIST).getChildCount()",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Cited code locations are real (StaticMethodCandidateCheck:629, UselessSuperCtorCallCheck:238-241 verified), so the convention observation is genuine, but the asserted risk is bogus — in the checkstyle grammar ELIST is always the next sibling of METHOD_CALL's first child — and the proposed fix (raw getChildCount on ELIST) would itself be a bug since ELIST children include COMMA tokens (2 args -> 3 children)."
+        },
+        {
+          "point": "getChildCount(TokenTypes.EXPR) may undercount arguments if ELIST children are not always EXPR-typed",
+          "verdict": "good",
+          "score": 1,
+          "note": "This is the real bug: verified against checkstyle 8.8 AST that lambda args sit directly under ELIST as LAMBDA nodes (not EXPR-wrapped), so counts are wrong for lambda arguments. Hedged ('if/could') and the suggested unfiltered getChildCount() fix is wrong (counts COMMAs), but the defect identification is correct."
+        },
+        {
+          "point": "Method name extraction via dot.getLastChild() is correct; consider adding a clarifying comment",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Explicitly concludes the code is correct; pure comment suggestion."
+        },
+        {
+          "point": "Javadoc typo 'vaild ranges'",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified present in IntRange javadoc in the diff."
+        },
+        {
+          "point": "Orphaned trailing period '<br/><br/>.' in checkstyle-metadata.properties desc",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Verified present, but cosmetic HTML-text nit."
+        }
+      ],
+      "missed": [
+        "Doc/behavior mismatch: metadata and isForbiddenMethod javadoc advertise constructor checking but only METHOD_CALL is handled",
+        "Stale IntRange javadoc referring to null for primitive int limits",
+        "IntRange.from leaks unchecked NumberFormatException despite declaring/documenting CheckstyleException; partial state in setArgumentCount on failure"
+      ],
+      "exceeds": [
+        "Lambda/EXPR undercount point (real bug human did not mention)",
+        "'vaild' typo"
+      ],
+      "net": -1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "Argument counting 'works correctly but is inconsistent' with findFirstToken(ELIST).getChildCount() convention",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Citations verified real, but the central assertion 'works correctly' is false (lambda args undercounted — verified against checkstyle 8.8 AST), and the claim that all cited checks use plain getChildCount() is inexact (OverridableMethodInConstructorCheck:657-676 counts COMMAs+1). Convention point itself is real, so 0 rather than -1."
+        },
+        {
+          "point": "Javadoc typo '@param name ruleName of the the method'",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified present in isForbiddenMethod javadoc; doubled 'the' and wrong parameter name in description."
+        },
+        {
+          "point": "testEmptyRules: add comment explaining why no violations expected (default ^$ matches only empty string)",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Factually accurate but a pure test-comment suggestion."
+        }
+      ],
+      "missed": [
+        "Lambda argument undercount in getChildCount(TokenTypes.EXPR) — v6 affirmatively asserted the code 'works correctly' on the very line containing the bug",
+        "Doc/behavior mismatch: metadata and isForbiddenMethod javadoc advertise constructor checking but only METHOD_CALL is handled",
+        "Stale IntRange javadoc referring to null for primitive int limits",
+        "IntRange.from leaks unchecked NumberFormatException despite declaring/documenting CheckstyleException"
+      ],
+      "exceeds": [
+        "'the the/ruleName' typo"
+      ],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "This is a clean, well-tested new-check PR that the human reviewer approved without findings, so most value lies in real defects beyond the reference. v5 is the stronger review: its second point lands on the one genuine correctness bug (getChildCount(TokenTypes.EXPR) undercounts lambda arguments — confirmed empirically against the checkstyle 8.8 AST where LAMBDA is a direct ELIST child), plus a verified javadoc typo, though both candidates push a 'project convention' fix (raw ELIST.getChildCount()) that would itself miscount by including COMMA tokens. v6 is weaker: it touches the same line but affirmatively declares the code 'works correctly', converting the bug into a pure style remark, and its only credited point is a javadoc typo. Neither candidate fabricated phantom APIs or false absences this round — all cited helper-check locations (StaticMethodCandidateCheck:629, UselessSuperCtorCallCheck:238-241, OverridableMethodInConstructorCheck:657-676) verify against the base commit. Both missed the advertised-but-unimplemented constructor checking and the stale IntRange null/exception javadoc issues."
+}

@@ -1,0 +1,66 @@
+{
+  "pr": 4771,
+  "own_review": [
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 113,
+      "issue": "Core verification: the flipped boolean is the 5th arg (optional) of the 6-arg MetadataFactory.createRequirement(namespace, name, range, filter, optional, multiple) overload, which internally constructs RequiredCapability with min=optional?0:1, max=1, greedy=true. Greedy stays true, so the requirement is still pulled into the slice when the referenced bundle IS resolvable, and resolution simply no longer fails when it is not (e.g. environment-filtered SWT fragments). The one-boolean fix is therefore safe and complete; both jars.extra.classpath and per-jar jar.X..extra.classpath paths funnel through createRequirementFromPlatformURL, so the PR title's full scope is covered by this single change.",
+      "severity": "info (correctness confirmation; greedy default is the key safety argument)"
+    },
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 113,
+      "issue": "Behavioral trade-off: with optional=true, a typo'd or genuinely-missing extra.classpath entry is now silently ignored instead of failing the build, and no warning is logged anywhere. This matches PDE semantics (the stated goal) but degrades diagnosability; a debug/warn log when an entry cannot be matched would help.",
+      "severity": "minor"
+    },
+    {
+      "file": "tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java",
+      "line": 22,
+      "issue": "No test accompanies the change. The existing integration test only builds projects whose extra classpath entries all resolve (verifyErrorFreeLog on valid references); there is no coverage for the new unresolvable-entry-is-ignored behavior, the very scenario this PR exists for. The only reproducer is external (eclipse.platform.swt PR 1638).",
+      "severity": "minor"
+    },
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 41,
+      "issue": "The StatusTool import reorder is cosmetic; it actually restores alphabetical order (org.eclipse.tycho.core.shared sorts after org.eclipse.tycho.TychoConstants), so it is an improvement, not noise.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Correct identification of the 5th param (optional) of the 6-arg createRequirement overload, cross-verified against the tycho-core BundleDependenciesAction.createRequirement wrapper at lines 162-168 which has explicit /* optional */ and /* greedy */ comments — citation verified exact at base commit", "grade": "good", "score": 1},
+        {"point": "OptionalResolutionAction flows to getPublisherActions() but not to getPublisherAdvice() where getExtraEntriesAdvice() is invoked (verified: P2GeneratorImpl.getPublisherAdvice line 407 calls getExtraEntriesAdvice without optionalAction), so extra classpath entries are always optional regardless of configuration — accurate, non-obvious design observation", "grade": "good", "score": 1},
+        {"point": "Missing test for the unresolvable-optional-entry scenario; claims existing test only covers resolvable entries — verified true (ExtraClassPathEntriesTest only builds projects with valid entries), though v5 misnames it 'ExtraClasspathEntriesTest.java'", "grade": "good", "score": 1},
+        {"point": "Cosmetic import reorder to alphabetical order, no functional impact — accurate but trivial", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Human's key insight: the 6-arg createRequirement overload already defaults greedy=true, so the requirement remains greedy and the fix is 'already as desired' — v5 never mentions greediness even though its own citation (BundleDependenciesAction with the true/* greedy */ comment) had the answer in view"
+      ],
+      "exceeds": [
+        "OptionalResolutionAction not reaching the extra-entries advice (design observation beyond the human review)",
+        "Missing test coverage for the unresolvable-entry scenario"
+      ],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {"point": "Correct identification of the optional flag in the 6-arg createRequirement overload and its non-fatal-when-unresolvable semantics — accurate", "grade": "good", "score": 1},
+        {"point": "Precedent analysis: P2ResolverImpl.optionalGreedyRequirementTo (line 364), InstallableUnitResolver optionalGreedySourceBundleRequirement (line 225), AdditionalBundleRequirementsInstallableUnitProvider (lines 78, 100) — ALL four citations verified exact at base commit, all use optional=true with greedy=true; this substantially captures the human's optional+greedy point via established convention", "grade": "good", "score": 1},
+        {"point": "Import reorder flagged as noise with advice to 'preserve the original import order' — the observation is real but the advice is backwards: the new order is the correct alphabetical one, the original was out of order", "grade": "trivial", "score": 0},
+        {"point": "Missing test: names the exact test class ExtraClassPathEntriesTest in tycho-its and correctly states it only covers resolvable entries; suggests a concrete unresolvable-entry test — verified accurate", "grade": "good", "score": 1}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Precedent survey of optional+greedy createRequirement usage across four Tycho classes with exact, verified line numbers",
+        "Missing test coverage with exact test class name and concrete test design"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Both reviews are accurate on this small, subtle PR and both correctly judge the one-boolean fix sound; every checkable citation in both was verified real at the base commit, and both missing-test claims are true (zero absence-fabrications). The decisive difference is the human's key insight that the 6-arg createRequirement overload keeps greedy=true: v6 effectively covers it by citing four verified 'optionalGreedy' precedents (all optional=true, greedy=true) and arguing the change matches that convention, while v5 never engages with greediness at all despite quoting the very wrapper method whose 'true/* greedy */' comment spells it out. v5 compensates with a genuinely good extra finding (OptionalResolutionAction never reaches the extra-entries advice, verified at P2GeneratorImpl:407) that v6 lacks. v6's only blemish is mildly backwards advice to revert an import reorder that actually fixed alphabetical ordering, and it misnamed nothing — its line-number precision (git tools) clearly paid off. v6 edges out v5: 3 vs 2."
+}

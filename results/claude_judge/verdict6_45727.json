@@ -1,0 +1,96 @@
+{
+  "pr": 45727,
+  "own_review": [
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+      "line": "202/229/244/258",
+      "issue": "Un-deprecated public-API break on a patch branch: base is 3.5.1-SNAPSHOT; buildConsumerProperties(SslBundles) and buildProducerProperties(SslBundles) are public and never @Deprecated yet hard-removed; buildAdminProperties(SslBundles) and buildStreamsProperties(SslBundles) were the ONLY forms at base and get signature-changed; public inner Consumer/Producer/Admin/Streams.buildProperties(SslBundles) also change signature. Spring Boot policy is deprecate-then-remove in a minor/major, not a patch. PR description's claim that the method was deprecated is false - only Ssl.buildProperties() no-arg carried @Deprecated(since=3.2.0), and the PR removes that annotation while deleting the non-deprecated variant.",
+      "severity": "critical"
+    },
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/test/java/org/springframework/boot/autoconfigure/kafka/KafkaPropertiesTests.java",
+      "line": "104-110 (base)",
+      "issue": "sslBundleConfiguration test is deleted instead of converted to the no-arg buildConsumerProperties(); its assertion (bundle set => no SSL_ENGINE_FACTORY_CLASS_CONFIG in built properties) still describes live behavior (Ssl.buildProperties returns empty map when bundle set) and should be kept. PR description ('the removed test has been restored') does not match the diff.",
+      "severity": "minor"
+    },
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+      "line": "1431 (base)",
+      "issue": "Verified-correct aspect: Ssl.buildProperties(SslBundles) genuinely ignores its parameter at base (bundles flow via PropertiesKafkaConnectionDetails / SslBundleSslEngineFactory), so internal behavior is unchanged; all in-repo callers updated (KafkaAutoConfiguration:173, KafkaStreamsAnnotationDrivenConfiguration:65) and no other module/doc references exist - internal compile is safe.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "No external callers of the parameterized build*Properties methods exist; 'The API removal is safe'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "In-repo absence of callers is true (verified), but the safety conclusion is false: these are public, never-deprecated framework APIs consumed by third-party apps, removed on a 3.5.1 patch branch - the central problem with this PR, asserted in the opposite direction."
+        },
+        {
+          "point": "@Deprecated on Ssl.buildProperties() removed; bundle field and validate() mutual-exclusion checks remain; bundle resolution via PropertiesKafkaConnectionDetails.getBundle()",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: annotation at base line 1426 removed, validate() retained, PropertiesKafkaConnectionDetails.getBundle() exists. Wording 'removed along with the method' is garbled but the substance is accurate."
+        },
+        {
+          "point": "buildAdminProperties previously had only the parameterized form, so this is a signature change rather than an overload removal; all callers updated",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true at base (line 244, no no-arg delegator) - a precise observation beyond the human reference."
+        },
+        {
+          "point": "sslBundleConfiguration test 'appropriately removed'; four mutual-exclusion tests correctly updated; unused imports cleaned up",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Descriptive parts accurate, but endorsing the sslBundleConfiguration deletion is the wrong call - the test could and should be kept with the no-arg API (the asserted behavior still exists)."
+        }
+      ],
+      "missed": [
+        "Un-deprecated public-API removal/signature change on a 3.5.1 patch branch (deprecate-first policy violation); actively asserted the opposite ('removal is safe')",
+        "Coverage loss from deleting sslBundleConfiguration instead of converting it to the no-arg call (endorsed the deletion)"
+      ],
+      "exceeds": [
+        "buildAdminProperties signature-change vs overload-removal distinction",
+        "Bundle-resolution-moved-to-PropertiesKafkaConnectionDetails analysis"
+      ],
+      "net": -1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "Removed sslBundleConfiguration test leaves a coverage gap; SSL_ENGINE_FACTORY_CLASS_CONFIG is injected later by KafkaAutoConfiguration.applySslBundle(); restore the test using no-arg buildConsumerProperties()",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: applySslBundle at KafkaAutoConfiguration:243; Ssl.buildProperties returns empty map when bundle set. Matches my own finding and the human's keep-the-tests theme; actionable fix proposed."
+        },
+        {
+          "point": "Ssl.buildProperties() still returns early with empty Properties when bundle name set; restored test would validate this contract",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate (verified) but duplicative supporting detail for point 1, not an independent finding."
+        },
+        {
+          "point": "Clean removal of unused imports (DefaultSslBundleRegistry, SslBundle, mock)",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate housekeeping praise; no review value."
+        }
+      ],
+      "missed": [
+        "Un-deprecated public-API removal/signature change on a 3.5.1 patch branch (deprecate-first policy violation); summary calls the change 'clean' and repeats the PR's false 'deprecated' framing"
+      ],
+      "exceeds": [
+        "sslBundleConfiguration restore-with-no-arg recommendation with applySslBundle mechanism explanation (beyond the human's four points)"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Neither candidate caught the PR's dominant defect: hard removal of public, never-deprecated SslBundles overloads (and signature changes to the only existing buildAdminProperties/buildStreamsProperties forms) on the 3.5.1-SNAPSHOT patch branch, with both summaries uncritically repeating the PR description's false claim that the removed methods were deprecated. v5 is more thorough on API mechanics - the buildAdminProperties signature-change nuance and the bundle-resolution-via-connection-details analysis are verified and exceed the human - but it actively asserts 'the API removal is safe' and endorses deleting the sslBundleConfiguration test, both wrong calls. v6 is thinner but its one substantive point lands: it correctly identifies the coverage gap, explains the applySslBundle mechanism, and proposes the exact fix (restore the test with the no-arg call), aligning with the human's keep-the-tests intent. Neither fabricated absence claims; both 'no external callers' statements are true within the repo. v6 edges out v5 (0 vs -1) because v5's confident wrong conclusions outweigh its extra verified detail."
+}

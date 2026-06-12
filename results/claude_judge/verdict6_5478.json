@@ -1,0 +1,184 @@
+{
+  "pr": 5478,
+  "own_review": [
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "94-107 (fail())",
+      "issue": "fail() has no CAS retry loop, unlike succeed(): if a concurrent selectFor appends a waiter between entries.get(address) and entries.remove(address, tail), the remove CAS fails and the method silently returns. The whole waiter chain is stranded in the map forever -- no in-flight getRegistrations remains to resolve it, pending sends hang, and every future select on the address appends to the dead chain (and a later registrationsUpdated would throw UOE). Must be wrapped in a retry loop like succeed().",
+      "severity": "critical"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "207-214 (registrationsUpdated)",
+      "issue": "Throws UnsupportedOperationException(\"Is this case valid ?\") when the entry is a WaiterEntry (including the NOOP broadcast window). This case is valid and reachable in production: wantsUpdatesFor() returns true while waiters are pending (entries.containsKey), so cluster managers will deliver registration updates while the initial getRegistrations is in flight (e.g. a consumer registers on another node). The old Selectors.dataReceived ignored updates while not ready; the new code throws on the cluster manager notification thread. The test testRegistrationUpdateBeforeGetResolution codifies the bug.",
+      "severity": "critical"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "class-level",
+      "issue": "registrationsLost() is no longer overridden (inherits no-op default from RegistrationListener). The old spi DefaultNodeSelector overrode it to call Selectors.dataLost(), clearing all cached entries and completing pending promises with NullRoundRobinSelector. Cluster managers that fire registrationsLost on topology loss now leave stale cached SelectorEntry instances routing messages to possibly-dead nodes.",
+      "severity": "high"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "100-106",
+      "issue": "fail() delivers failures newest-first (iterates tail->prev without reversing), opposite of succeed()/broadcastToWaiters which reverses to arrival order. Inconsistent with the PR's ordering goal; failure callbacks complete in reverse arrival order.",
+      "severity": "low"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java",
+      "line": "222-238 (sendOrPub)",
+      "issue": "Selection callbacks no longer run on a Vert.x context: the old path used ctx.promise() + the Serializer event-loop context; the new Completable lambda runs synchronously on whatever thread resolves (cluster manager thread on slow path, caller thread on fast path). sendRemote/ConnectionHolder are documented as concurrency-tolerant and writePromise completion is thread-safe, so likely OK, but it is a real threading-model change worth a maintainer's eye.",
+      "severity": "low"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "143, 214",
+      "issue": "WIP placeholder exception messages ('Does this case make sense ', 'Is this case valid ?') and a test that asserts the UOE -- should not ship as-is.",
+      "severity": "low"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java",
+      "line": "42-55",
+      "issue": "Javadoc still instructs implementations to use Promise#tryComplete/Promise#tryFail although the parameter type is now Completable (which has no try* methods and documents IllegalStateException on double completion). Stale docs.",
+      "severity": "low"
+    },
+    {
+      "file": "vertx-core/src/main/java/module-info.java + NodeSelector.java",
+      "line": "init signature / package move",
+      "issue": "Breaking SPI changes: NodeSelector moved from io.vertx.core.spi.cluster.impl (no longer exported) into the internal eventbus.impl.clustered package, init() loses the Vertx parameter, and select* switch from Promise to Completable. Breaks all external custom NodeSelector implementations; presumably intentional for Vert.x 5 but deserves a changelog/breaking-change note.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "broadcastToWaiters collects and completes the NOOP sentinel (harmless no-op), suggest early stop",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Verified true but self-admittedly harmless; cosmetic."
+        },
+        {
+          "point": "succeed() TOCTOU: concurrent registrationsUpdated could install a SelectorEntry causing the UOE branch",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False mechanism: registrationsUpdated throws on any WaiterEntry and can never install a SelectorEntry while waiters/NOOP are pending; the UOE branch in succeed() is unreachable via the described race."
+        },
+        {
+          "point": "fail() broadcasts failures in reverse-arrival order, inconsistent with succeed()",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: fail() iterates tail->prev without reversing. Real minor ordering inconsistency."
+        },
+        {
+          "point": "init(Vertx, ClusterManager) -> init(ClusteredNode) is a breaking SPI change, loses Vertx access",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real breaking change for custom selectors."
+        },
+        {
+          "point": "Javadoc still references Promise#tryComplete/tryFail; Completable succeed/fail throw IllegalStateException on double completion",
+          "verdict": "good",
+          "score": 1,
+          "note": "Stale javadoc verified; the IllegalStateException contract matches Completable's documented @throws."
+        },
+        {
+          "point": "FakeClusterManager getRegistrationsLatency(long) is a setter named like a getter",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Test-helper naming nit (fluent style is common in vert.x)."
+        },
+        {
+          "point": "registrationsUpdated throws UOE while entry is WaiterEntry; updates silently dropped; consider warning/deferring",
+          "verdict": "good",
+          "score": 1,
+          "note": "Identifies the real blocker but mischaracterizes it as 'by design' and 'silently dropped/ignored' (the exception actually propagates on the CM notification thread); soft framing keeps this at +1 rather than +2."
+        },
+        {
+          "point": "ClusterManager -> ClusteredNode method move impacts external implementations; coordinate release",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate but no breakage: methods are still required via inheritance."
+        }
+      ],
+      "missed": [
+        "fail() lacks the CAS retry loop -- stranded waiter chain / permanently hung sends (critical)",
+        "registrationsLost() no longer overridden -- stale cached selectors after cluster data loss (high)"
+      ],
+      "exceeds": [
+        "fail() reverse-order failure broadcast",
+        "init() SPI breaking change",
+        "stale Promise#tryComplete javadoc",
+        "registrationsUpdated UOE on pending WaiterEntry"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "Missing registrationsLost() override -- stale state vs old dataLost() behavior",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real regression; slightly overstates ('stale WaiterEntry... indefinitely' -- waiters are still resolved by the in-flight getRegistrations), SelectorEntry staleness is the real issue."
+        },
+        {
+          "point": "succeed() UOE reachable when concurrent registrationsUpdated swaps in a different SelectorEntry and the CAS fails",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False: registrationsUpdated throws on WaiterEntry/NOOP and cannot create a SelectorEntry while succeed() is looping; on CAS failure the re-read sees a WaiterEntry, never a SelectorEntry. Unreachable race."
+        },
+        {
+          "point": "registrationsUpdated throws UOE when entry is WaiterEntry; external CMs have different timing -- real failures; should be ignored or queued",
+          "verdict": "critical",
+          "score": 2,
+          "note": "Verified blocker: wantsUpdatesFor() returns true for pending entries so real cluster managers will hit this; old code ignored not-ready updates; remediation correct."
+        },
+        {
+          "point": "Weight.increment() made public without justification; keep package-private",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False claim of internal-only usage: DefaultNodeSelector lives in the parent package eventbus.impl.clustered (different package from ...clustered.selector), so public is required after the move; package-private would not compile."
+        },
+        {
+          "point": "Unbounded waiter list memory concern under slow getRegistrations",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Speculative; the old Serializer queue was equally unbounded per address, so no regression."
+        },
+        {
+          "point": "ClusterManager now extends ClusteredNode; source-compatible API change worth documenting",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate, informational."
+        },
+        {
+          "point": "Promise -> Completable removes tryComplete/tryFail; breaking for external custom selectors; double-completion now throws",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real SPI break, consistent with Completable's documented contract."
+        },
+        {
+          "point": "NOOP sentinel: registrationsUpdated firing while address maps to NOOP triggers the UOE",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "True (NOOP is a WaiterEntry) but a sub-case of the point already scored at +2; no extra credit for the duplicate."
+        }
+      ],
+      "missed": [
+        "fail() lacks the CAS retry loop -- stranded waiter chain / permanently hung sends (critical)"
+      ],
+      "exceeds": [
+        "missing registrationsLost() override",
+        "registrationsUpdated UOE on pending WaiterEntry (correctly framed as production risk)",
+        "Promise->Completable SPI break"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 1
+  },
+  "qualitative": "Both machine reviews engaged seriously with the lock-free waiter-chain design and both correctly flagged the registrationsUpdated UnsupportedOperationException on pending waiters -- v6 framed it accurately as a reachable production failure (+2) while v5 downplayed it as 'by design' (+1). v6 uniquely caught the missing registrationsLost() override; v5 uniquely caught the reverse-order failure broadcast, the init() SPI break, and the stale Promise#tryComplete javadoc. Both fabricated the same unreachable race in succeed() (registrationsUpdated can never install a SelectorEntry while waiters are pending, since it throws on WaiterEntry), and v6 additionally fabricated that Weight.increment() could stay package-private despite the cross-package call from DefaultNodeSelector. Critically, both missed the worst defect in the PR: fail() lacks the CAS retry loop that succeed() has, so a waiter appended concurrently with a getRegistrations failure permanently strands the chain and hangs all subsequent sends on that address. The single human reference comment was test-strategy discussion rather than an actionable defect, so both candidates substantially exceed the human reference; they land tied at net +1."
+}

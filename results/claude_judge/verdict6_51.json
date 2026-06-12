@@ -1,0 +1,43 @@
+{
+  "pr": 51,
+  "own_review": [
+    {"file": "transports/stdio/pom.xml", "line": 14, "issue": "Typo in <description>: 'stanard' should be 'standard'", "severity": "minor"},
+    {"file": "transports/sse/pom.xml:14 and transports/sse/runtime/.../quarkus-extension.yaml:1", "line": 14, "issue": "'server side events' is incorrect terminology — SSE stands for 'Server-Sent Events'; this is user-facing metadata shown on code.quarkus/Maven Central", "severity": "minor"},
+    {"file": "transports/sse|stdio/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "line": 1, "issue": "New yaml files omit the top-level 'description:' field present in core/runtime's quarkus-extension.yaml; works via inherited pom <description> but inconsistent with project convention", "severity": "minor"},
+    {"file": "transports/sse|stdio/pom.xml", "line": 14, "issue": "Description placed on the parent (packaging=pom) module is inherited by deployment and integration-tests artifacts too; stdio keeps a blank line after description while sse removed it", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "stdio pom.xml typo 'stanard' -> 'standard'", "grade": "good", "score": 1, "note": "Verified in diff; matches human point 3"},
+        {"point": "Both new yaml files omit top-level description field present in core/runtime yaml", "grade": "good", "score": 1, "note": "Verified: core yaml line 2 has description, new files do not; relevant since the PR's whole purpose is correct descriptions"},
+        {"point": "Guide URL active in new files but commented out in core yaml; confirm docs are live", "grade": "good", "score": 1, "note": "Verified: core yaml line 6 has the guide commented out with a publishing note; human reviewer also engaged on the guide URL lines ('This guide is already published')"}
+      ],
+      "missed": [
+        "'server side events' should be 'Server-Sent Events' in sse pom description and yaml name (judge's own finding)"
+      ],
+      "exceeds": [
+        "Missing yaml description-field consistency point (not in human review)",
+        "Cross-checked core extension yaml conventions"
+      ],
+      "net": 2
+    },
+    "v6": {
+      "points": [
+        {"point": "Both new yaml files omit top-level description field; suggests concrete description text per transport", "grade": "good", "score": 1, "note": "Verified against core/runtime yaml; includes actionable suggested wording"},
+        {"point": "stdio pom.xml typo 'stanard' -> 'standard'", "grade": "good", "score": 1, "note": "Verified; matches human point 3"},
+        {"point": "Guide URL uncommented here vs commented in core with publishing note; confirm URL is live", "grade": "good", "score": 1, "note": "Verified: core yaml line 6 matches the described commented-out guide; aligns with human's guide-URL comments on both yaml files"}
+      ],
+      "missed": [
+        "'server side events' should be 'Server-Sent Events' in sse pom description and yaml name (judge's own finding)"
+      ],
+      "exceeds": [
+        "Missing yaml description-field consistency point with concrete suggested text (not in human review)",
+        "Cross-checked core extension yaml conventions"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "qualitative": "This is a tiny metadata-only PR, and both candidates reviewed it accurately: each caught the 'stanard' typo the human flagged, raised the guide-URL question the human also engaged on, and exceeded the human by spotting the missing top-level description field versus the core extension's yaml convention. Every factual claim about the core yaml (description present, guide commented out with a publishing note) was verified true against the repo, so neither candidate has fabrications. Both missed the terminology error that SSE means 'Server-Sent Events', not 'server side events', in user-facing metadata. v6 is marginally stronger in presentation — precise line references and concrete suggested description strings — but substantively the two reviews are equivalent, hence identical nets."
+}

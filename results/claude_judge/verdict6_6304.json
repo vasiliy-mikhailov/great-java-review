@@ -1,0 +1,53 @@
+{
+  "pr": 6304,
+  "own_review": [
+    {"file": "controller/src/main/java/org/jboss/as/controller/parsing/ExtensionXml.java", "line": 101, "issue": "Backward-compat boot break: at base, the raw module attribute was passed through and DeferredExtensionContext canonicalized via ModuleIdentifier.fromString, so existing configs with module=\"name:main\" booted fine; the PR now throws XMLStreamException at parse time with no migration/auto-correct path. Same enforcement added in ExtensionAddHandler.execute breaks CLI scripts/provisioning that add /extension=name:main. Intentional per WFCORE-7116 but it is a behavior break worth flagging.", "severity": "high"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/logging/ControllerLogger.java", "line": 3813, "issue": "Typo in new message id 518: 'only if the is slot is not 'main'' — extra 'is'; should be 'only if the slot is not main'.", "severity": "low"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/ModuleIdentifierUtil.java", "line": 156, "issue": "MODULE_NAME_CORRECTOR is left un-deprecated while every method in the class is @Deprecated(forRemoval=true, since=28.0.0); it calls the now-deprecated canonicalModuleIdentifier and has no replacement home (ParameterCorrector is in controller, the new util is in controller-client). Grep shows zero in-tree usages — orphaned.", "severity": "medium"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/ModuleIdentifierUtil.java", "line": 22, "issue": "Deprecation cascade: ~15 in-tree files (server deployment-module parsers JBossDeploymentStructureParser10-13, ManifestDependencyProcessor, ModuleDependency, ManifestClassPathProcessor, elytron ClassLoadingAttributeDefinitions/PermissionMapperDefinitions/DirContextDefinition, domain-http ErrorContextHandler/ConsoleMode, tests) still call the now-forRemoval methods; PR migrates none of them, producing build-wide deprecation warnings and a removal blocker for 28.0.0.", "severity": "medium"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/logging/ControllerLogger.java", "line": 3812, "issue": "Message 518 is phrased as 'Resource /extension=%s ...' but is also thrown from ExtensionXml for an XML attribute during config parsing, where no management resource is involved — slightly misleading in the boot-failure context.", "severity": "low"},
+    {"file": "controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java", "line": 191, "issue": "Missing newline at end of file (also in ModuleIdentifierUtil.java); utility class also lacks a private constructor.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Typo 'the is slot' in message id 518", "verdict": "good", "score": 1, "note": "Verified in diff; minor line-ref nit (518 is the message id, file line is ~3813)."},
+        {"point": "MODULE_NAME_CORRECTOR orphaned, zero external references, should be deprecated or removed", "verdict": "good", "score": 1, "note": "Verified: grep shows only the definition; left un-deprecated in a fully forRemoval class."},
+        {"point": "No trailing newline in JBossModulesNameUtil.java", "verdict": "trivial", "score": 0, "note": "Real but style-only."},
+        {"point": "Deprecation cascade: 14 external callers across server/elytron/domain-http will see warnings; migration needs controller-client dependency", "verdict": "good", "score": 1, "note": "Verified ~15 call-site files; accurate and actionable."},
+        {"point": "ExtensionAddHandler/ExtensionXml canonical-name enforcement will fail boot for existing configs with non-canonical names — intentional breaking change to confirm", "verdict": "critical", "score": 2, "note": "Verified: base code canonicalized via ModuleIdentifier.fromString at load time, so 'name:main' configs previously booted; now they fail XML parsing. The single most important finding; hedged but mechanism is exactly right."},
+        {"point": "TODO on escape-sequence test cases is inherited; leaving it is fine", "verdict": "trivial", "score": 0, "note": "Commentary, no action."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Boot-time compat break for existing non-canonical configs (human only gave +1 on the related handler)",
+        "Orphaned MODULE_NAME_CORRECTOR",
+        "Deprecation cascade across ~15 in-tree callers",
+        "Typo in message 518 (human suggested the sentence pre-typo; v5 caught the introduced grammar error)"
+      ],
+      "net": 5
+    },
+    "v6": {
+      "points": [
+        {"point": "Typo 'the is slot' in message id 518", "verdict": "good", "score": 1, "note": "Verified; correct file line 3813."},
+        {"point": "MODULE_NAME_CORRECTOR not deprecated while all other members are; zero usages; inconsistent deprecation state", "verdict": "good", "score": 1, "note": "Verified (actual line 156, cited 131 — minor)."},
+        {"point": "Claims old ModuleIdentifierUtilUnitTestCase.java still exists and 'now delegates to JBossModulesNameUtil via deprecated methods', testing through deprecated indirection", "verdict": "wrong", "score": -1, "note": "Fabricated: the diff git-renames the old test (similarity 54%) into controller-client; no old test class remains to delegate anything. Notably v6 had pr_files/pr_file_diff tools and still got the rename wrong."},
+        {"point": "No newline at end of JBossModulesNameUtil.java", "verdict": "trivial", "score": 0, "note": "Real but style-only."},
+        {"point": "Deprecation cascade: ~14 files still call ModuleIdentifierUtil.canonicalModuleIdentifier; need follow-up before 28.0.0 removal", "verdict": "good", "score": 1, "note": "Verified."}
+      ],
+      "missed": [
+        "Boot-time backward-compat break: ExtensionXml/ExtensionAddHandler now reject previously-valid non-canonical extension names (e.g. 'name:main'), failing boot of existing configs — the highest-severity issue in the PR"
+      ],
+      "exceeds": [
+        "Orphaned/inconsistent MODULE_NAME_CORRECTOR",
+        "Deprecation cascade across in-tree callers"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 0
+  },
+  "qualitative": "Both candidates verified the jboss-modules String overloads before endorsing the approach and both found the message-518 typo, the orphaned MODULE_NAME_CORRECTOR, and the deprecation cascade. v5 clearly wins: it additionally flagged the PR's only high-severity issue — the new canonical-name enforcement breaks boot for existing configs that use 'name:main' (previously canonicalized silently via ModuleIdentifier.fromString) — which v6 missed entirely. v6 also fabricated a claim that the old ModuleIdentifierUtilUnitTestCase still exists and delegates through deprecated methods, when the diff plainly shows a git rename into controller-client; this is a presence-fabrication (not an absence-fabrication, so both counters stay 0) and is striking given v6 had pr_files/pr_file_diff tools available. Neither candidate fabricated removals or broken callers this round. Net: v5 = 5, v6 = 1."
+}

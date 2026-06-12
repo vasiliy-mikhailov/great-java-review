@@ -1,0 +1,151 @@
+{
+  "pr": 6015,
+  "own_review": [
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": 522,
+      "issue": "setTimeout javadoc says 'in milliseconds' but the value is actually treated as seconds: awaitServers/awaitHostController compute deadline = start + timeout * 1000 and the value is interchangeable with configuration.getStartupTimeoutInSeconds(). Pre-existing doc error, but the PR rewrites this javadoc and perpetuates the wrong unit (AdminOnlyModeTestCase passes 300L, clearly 300 seconds).",
+      "severity": "minor"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": 523,
+      "issue": "Invalid javadoc reference {@link WildFlyManagedConfiguration.startupTimeoutInSeconds} - should use '#' member syntax (e.g. {@link WildFlyManagedConfiguration#getStartupTimeoutInSeconds()}); as written it will not resolve and references a private field.",
+      "severity": "trivial"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": 440,
+      "issue": "Removal of public overloads reload(String,Boolean), reload(String,Boolean,Boolean), reload(String,Boolean,Boolean,Long) is a source-incompatible change for downstream consumers of the wildfly-core-testsuite-shared artifact (e.g. the full WildFly testsuite). All in-repo callers are updated, but external callers would need migration.",
+      "severity": "minor"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": 441,
+      "issue": "reload(String, ReloadParameters) NPEs if parameters is null; old API tolerated nulls. Could default to new ReloadParameters() or document non-null contract.",
+      "severity": "trivial"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": 443,
+      "issue": "Verified behavior preservation: the new code always sets admin-only and restart-servers explicitly where the old code omitted them when null. Server-side HostProcessReloadHandler defaults RESTART_SERVERS to true (asBoolean(true), line 106) and admin-only to false, and old waitForServers==null was treated as wait, matching the new defaults (adminOnly=false, restartServers=true, waitForServers=true). All 14 in-repo call sites of the removed overloads are updated in this PR; the kept reload(String) and reloadAdminOnly overloads cover remaining callers (ReadOnlyModeTestCase, HostReloadProxyTestCase). No functional change.",
+      "severity": "info"
+    },
+    {
+      "file": "testsuite/domain/src/test/java/org/jboss/as/test/integration/domain/suites/IgnoredResourcesTestCase.java",
+      "line": 80,
+      "issue": "Identical ReloadParameters (setRestartServers(false).setWaitForServers(false)) constructed repeatedly here, at line 108, and in IgnoredResourcesProfileCloneTestCase; could be extracted to a shared helper/constant. Style only.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "[DomainLifecycleUtil.java:438] new reload always sets admin-only/restart-servers vs old null-omission; functionally equivalent with primitive defaults",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: server default for restart-servers is true (HostProcessReloadHandler asBoolean(true)), admin-only default false; equivalence holds."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:503] restartServers default true matches common usage, semantically correct",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Conclusion correct but duplicates the 438 point; justification cites caller usage rather than the actual server-side default."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:516] waitForServers default true matches old null-truthy logic (waitForServers == null || waitForServers)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified against old code; correct and addresses the exact semantic-preservation risk."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:460-474] removed overloads have no callers outside the 10 updated test files; reload(String) and reloadAdminOnly preserved",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified by grep over base commit: all argument-taking call sites are exactly those updated; single-arg callers use the retained overload."
+        },
+        {
+          "point": "[AdminOnlyModeTestCase.java:92-176] all three tests migrate correctly, intent clearer",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate but pure narration/praise."
+        },
+        {
+          "point": "[SimpleDomainControllerMigrationTestCase.java:175-205] mapping of (false,false) preserved",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate narration."
+        },
+        {
+          "point": "[IgnoredResourcesTestCase.java:80,108] duplicated parameter construction, suggest extraction",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Real but self-declared minor style nit on test code."
+        },
+        {
+          "point": "[OutboundLdapConnectionTestCase.java:149] setWaitForServers(false) functionally identical to old (null,false)",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate narration."
+        }
+      ],
+      "missed": [
+        "HUMAN: ReloadParameters javadoc is incomplete/ambiguous - defaults and false-vs-unset semantics not documented; needs fixing (the sole human reference point)",
+        "OWN: setTimeout javadoc says milliseconds but value is treated as seconds (timeout * 1000 in awaitServers/awaitHostController); PR rewrote this javadoc and kept the wrong unit"
+      ],
+      "exceeds": [
+        "Caller-completeness verification (no remaining callers of removed overloads; retained overloads cover the rest) - exactly the check v6 botched",
+        "Semantic-equivalence analysis of null-vs-default migration for all three flags, beyond the human comment"
+      ],
+      "net": 1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "[ReadOnlyModeTestCase.java:72,79] BLOCKER: reload(String host) overload removed, file missed, compilation failure",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Fabricated. The diff KEEPS public void reload(String host), rewriting its body to reload(host, new ReloadParameters()). These call sites compile unchanged. Absence-fabrication."
+        },
+        {
+          "point": "[HostReloadProxyTestCase.java:95] BLOCKER: removed reload(String host) overload, compilation failure",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Same fabrication: the single-arg overload is retained. Also contradicts v6's own point praising preserved backward compatibility. Absence-fabrication."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:472-475] restartServers default true equivalent to old null-omission; HostProcessReloadHandler:41-42 defaults RESTART_SERVERS to true",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: HostProcessReloadHandler line 41 defines RESTART_SERVERS, line 106 resolves asBoolean(true). Correct server-side evidence."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:413] old waitForServers=null triggered waiting; new default true preserves semantics",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified against old code path."
+        },
+        {
+          "point": "[DomainLifecycleUtil.java:437] reloadAdminOnly methods preserved using builder internally",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate narration/praise."
+        }
+      ],
+      "missed": [
+        "HUMAN: ReloadParameters javadoc is incomplete/ambiguous - defaults and false-vs-unset semantics not documented; needs fixing (the sole human reference point)",
+        "OWN: setTimeout javadoc says milliseconds but value is treated as seconds (timeout * 1000 in awaitServers/awaitHostController); PR rewrote this javadoc and kept the wrong unit"
+      ],
+      "exceeds": [
+        "Server-side default verification citing HostProcessReloadHandler with file:line - deeper than the human comment"
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v6": 2
+  },
+  "qualitative": "This is a pure test-infrastructure refactor (overloads -> ReloadParameters builder) whose only real risk is semantic drift in the null-vs-default migration and missed call sites; I verified behavior is fully preserved and all callers are covered. v5 is accurate throughout: it correctly verified the null/default equivalence for all three flags and, crucially, confirmed no remaining callers of the removed overloads, though half its points are narration and it missed the human's javadoc-ambiguity comment and the milliseconds/seconds doc error. v6 produced two fabricated BLOCKERs claiming the retained reload(String) overload was removed and that ReadOnlyModeTestCase and HostReloadProxyTestCase would fail to compile - despite having git tools to check, and despite its own diff showing the overload kept - which are classic absence-fabrications that would mislead a maintainer into thinking the PR is broken. v6's two genuine points (server-side restart-servers default, waitForServers null-truthy) are well-evidenced, but the false blockers dominate. v5 clearly wins on this PR."
+}

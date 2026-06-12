@@ -1,0 +1,55 @@
+{
+  "pr": 49721,
+  "own_review": [
+    {"file": "test-support/.../DisabledIfProcessUnavailableCondition.java", "line": "84-87", "issue": "Fallback failures are caught as 'catch (Exception ignored)' and discarded entirely, unlike CredentialHelper and ProcessRunner which addSuppressed; the final RuntimeException carries neither cause nor suppressed exceptions, losing diagnostics and being inconsistent across the three sites.", "severity": "minor"},
+    {"file": "test-support/.../DisabledIfProcessUnavailableCondition.java", "line": "84-87", "issue": "An InterruptedException thrown by a fallback check (process.waitFor) is swallowed in the ignored-catch without restoring the interrupt flag.", "severity": "minor"},
+    {"file": "buildpack/.../CredentialHelper.java", "line": "99-110", "issue": "The loop relies on processBuilder.command(command) mutating shared builder state between iterations; it is only correct because 'executable' is captured before the loop and set(0, ...) fully overwrites element 0. Fragile pattern; a fresh ProcessBuilder per attempt (as in the other two files) would be safer.", "severity": "trivial"},
+    {"file": "all three changed main files", "line": "guard lines", "issue": "The new per-directory startsWith(binDirectory) guards are scope creep: helper/command names never contain '/', so the guards are unnecessary (matches the maintainer's view: revert). In CredentialHelper the guard is entirely new behavior unrelated to adding the homebrew fallback.", "severity": "minor"},
+    {"file": "buildpack/.../CredentialHelperTests.java", "line": "106-112", "issue": "Test could also assert ex.getMessage() doesNotContain '/opt/homebrew/bin/' and that exactly 2 suppressed exceptions exist; anySatisfy alone is weaker than the old allSatisfy.", "severity": "trivial"},
+    {"file": "core/.../ProcessRunner.java", "line": "112-129", "issue": "Behavioral change in failure reporting (improvement): the thrown ProcessStartException now always wraps the original command and original exception with retry failures suppressed, instead of the old recursion which reported the /usr/local/bin-prefixed command on retry failure. Verified base startProcess only set directory(), so the inline retry loses no ProcessBuilder configuration.", "severity": "note"},
+    {"file": "core/.../ProcessRunner.java + test-support", "line": "fallback condition", "issue": "path.contains(binDirectory) is a loose substring match (e.g. '/usr/local/bind' matches); pre-existing pattern, not introduced by this PR.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "CredentialHelper loop mutates processBuilder.command in-place but stays correct because executable is captured pre-loop; suggest fresh ProcessBuilder per attempt for consistency with the other two files", "grade": "good", "score": 1, "note": "Verified accurate; matches my own finding #3 with correct mutation analysis."},
+        {"point": "Test input-shape inconsistency: production always passes bare 'docker-credential-' names (DockerRegistryConfigAuthentication:~59 verified) while other tests use geExecutableAbsolutePath, which the startsWith guard does not cover", "grade": "good", "score": 1, "note": "All factual claims verified in repo, including the typo'd method name; engages the same guard the human flagged."},
+        {"point": "ProcessRunnerTests has no tests for the macOS fallback (neither /usr/local/bin nor /opt/homebrew/bin); runWhenProcessDoesNotStart does not assert suppressed exceptions", "grade": "good", "score": 1, "note": "Verified: only 4 tests, none cover fallback."},
+        {"point": "DisabledIfProcessUnavailableTests is a single smoke test that does not exercise the fallback logic", "grade": "trivial", "score": 0, "note": "Verified true, but unit-testing a JUnit condition's PATH fallback is impractical; soft coverage nit."},
+        {"point": "Trailing-slash constant inconsistency between CredentialHelper and the other two classes", "grade": "trivial", "score": 0, "note": "Accurate but pre-existing style."}
+      ],
+      "missed": [
+        "Human: DisabledIfProcessUnavailableCondition startsWith guard is unrelated/unnecessary, should be reverted",
+        "Human: ProcessRunner startsWith guard is unrelated/unnecessary, should be reverted",
+        "Own: DisabledIfProcessUnavailableCondition discards fallback exceptions without addSuppressed (inconsistent with the other two files, loses diagnostics)"
+      ],
+      "exceeds": [
+        "Mutation-safety analysis of CredentialHelper loop",
+        "Verified cross-file evidence (DockerRegistryConfigAuthentication) for production input shape",
+        "ProcessRunner fallback test-coverage gap"
+      ],
+      "net": 0
+    },
+    "v6": {
+      "points": [
+        {"point": "Trailing-slash convention inconsistency across the three constants", "grade": "trivial", "score": 0, "note": "Accurate, style-only."},
+        {"point": "startsWith guard misses non-standard absolute paths, producing compound paths like /opt/homebrew/bin//custom/path/...; suggests broader startsWith(\"/\") guard", "grade": "good", "score": 1, "note": "Accurate analysis of the guard the human also flagged, though it suggests strengthening rather than removing it."},
+        {"point": "Claims the ProcessRunner fallback 'calls startProcess(localCommand) recursively' and re-iterates MAC_OS_BIN_DIRECTORIES, recommending early return", "grade": "wrong", "score": -1, "note": "Fabricated: the new code calls localProcessBuilder.start() directly; recursion existed only in the pre-PR code. The described redundant re-iteration cannot happen."},
+        {"point": "anySatisfy change correct; suggest hasSize(2) before anySatisfy", "grade": "trivial", "score": 0, "note": "Accurate, minor test-tightening nit."},
+        {"point": "Codebase-wide verification that the three files are the complete set of macOS fallback sites; installing.adoc:157 still references /usr/local/bin for Homebrew", "grade": "good", "score": 1, "note": "Both claims verified true in repo; useful completeness diligence. The adoc reference is about the spring CLI binary, so the doc suggestion is tangential but factually correct."}
+      ],
+      "missed": [
+        "Human: DisabledIfProcessUnavailableCondition startsWith guard is unrelated/unnecessary, should be reverted",
+        "Human: ProcessRunner startsWith guard is unrelated/unnecessary, should be reverted",
+        "Own: DisabledIfProcessUnavailableCondition discards fallback exceptions without addSuppressed (inconsistent with the other two files, loses diagnostics)"
+      ],
+      "exceeds": [
+        "Completeness scan confirming no other fallback sites",
+        "Documentation pointer (installing.adoc) for /opt/homebrew/bin"
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v6": 0},
+  "qualitative": "This is a clean, low-risk PR whose only real maintainer objection was that the new startsWith(binDirectory) guards are unrelated scope creep to revert; neither candidate reached that conclusion, though both engaged substantively with the CredentialHelper guard, and both missed the new exception-swallowing inconsistency in DisabledIfProcessUnavailableCondition. v5 was fully grounded: every factual claim checked out against the repo, including the cross-file DockerRegistryConfigAuthentication evidence and two genuine test-coverage gaps. v6 produced one outright fabrication, describing a recursive startProcess call and redundant re-iteration that exist only in the pre-PR code, which undercuts an otherwise diligent review that correctly verified completeness across the codebase and a true documentation reference. Neither candidate made false absence claims; v6's absence claims (no other fallback sites) were verified true. Overall v5 edges out v6 on factual reliability."
+}

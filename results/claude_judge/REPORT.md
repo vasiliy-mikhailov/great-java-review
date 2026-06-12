@@ -151,3 +151,45 @@ teaching the agent what its evidence can and cannot prove (asymmetric verificati
 preservation, ledger) flipped the system to net-positive at +0.43 — modest, but real,
 paired, and significant. The remaining gap to a good human reviewer is concentrated in
 84 misses (deep semantic defects) and 16 reasoning errors — both prompt-genome territory.
+
+---
+
+# v6 (pr_files + pr_file_diff git tools) vs v5 — all 37 PRs, paired Claude judging
+
+v6 = v5 + two subagent tools that make the PR a queryable git object: `pr_files`
+(complete changed-file list with status/line counts) and `pr_file_diff` (the complete
+diff of one file straight from git, immune to the 150k inline cut).
+
+## Numbers (n=37; rubix#374 regenerated after two junk outputs — see stability note)
+
+| | v5 | v6 |
+|---|---|---|
+| Claude net avg | **+0.51** | +0.14 |
+| paired v6−v5 | — | −0.38 ± 0.49 SE (w/t/l 12/10/15) |
+| absence-fabrications | 16 | **11** |
+| goods + criticals | 60 | 62 |
+| missed | 75 | 76 |
+| exceeds | 71 | 71 |
+| cost (sent/PR, sec/PR) | 1.23M, 423s | 1.19M, 404s |
+
+## Conclusions
+1. **Statistical tie, leaning v5.** −0.38 ± 0.49 is well inside noise; every bucket is
+   nearly identical. The tools did not repeat v5's leap.
+2. **The tools did what they promised — and it wasn't the bottleneck.** Absence-
+   fabrications fell 16→11, per-claim grounding visibly improved (graders repeatedly
+   verified v6's exact line citations), and cost stayed at parity (the 34681 outlier,
+   5.6M sent, was offset elsewhere). But v5 had already cut absence-fabrications 54→12;
+   the remaining errors are mostly NOT absence claims, so better absence-evidence
+   couldn't move the net.
+3. **A new failure mode appeared: verification-praise.** In several losses (16132,
+   25868, 883) v6 spent its investigation budget confirming what the diff does —
+   producing accurate, praise-heavy reviews that bless the one real bug as correct —
+   instead of hunting for what's wrong. Discipline went up; analytical depth went down.
+   The giant-PR split makes the same point: 34681 (+5 swing, v6's tools reached past the
+   cut) vs 883 (−4, v6 hallucinated bug mechanics despite the tools).
+4. **Generation stability:** rubix#374 produced junk twice ('...', then empty) under v6
+   before succeeding — the only unstable PR in 39 v6 runs.
+5. **Recommendation:** keep v5 as the default configuration. The v6 tools are worth
+   keeping only combined with a leaner context (v7): with the changed-files block gone,
+   the tools become the primary access path instead of redundant insurance, and the
+   freed ~64k tokens/call may convert the discipline gain into actual findings.

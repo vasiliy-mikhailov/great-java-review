@@ -1,0 +1,109 @@
+{
+  "pr": 374,
+  "own_review": [
+    {
+      "file": "docs/contrib/env.md",
+      "line": 22,
+      "issue": "`sudo apt-get install rpmbuild` is broken: Debian/Ubuntu has no package named `rpmbuild`; the rpmbuild binary is provided by the `rpm` package. Command fails as written.",
+      "severity": "medium"
+    },
+    {
+      "file": "docs/contrib/env.md",
+      "line": 7,
+      "issue": "Thrift version-matching guidance is incomplete: the doc says the compiler version 'should match the version you are going to deploy on', but the binding constraint is that the thrift compiler must match libthrift 0.9.3 pinned in rubix-spi/pom.xml:23. `apt-get install thrift-compiler` and EPEL `yum install thrift` typically install much newer thrift versions, so the primary install path will likely produce incompatible generated code; the source-install fallback should be the lead recommendation for 0.9.3.",
+      "severity": "medium"
+    },
+    {
+      "file": "docs/contrib/env.md",
+      "line": 21,
+      "issue": "VERIFIED ACCURATE (not a defect): the jdk.tools/tools.jar rationale is real — the `Could not find artifact jdk.tools:jdk.tools:jar:1.6` error arises transitively from hadoop-common 2.6.0 (root pom.xml:53), whose hadoop-annotations declares a system-scoped jdk.tools dep on ${java.home}/../lib/tools.jar. Claims that this rationale is unsubstantiated are wrong.",
+      "severity": "info"
+    },
+    {
+      "file": "docs/contrib/env.md",
+      "line": 24,
+      "issue": "The new '## Building' section never gives a build command, and the RPM prerequisite omits how to actually trigger the RPM build — rpm-maven-plugin sits behind the `rpm` profile in rubix-rpm/pom.xml (mvn package -Prpm). Doc is not actionable end-to-end.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "jdk.tools/tools.jar rationale 'unsubstantiated'; no pom produces this error; contributors won't encounter it",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Absence-fabrication. No Rubix pom declares jdk.tools directly, but the error is real and transitive from hadoop-common 2.6.0 (hadoop-annotations system-scoped jdk.tools:1.6). v5's proposed rewrite would remove an accurate, useful troubleshooting hint; the claim that new contributors won't hit the error is false."
+        },
+        {
+          "point": "'## Building' section contains no build command; add mvn clean install (docker_build_rubix.sh uses mvn clean -B install -DskipTests)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: section has only fork/clone/test/upstream steps; docker_build_rubix.sh exists with that command."
+        },
+        {
+          "point": "RPM invocation missing; rubix-rpm/pom.xml defines `rpm` profile; suggest mvn clean package -Prpm",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: rpm-maven-plugin 2.1.5 is under profile id `rpm` in rubix-rpm/pom.xml."
+        },
+        {
+          "point": "Minor redundancy: Java 8 mentioned in intro and in new prerequisite",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Cosmetic; restating the JDK requirement with the error symptom is arguably intentional."
+        }
+      ],
+      "missed": [
+        "apt-get install rpmbuild is a broken command (Debian package is `rpm`) — the diff's one real command bug",
+        "thrift compiler version matching (human's point): distro packages won't install 0.9.3, which rubix-spi/pom.xml pins for libthrift"
+      ],
+      "exceeds": [
+        "Missing build command under '## Building' header",
+        "Missing -Prpm profile invocation for the RPM build"
+      ],
+      "net": -1
+    },
+    "v6": {
+      "points": [
+        {
+          "point": "Remove rpmbuild prerequisite entirely; rpm-maven-plugin is a pure Java plugin that does NOT require system rpmbuild",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Absence-fabrication and actively harmful: the codehaus rpm-maven-plugin shells out to the system rpmbuild executable — having rpm/rpmbuild installed is its documented prerequisite. Following v6's advice would break RPM builds. The prerequisite is correct; only the Debian package name in the command is wrong (which v6 did not identify)."
+        },
+        {
+          "point": "tools.jar error likely from transitive Presto/Airlift deps; no jdk.tools in project poms; clarify transitive concern",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Correctly accepts the error as real and transitive (unlike v5), but misattributes the source — it is hadoop-common 2.6.0 (hadoop-annotations), not Presto/Airlift. Hedged ('likely') and the suggested clarification is low-value; net wash."
+        },
+        {
+          "point": "'## Building' header sits over fork/clone/mvn-test content; rename or reorganize",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: the header is placed over source-checkout/test steps with no build command; valid structural point for a docs PR."
+        },
+        {
+          "point": "Normalize RubiX vs Rubix casing",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Inconsistency exists but on lines unchanged by this PR, and the claim is inverted: README brands the project 'RubiX' (capital X), not 'Rubix'."
+        }
+      ],
+      "missed": [
+        "apt-get install rpmbuild package-name bug (Debian package is `rpm`) — v6 touched the line but with a wrong removal rationale, not the actual fix",
+        "thrift compiler version matching (human's point): distro packages won't deliver the pinned 0.9.3"
+      ],
+      "exceeds": [
+        "'## Building' header/content mismatch"
+      ],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v6": 1
+  },
+  "qualitative": "Both reviews verified the easy positives (thrift path/version against rubix-spi/pom.xml) but each anchored on one confident falsehood: v5 declared the doc's accurate jdk.tools/tools.jar rationale 'unsubstantiated' after failing to find jdk.tools in Rubix's own poms (it comes transitively from hadoop-common 2.6.0), while v6 fabricated that rpm-maven-plugin needs no system rpmbuild and told the author to delete a correct prerequisite — the more harmful error since it would break RPM builds. Both missed the diff's one genuine command bug (`apt-get install rpmbuild`; the Debian package is `rpm`) and both missed the human's core concern that distro-packaged thrift compilers will not match the pinned libthrift 0.9.3. v5 partially offsets its fabrication with two actionable, verified additions (missing build command, missing -Prpm invocation); v6's remaining points are a fair structural note and an inverted-casing nit. Net result is a tie at -1 each, with one absence-fabrication apiece; v6's fabrication is the more dangerous in practice, v5's exceeds-points are the more useful."
+}
