@@ -193,3 +193,77 @@ diff of one file straight from git, immune to the 150k inline cut).
    keeping only combined with a leaner context (v7): with the changed-files block gone,
    the tools become the primary access path instead of redundant insurance, and the
    freed ~64k tokens/call may convert the discipline gain into actual findings.
+
+---
+
+# v7 (lean subagent context) vs v5 — all 37 PRs, paired Claude judging
+
+v7 = v6 git tools + lean subagent context: subagents carry the full diff and the
+complete git-derived changed-file list (fixing dataset.py's silent [:25] header cap),
+but not the 240k changed-files block — base content is fetched via tools. The
+orchestrator keeps its full context, with the corrected complete file list.
+
+## Numbers (n=37; quarkus#28314 and pulsar#25868 regenerated once each after junk outputs)
+
+| | v5 | v7 |
+|---|---|---|
+| Claude net avg | +0.22 | 0.00 |
+| paired v7−v5 | — | −0.22 ± 0.59 SE (statistical tie) |
+| w/t/l (v7 perspective) | — | **18/4/15** |
+| absence-fabrications | 17 | **15** |
+| goods + criticals | 69 | **78** |
+| wrong | 15 | 19 |
+| missed | 82 | 82 |
+| exceeds | 85 | **94** |
+| **cost (sent tok/PR)** | 1.23M | **0.70M (−43%)** |
+| wall time / calls per PR | 423s / 29 | 431s / 31 |
+
+## Conclusions
+1. **Quality: a dead statistical tie with opposite shapes.** v7 wins more PRs (18 vs 15),
+   finds more verified goods (78 vs 69) and more "exceeds" (94 vs 85), with fewer
+   absence-fabrications — but its losses are catastrophic: tycho#1264 (−7), wildfly#6015
+   (−7), fluo#883 (−6), spring-boot#49721 (−4) all share one signature, committing to a
+   fabricated mechanical narrative and arguing it confidently. v5's losses are shallow;
+   v7's are craters. The paired mean lands at −0.22 ± 0.59: noise.
+2. **Cost: the decisive result.** Dropping the changed-files block nearly halved sent
+   tokens (1.23M → 0.70M per PR) at equal judged quality, and made the giant PR cheapest
+   ever (34681: 1.37M vs v5's 1.92M and v6's 5.62M). The 240k block was insurance v5 paid
+   for on every call; v7 pays only for what investigations actually read.
+3. **What the lean context costs: ambient sanity-checking.** Every catastrophic v7 loss
+   is a wrong mechanical story built from diff fragments + tool snippets. With full file
+   bodies in context (v5), the contradicting code was passively visible; with tools-only
+   access, the agent must think to look before asserting — and when it doesn't, nothing
+   corrects it. Generation also got twitchier: 2 junk outputs in 37 (recovered on one
+   retry each) vs v5's 0.
+4. **Recommendation:** adopt v7 as the working configuration for iteration-heavy work —
+   GEPA prompt tuning runs many rollouts, and 43% cost reduction at tied quality
+   compounds; its failure mode (narrative commitment) is precisely the kind of error
+   prompt evolution can target, and the asymmetric-verification guide can be extended to
+   mechanics claims ("trace the call path before asserting how it behaves"). Keep v5 as
+   the reference/champion for single-shot reliability: it has the lowest variance and
+   zero generation failures across 37 PRs.
+
+# Project conclusion (v1 → v7)
+
+| version | change | quality (paired, same-round) | cost (sent/PR) |
+|---|---|---|---|
+| v1 | grep/glob baseline | — | 1.92M |
+| v2 | +search tool | ≈0 vs v1 | 1.33M |
+| v3 | +calm focus guidance | +0.00 ± 0.53 vs v2 | 1.26M |
+| v4 | +path normalization | +0.46 (~1 SE) vs v2/v3 | 1.04M |
+| v5 | +full diff, asymmetric verification, hedge preservation, ledger | **+2.76 ± 0.59 vs v4** | 1.23M |
+| v6 | +pr_files/pr_file_diff git tools | −0.38 ± 0.49 vs v5 (tie) | 1.19M |
+| v7 | +lean subagent context, complete file list | −0.22 ± 0.59 vs v5 (tie) | **0.70M** |
+
+The arc in one paragraph: tools and context plumbing moved cost, massively and
+reliably — v1→v4 cut 45%, v7 cut another 43% below v5 — but only one change in seven
+moved quality beyond noise, and it wasn't a tool: v5's combination of an honest input
+(the full diff with explicit truncation markers) and explicit epistemics (what absence
+of evidence can and cannot prove) flipped the system from −2.3 to +0.4 under a strict
+independent judge. Every supervised configuration still misses ~2.2 real findings per
+PR and fabricates ~0.5 — the residual errors are reasoning failures (committing to
+wrong mechanical narratives, severity blindness, ecosystem misknowledge), which is
+prompt-genome territory. The platform is now in place for that next phase: v7 generates
+at 57% of v5's cost with judged-equal quality, traces and per-call logs capture every
+investigation, and Claude grading with blind own-review provides a trustworthy fitness
+signal that Qwen self-judging never was.

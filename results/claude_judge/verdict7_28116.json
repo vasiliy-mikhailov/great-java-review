@@ -1,0 +1,64 @@
+{
+  "pr": 28116,
+  "own_review": [
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "145-152 (new 8-arg overload)",
+      "issue": "No production caller can ever pass false for the new flags: the only production caller, ShowCreateMaterializedTableOperation.java:62, still invokes the 6-arg overload, and the PR adds no config option, SQL syntax, or operation wiring to reach the new path. The stated motivation (platform-level suppression of FRESHNESS/REFRESH_MODE) is unrealized inside the codebase; the API is speculative/dead until a follow-up lands.",
+      "severity": "medium"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "144",
+      "issue": "The new overload copies the identical one-line Javadoc from the 6-arg version; the includeFreshness/includeRefreshMode parameters are undocumented.",
+      "severity": "low"
+    },
+    {
+      "file": "flink-table/flink-table-api-java/src/main/java/org/apache/flink/table/api/internal/ShowCreateUtil.java",
+      "line": "151-152",
+      "issue": "Two trailing positional booleans on an 8-parameter method is a boolean-trap API smell; call sites like (..., true, false) are unreadable. An options object or enum set would be clearer if more clauses become toggleable.",
+      "severity": "nitpick"
+    },
+    {
+      "file": "verified-correct",
+      "line": "-",
+      "issue": "Verified: 6-arg delegation with (true,true) produces byte-identical output to the old code; the parser grammar (parserImpls.ftl, FRESHNESS and REFRESH_MODE both in optional [...] blocks) means suppressed output is still well-formed CREATE MATERIALIZED TABLE SQL; the new test's expected strings exactly match extractStartMode/extractFreshness/extractRefreshMode formats and the createResolvedMaterialized helper signature matches the call. Human's request for a ShowCreateUtilTest test is already satisfied by the diff itself.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Delegation pattern follows existing convention, citing 'extractFormattedOptions has a similar 2-arg → 3-arg delegation'", "grade": "wrong", "score": -1, "note": "Fabricated precedent: the two extractFormattedOptions overloads (ShowCreateUtil.java:412 and :446) are fully independent implementations; neither delegates to the other."},
+        {"point": "Conditional emission logic correct, no orphan newlines, (true,true) identical to original", "grade": "trivial", "score": 0, "note": "Accurate but pure verification/praise."},
+        {"point": "Parameterized @CsvSource test exercises all 4 flag combinations", "grade": "trivial", "score": 0, "note": "Accurate restatement of the diff."},
+        {"point": "Test fixture omits options/partitioning/distribution; flag interaction with those covered only indirectly", "grade": "trivial", "score": 0, "note": "Accurate but minor observation with no requested action."},
+        {"point": "No production callers exercise the new 8-arg overload; suggests wiring ShowCreateMaterializedTableOperation to a config option", "grade": "good", "score": 1, "note": "The one substantive issue; verified. Slightly softened ('this is fine')."}
+      ],
+      "missed": [
+        "Javadoc on the new overload is a copy of the 6-arg one and does not document the two new flags (my finding; v7 caught it)"
+      ],
+      "exceeds": [
+        "No-production-caller finding exceeds the human review (human only asked for a test, which the PR already contains)"
+      ],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {"point": "Delegation correct, preserves backward compat for the two existing callers (ShowCreateMaterializedTableOperation.java:62, ShowCreateUtilTest.java:135)", "grade": "trivial", "score": 0, "note": "Verified accurate, including both cited line numbers, but praise."},
+        {"point": "PR motivation (platform-level suppression) has no production wiring; only caller still uses 6-arg overload; asks whether ShowCreateMaterializedTableOperation should expose the flags", "grade": "good", "score": 1, "note": "The substantive issue, verified, framed as an actionable question."},
+        {"point": "New overload copies identical Javadoc and does not document includeFreshness/includeRefreshMode; asks for param docs", "grade": "good", "score": 1, "note": "Verified real and actionable."},
+        {"point": "Conditional logic avoids trailing blank lines; false,false flows START_MODE → AS directly", "grade": "trivial", "score": 0, "note": "Accurate verification/praise."},
+        {"point": "Test coverage good: all four combinations, fixture uses real freshness/refresh values so suppression is observable", "grade": "trivial", "score": 0, "note": "Accurate praise."},
+        {"point": "PR description's public-API checkbox is cut off; ShowCreateUtil is @Internal so change is internal", "grade": "trivial", "score": 0, "note": "@Internal annotation verified (ShowCreateUtil.java:60); process nit."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "No-production-caller finding and Javadoc finding both exceed the human review (human only asked for a test, which the PR already contains)"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "The human review only asked for a ShowCreateUtilTest test, which this revision of the diff already contains, so the real differentiator is the one substantive issue I verified independently: the new flags have no production caller or wiring. Both candidates found it, but v7 stated it more sharply with verified file:line evidence and added a real, actionable Javadoc finding that v5 missed. v5 repeats the known fabrication of an 'extractFormattedOptions 2-arg → 3-arg delegation' precedent — I re-verified that the overloads at ShowCreateUtil.java:412 and :446 are independent — which costs it a wrong-point penalty (a presence-fabrication, not an absence-fabrication, so the absence counters stay 0). Neither candidate made false claims about missing code or tests; v7's extra specifics (caller line numbers, @Internal annotation) all checked out. v7 is clearly stronger here: more verified substance, no fabrications, nothing missed."
+}

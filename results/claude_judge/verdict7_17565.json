@@ -1,0 +1,134 @@
+{
+  "pr": 17565,
+  "own_review": [
+    {
+      "loc": "build.gradle:802",
+      "issue": "Only forbiddenApisMain is wired into test.dependsOn while checkstyle wires both checkstyleMain and checkstyleTest; kafka's CI invokes test-based tasks rather than check, so test sources go unchecked by forbidden-apis under the standard workflow. forbiddenApisTest should be added for parity.",
+      "severity": "medium"
+    },
+    {
+      "loc": "build.gradle:800",
+      "issue": "ignoreFailures = true makes the check purely informational (report-only, never fails the build). Acknowledged in the PR description as intentional because nearly every module currently violates jdk-unsafe, but there is no follow-up plan/JIRA to ratchet toward enforcement.",
+      "severity": "medium"
+    },
+    {
+      "loc": "build.gradle:799",
+      "issue": "Unversioned 'jdk-unsafe' bundled signature resolves its JDK version from the java extension's targetCompatibility (verified in ForbiddenApisPlugin.groovy at tag 3.8: targetCompatibility = javaExtension.targetCompatibility). Kafka never sets targetCompatibility - it uses options.release = minJavaVersion (11) at build.gradle:50/319/771-772 - so targetCompatibility defaults to the JVM running the build. The signature set therefore floats with the build JDK: non-reproducible across environments, mismatched with the release-11 target, and liable to break on JDKs newer than plugin 3.8 supports. Should pin e.g. 'jdk-unsafe-11'.",
+      "severity": "high"
+    },
+    {
+      "loc": "build.gradle:3859",
+      "issue": "Trailing newline at end of build.gradle is removed ('\\ No newline at end of file') - accidental, unrelated to the change; should be reverted.",
+      "severity": "minor"
+    },
+    {
+      "loc": "build.gradle:46",
+      "issue": "Note (non-issue): plugin id declared without 'apply false' then re-applied in subprojects mirrors the existing spotless pattern (lines 45 and 849), so it is not a convention break. Also note forbidden-apis is a BYTECODE checker on sourceSet.output.classesDirs - :core's Scala/Java joint compilation output IS covered despite java srcDirs = []; any claim of zero :core coverage is false.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": ":core silently excluded, forbiddenApisMain has ZERO sources to analyze because java srcDirs = []",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Fabricated. forbidden-apis is a bytecode checker operating on sourceSet.output.classesDirs (verified in ForbiddenApisPlugin.groovy 3.8); :core's joint Scala/Java compilation emits all classes there, so :core is fully covered. The 'resolves sources from the Java source set' mechanism claim is false."
+        },
+        {
+          "point": "ignoreFailures = true makes the check effectively non-enforcing; add follow-up to enable enforcement",
+          "grade": "good",
+          "score": 1,
+          "note": "Real and matches the human reviewer's only point (ignoreFailures is load-bearing; check fails for almost any module without it)."
+        },
+        {
+          "point": "Test sources not checked - only forbiddenApisMain added, checkstyle wires both Main and Test",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real gap; kafka runs test-based CI tasks, not check, so forbiddenApisTest never runs."
+        },
+        {
+          "point": "Plugin applied to ALL subprojects unconditionally including organizational-only projects",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Self-admitted 'not harmful'; matches how checkstyle/spotbugs are already applied."
+        },
+        {
+          "point": "Only jdk-unsafe signature included; consider adding more later",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Restates the PR description's own stated intent."
+        }
+      ],
+      "missed": [
+        "Unversioned 'jdk-unsafe' floats with targetCompatibility which kafka never sets (uses options.release=11) - signature version is build-JVM-dependent and non-reproducible; should pin jdk-unsafe-11",
+        "EOF newline removal at end of build.gradle (accidental unrelated change)"
+      ],
+      "exceeds": [
+        "forbiddenApisTest gap (beyond the human's single ignoreFailures point)"
+      ],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Plugin declared without 'apply false', inconsistent with spotbugs/scoverage/shadow",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Factually accurate for the three plugins named and correctly verified root has no Java sources, but spotless (line 45/849) uses the identical no-apply-false pattern, so 'breaks the established convention' is overstated; harmless style nit."
+        },
+        {
+          "point": "Only forbiddenApisMain in test.dependsOn; forbiddenApisTest missing vs checkstyle's Main+Test pattern",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real gap, same as v5."
+        },
+        {
+          "point": "ignoreFailures set at extension level applies to both main and test tasks; be aware when later flipping to false",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate mechanics (extension props convention-map to all tasks) but framed as a low-value awareness note rather than the enforcement-gap point; still counts as covering the human's ignoreFailures topic."
+        },
+        {
+          "point": "forbiddenApisMain/forbiddenApisTest tasks not given group = 'Verification' like the checkstyle tasks",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Verified TRUE at plugin tag 3.8: only the umbrella forbiddenApis task gets VERIFICATION_GROUP; per-sourceSet tasks get none, and kafka does explicitly group checkstyleMain/Test. Real but purely cosmetic discoverability nit."
+        },
+        {
+          "point": "Trailing newline at end of file removed - minor style regression",
+          "grade": "good",
+          "score": 1,
+          "note": "Real accidental change; v5 missed it."
+        },
+        {
+          "point": "jdk-unsafe checks Locale/Charset/TimeZone; consider jdk-system-out in follow-up",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Descriptive plus a generic future suggestion."
+        },
+        {
+          "point": "No suppression file pattern established (unlike spotbugs-exclude.xml); consider creating a suppression file early",
+          "grade": "wrong",
+          "score": -1,
+          "note": "False premise about the tool: forbidden-apis has no checkstyle/spotbugs-style suppression file. signaturesFiles ADD forbidden signatures (they do not suppress), and suppression works only via suppressAnnotations (CLASS retention) or class-file exclude patterns. The suggested mechanism does not exist."
+        }
+      ],
+      "missed": [
+        "Unversioned 'jdk-unsafe' floats with targetCompatibility which kafka never sets (uses options.release=11) - signature version is build-JVM-dependent and non-reproducible; should pin jdk-unsafe-11"
+      ],
+      "exceeds": [
+        "forbiddenApisTest gap",
+        "EOF newline removal",
+        "verification-group inconsistency (verified accurate at plugin 3.8)"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 0
+  },
+  "qualitative": "Both candidates found the two substantive real items the human area implies (ignoreFailures non-enforcement and the forbiddenApisTest gap), and both missed the subtlest real defect: the unversioned jdk-unsafe signature resolving against a targetCompatibility kafka never sets, making the checked API surface float with the build JVM. v5 is sunk by its lead finding - a confident absence-fabrication that :core gets zero coverage, which inverts how the bytecode-based checker works on classesDirs with joint compilation. v7 is more grounded (it correctly verified root has no Java sources and its verification-group claim checks out against plugin 3.8 source) and caught the EOF-newline regression, but it loses a point for recommending a 'suppression file' mechanism forbidden-apis does not have. Net, v7 edges out v5 on accuracy: zero absence-fabrications versus one, and one extra real catch, though both reviews pad with low-value advisory points."
+}

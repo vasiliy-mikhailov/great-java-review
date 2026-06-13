@@ -1,0 +1,102 @@
+{
+  "pr": 374,
+  "own_review": [
+    {
+      "loc": "docs/contrib/env.md:22 (rpmbuild bullet)",
+      "issue": "`sudo apt-get install rpmbuild` is wrong: there is no Debian package named `rpmbuild`; the rpmbuild binary is provided by the `rpm` package (`sudo apt-get install rpm`). The documented command fails as written. This is the diff's one real command bug.",
+      "severity": "medium"
+    },
+    {
+      "loc": "docs/contrib/env.md:7-16 (thrift install steps)",
+      "issue": "Version-matching gap: the project pins libthrift 0.9.3 (rubix-spi/pom.xml:23) and a hard-coded thriftExecutable /usr/local/bin/thrift (rubix-spi/pom.xml:80), but the suggested distro packages (apt thrift-compiler, EPEL thrift) generally install a version other than 0.9.3, so generated code can mismatch the pinned runtime. The doc partially mitigates with the 'install from source' note, but the default commands likely yield a non-matching compiler. Matches the human reviewer's concern.",
+      "severity": "medium"
+    },
+    {
+      "loc": "docs/contrib/env.md:9,15 (symlink commands)",
+      "issue": "`sudo ln -s /usr/bin/thrift /usr/local/bin/thrift` fails if the target already exists; `ln -sf` is more robust.",
+      "severity": "trivial"
+    },
+    {
+      "loc": "docs/contrib/env.md:21 (JDK 8 bullet)",
+      "issue": "NOT an issue (verification): the jdk.tools:jdk.tools:jar:1.6 error rationale is accurate — hadoop-common 2.6.0 (parent pom.xml:53) transitively declares the system-scoped jdk.tools:1.6 dependency resolved from tools.jar, which is absent on JDK > 8. Any review claiming this is unsubstantiated is fabricating.",
+      "severity": "none"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "env.md:21 — claims jdk.tools error is unsubstantiated ('no pom.xml contains a jdk.tools dependency, tools.jar reference, or systemPath') and calls the doc's claim misleading",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Fabrication: the jdk.tools:1.6 dependency is transitively real via hadoop-common 2.6.0; the documented error genuinely occurs on JDK > 8. Absence-claim used to indict accurate documentation. The substitute rationale offered (compiler source/target 1.8) is also wrong — target 1.8 compiles fine on newer JDKs."
+        },
+        {
+          "point": "env.md:26 — '## Building' section contains no actual build command; suggest adding mvn clean install",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: the section under the new header has fork/clone/mvn test/upstream steps but no build command; docker_build_rubix.sh reference is accurate. Real, actionable doc gap in a docs PR."
+        },
+        {
+          "point": "env.md:25 — rpmbuild prerequisite documented but the RPM build invocation (mvn -Prpm) is not; suggest adding it",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: rubix-rpm/pom.xml defines the rpm-maven-plugin under an 'rpm' profile; without -Prpm the prerequisite is not actionable. Useful, verified suggestion."
+        },
+        {
+          "point": "env.md:7 — redundancy: Java 8 mentioned in intro and again in prerequisites",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Cosmetic."
+        }
+      ],
+      "missed": [
+        "Human's point: thrift version must match the deployment version; the suggested distro packages (apt thrift-compiler / EPEL thrift) generally do not install 0.9.3 — v5 instead affirms the thrift instructions wholesale",
+        "The one real command bug: `apt-get install rpmbuild` is not a Debian package (binary comes from the `rpm` package)"
+      ],
+      "exceeds": [
+        "Missing build command under '## Building' (mvn clean install)",
+        "Missing RPM build invocation (mvn -Prpm) to make the rpmbuild prerequisite actionable"
+      ],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "env.md:L21 — calls the jdk.tools error message 'fabricated or copied from another project' based on no jdk.tools dependency in the 13 pom.xml files and no systemPath/tools.jar references",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Fabrication: the dependency is transitively real via hadoop-common 2.6.0, and the '1.6' version is the genuine coordinate of hadoop's system-scoped jdk.tools dependency, not a contradiction of the 1.8 target. The doc's error example is accurate; v7's suggested rewrite would remove correct, useful troubleshooting info."
+        },
+        {
+          "point": "env.md:L6-L16 — thrift instructions verified accurate (0.9.3, /usr/local/bin/thrift)",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Positive verification note, not a finding. The pom cross-checks are correct, but endorsing the install commands as 'correct' overlooks that distro packages won't be 0.9.3 (the human's exact concern)."
+        },
+        {
+          "point": "env.md:L22 — rpmbuild requirement verified; 'installation instructions for both Debian and RPM-based systems are appropriate'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "The rpm-maven-plugin/rpmbuild dependency claim is correct, but the explicit endorsement of the Debian command is false: `apt-get install rpmbuild` fails (no such package; the binary ships in the `rpm` package). Actively vouching for the diff's one real bug."
+        },
+        {
+          "point": "env.md:L24 — suggests indenting existing bullets as nested list items under '## Building'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Misguided cosmetic suggestion: markdown list items under an h2 heading need no indentation; nesting them would change list semantics for no benefit."
+        }
+      ],
+      "missed": [
+        "Human's point: thrift version mismatch between distro-installed compiler and the pinned libthrift 0.9.3 / deployment version (v7 affirmatively endorsed the install commands instead)"
+      ],
+      "exceeds": [],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 1
+  },
+  "qualitative": "Both candidates committed the same central absence-fabrication: scanning the literal pom.xml files, finding no jdk.tools/tools.jar string, and declaring the doc's accurate jdk.tools:1.6 error rationale unsubstantiated (v5) or outright fabricated (v7) — when it is transitively real via hadoop-common 2.6.0. Both also missed the human's thrift version-matching concern and the diff's one genuine command bug (`apt-get install rpmbuild`); v7 was worse here, explicitly certifying the broken Debian command as appropriate, and padded its review with verification notes and a misguided markdown-indentation nit. v5 partially redeemed itself with two verified, actionable additions the human did not raise (the missing build command under '## Building' and the missing `mvn -Prpm` invocation). v5 is clearly the stronger review despite sharing the core fabrication."
+}

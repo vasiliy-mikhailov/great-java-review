@@ -1,0 +1,79 @@
+{
+  "pr": 883,
+  "own_review": [
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "line": "88-94", "issue": "main() guards only `args.length < 1` but unconditionally executes `Arrays.copyOfRange(args, 3, args.length)` (IllegalArgumentException when args.length < 3) and later reads args[1]/args[2] (ArrayIndexOutOfBoundsException). Invoking FluoInit with 1 or 2 args crashes with a raw exception instead of the usage message; guard should require >= 3.", "severity": "high"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java", "line": "243-252", "issue": "updateSharedConfig() new filter `!key.startsWith(CONNECTION_PREFIX)` stores EVERYTHING except fluo.connection.* into Zookeeper shared config -- including fluo.accumulo.user and fluo.accumulo.password (and deprecated fluo.client.accumulo.* credentials, which do not start with fluo.connection either). Previously only APP_PREFIX/observer/tx props were shared. Accumulo credentials now sit in plaintext in ZK readable by anything with ZK access. Appears to be the intended mechanism (clients pull creds from ZK), but it is a significant security-relevant design change that deserves explicit flagging; deprecated fluo.client.* keys are not excluded at all.", "severity": "high"},
+    {"file": "modules/api/src/test/java/org/apache/fluo/api/config/FluoConfigurationTest.java", "line": "287-288", "issue": "testLoadingTestPropsFile: `File connectionProps = new File(\"src/test/resources/fluo-conn.properties\"); Assert.assertTrue(applicationProps.exists());` -- copy-paste bug asserts the wrong variable; should assert connectionProps.exists().", "severity": "medium"},
+    {"file": "modules/cluster/src/main/java/org/apache/fluo/cluster/runner/AppRunner.java", "line": "58", "issue": "public scan(FluoConfiguration, String[]) return type changed from long to void -- source- and binary-incompatible for external callers using the entry count (class is @Deprecated but still published API).", "severity": "medium"},
+    {"file": "modules/api/src/main/java/org/apache/fluo/api/config/FluoConfiguration.java", "line": "273-283", "issue": "getApplicationName() now throws NoSuchElementException when the property is unset; previously verifyApplicationName(null) threw IllegalArgumentException(\"Application name cannot be null\"). Exception-type behavioral change can break callers catching IAE for config validation.", "severity": "medium"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoGetJars.java", "line": "67-72", "issue": "catch (Exception e) { log.error(\"\", e); } -- download failures are swallowed and the process exits 0; the fluo script's setup_service then proceeds to start oracle/worker without the observer jars. Same pattern in FluoOracle/FluoWorker main(): any startup exception is logged and the JVM exits 0, invisible to scripts/monitors.", "severity": "medium"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoAdminImpl.java", "line": "79-85", "issue": "Constructor no longer validates hasRequiredAdminProps() (moved into initialize()/updateSharedConfig()/accumuloTableExists()); fail-fast behavior removed and a stray double blank line left behind. Deliberate (new commands need an admin without full props) but a behavioral change worth noting.", "severity": "low"},
+    {"file": "modules/core/src/main/java/org/apache/fluo/core/client/FluoClientImpl.java", "line": "55-61", "issue": "Constructor now calls FluoAdminImpl.mergeZookeeperConfig(connConfig): creating any FluoClient requires a live ZK connection and an already-initialized application (IllegalStateException otherwise). Previously a fully-specified local config sufficed. Also `Preconditions.checkArgument(config.hasRequiredClientProps())` has no error message.", "severity": "medium"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoExec.java", "line": "59", "issue": "Dead statement `Arrays.copyOfRange(args, 3, args.length);` -- result discarded (the real copy happens at the invoke below).", "severity": "low"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoGetProp.java", "line": "19-35", "issue": "Unused imports copied from FluoGetJars (URI, FileUtils, hadoop Configuration/FileSystem/Path, slf4j Logger/LoggerFactory); same in FluoConfig.java which also declares an unused `log` field. FluoGetProp prints nothing and exits 0 for an unknown property -- indistinguishable from an empty value.", "severity": "low"},
+    {"file": "modules/api/src/main/java/org/apache/fluo/api/config/FluoConfiguration.java", "line": "914-920", "issue": "getZookeeperTimeout() now routes through getDepPositiveInt() which is a plain getInt() with no positivity check; the old getPositiveInt() validated value > 0. Validation silently lost.", "severity": "low"},
+    {"file": "modules/command/src/main/java/org/apache/fluo/command/FluoInit.java", "line": "120-123", "issue": "Help flag exits with System.exit(1) while FluoScan help exits 0 -- inconsistent exit codes for -h across the new commands.", "severity": "low"},
+    {"file": "modules/distribution/src/main/scripts/fluo", "line": "stop case", "issue": "`fluo stop` sends `kill -s KILL` (SIGKILL) immediately -- no graceful shutdown (oracle/worker get no chance to release ZK locks or close resources); SIGTERM first would be safer. Also `${*:2}` is passed unquoted to FluoScan/FluoExec, breaking arguments containing spaces.", "severity": "low"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "FluoConfigurationTest wrong-variable assertion (assertTrue(applicationProps.exists()) should be connectionProps)", "grade": "good", "score": 1, "note": "Verified real at lines 287-288 of the new test; the known test bug, precisely localized and explained."},
+        {"point": "FluoAdmin.java:42 setClearZookeeper javadoc 'still references deprecated CLIENT_ZOOKEEPER_CONNECT_PROP'", "grade": "wrong", "score": -1, "note": "False. The visible diff itself updates this javadoc to {@value FluoConfiguration#CONNECTION_ZOOKEEPERS_PROP}; verified at pr-883-head. Absence-fabrication."},
+        {"point": "AppRunner.scan() return type long -> void breaking API change", "grade": "good", "score": 1, "note": "Verified real; public method on published (deprecated) class."},
+        {"point": "FluoScan.ScanOptions duplicates AppRunner.ScanOptions JCommander definitions", "grade": "good", "score": 1, "note": "Verified: two identical inner classes added in this PR (AppRunner.ScanOptions and FluoScan.ScanOptions); legitimate dedup suggestion."},
+        {"point": "SimpleConfiguration load() private -> public visibility expansion, verify javadoc", "grade": "trivial", "score": 0, "note": "Accurate observation but intentional and covered by the PR description ('Support loading FluoConfiguration from multiple files'); javadoc exists."},
+        {"point": "FluoAdminImpl constructor validation removed, delayed failure", "grade": "good", "score": 1, "note": "Verified real behavioral change."},
+        {"point": "FluoCommand @Deprecated lacks javadoc/since", "grade": "trivial", "score": 0, "note": "Style nit on a deprecated class."},
+        {"point": "getApplicationName() now throws NoSuchElementException instead of IllegalArgumentException", "grade": "good", "score": 1, "note": "Verified: old code threw IAE via verifyApplicationName(null); new code throws NoSuchElementException. Real compat-affecting change (minor misattribution of the old source as getNonEmptyString does not change the substance)."},
+        {"point": "hasRequiredMiniFluoProps dual-prefix comment suggestion", "grade": "trivial", "score": 0, "note": "Accurate description, comment-only suggestion."},
+        {"point": "FluoList static oracleExists 'verify it does not require connection state'", "grade": "trivial", "score": 0, "note": "Hedged verify-request; the static overload (added in truncated portion) is self-contained and fine. Slightly inaccurate ('converted' -- the instance method still exists) but hedged."},
+        {"point": "NOTE: truncated definitions (isInitialized, mergeZookeeperConfig, ScanUtil...) must be confirmed", "grade": "trivial", "score": 0, "note": "Honest truncation handling -- correctly refrained from claiming absence; all named members do exist in the full PR."}
+      ],
+      "missed": [
+        "FluoInit arg-crash: args.length < 1 guard vs unconditional args[1]/args[2]/copyOfRange(args,3,...) -- crashes instead of usage (visible in truncated diff)",
+        "updateSharedConfig new !CONNECTION_PREFIX filter writes Accumulo user/password (incl. deprecated fluo.client.* creds) into ZK shared config -- security-relevant design change (visible in truncated diff)",
+        "FluoGetJars/FluoOracle/FluoWorker swallow exceptions and exit 0 -- silent failure, script proceeds (FluoGetJars fully visible in diff)",
+        "Human point: FluoExec injects full merged config; conn-props file should pass through with only app name set (FluoExec fully visible in diff)"
+      ],
+      "exceeds": [
+        "FluoConfigurationTest wrong-variable assertion",
+        "AppRunner.scan() long->void breaking change",
+        "FluoAdminImpl ctor validation removal",
+        "getApplicationName exception-type change",
+        "ScanOptions duplication"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "SimpleConfiguration load() javadoc 'Later loads have lower priority' is wrong, test proves opposite", "grade": "wrong", "score": -1, "note": "False. commons-configuration 1.10 CompositeConfiguration inserts added configs before the in-memory config preserving addition order, and getProperty returns the first match -- earlier loads win, so the javadoc is correct. The cited test only fills keys absent from the first file (default 'localhost/fluo' vs later-loaded 'localhost/test-fluo'); it never overrides an existing key. Confidently-argued fabrication that would have introduced a wrong doc fix."},
+        {"point": "FluoExec dead code Arrays.copyOfRange discarded", "grade": "good", "score": 1, "note": "Verified real at FluoExec.java:59."},
+        {"point": "FluoAdminImpl constructor validation removed", "grade": "good", "score": 1, "note": "Verified real behavioral change."},
+        {"point": "bin.xml <file> still references src/main/config/fluo.properties -> Maven assembly build failure", "grade": "wrong", "score": -1, "note": "False. The PR's own bin.xml diff updates the <file> source to fluo.properties.deprecated (and excludes it from the fileSet); verified at pr-883-head. Absence-fabrication of a 'build blocker'."},
+        {"point": "FluoScan uses log4j Logger.setLevel directly instead of slf4j", "grade": "trivial", "score": 0, "note": "Factually true but intentional (quiet scan output); the proposed slf4j replacement does not exist (slf4j Logger has no setLevel), so the suggested fix is not actionable."},
+        {"point": "FluoInit usage message vs JCommander programName inconsistency", "grade": "trivial", "score": 0, "note": "The two strings serve different invocation contexts (direct java invocation vs fluo script); cosmetic at most."},
+        {"point": "FluoGetJars unconditionally FileUtils.deleteDirectory(downloadPath) without logging", "grade": "good", "score": 1, "note": "Verified real: silently deletes whatever directory exists at the user-supplied download path; legitimate destructive-behavior flag."},
+        {"point": "WorkerRunnable:78 still calls deprecated setClientRetryTimeout(-1)", "grade": "wrong", "score": -1, "note": "False. This PR changes that exact line to setConnectionRetryTimeout(-1) -- visible in the inline diff and verified at pr-883-head. Absence-fabrication."},
+        {"point": "getClientConfiguration now copies CONNECTION/ACCUMULO prefixes -- good", "grade": "trivial", "score": 0, "note": "Praise, not a finding."},
+        {"point": "getApplicationName NoSuchElementException message omits deprecated fallback key", "grade": "trivial", "score": 0, "note": "Accurate but cosmetic; misses the substantive issue at the same site (exception type changed from IllegalArgumentException, a compat break)."}
+      ],
+      "missed": [
+        "FluoInit arg-crash: args.length < 1 guard vs unconditional args[1]/args[2]/copyOfRange(args,3,...)",
+        "updateSharedConfig writes Accumulo user/password (incl. deprecated fluo.client.* creds) into ZK shared config",
+        "FluoConfigurationTest wrong-variable assertion at 287-288 (v7 even cited this test while arguing its wrong javadoc point)",
+        "AppRunner.scan() long->void breaking API change",
+        "FluoGetJars/FluoOracle/FluoWorker swallow exceptions and exit 0 (silent failure; v7 looked at FluoGetJars but flagged only the deleteDirectory)",
+        "Human point: FluoExec injects full merged config; conn-props should pass through with only app name set"
+      ],
+      "exceeds": [
+        "FluoExec dead code",
+        "FluoAdminImpl ctor validation removal",
+        "FluoGetJars unconditional directory deletion"
+      ],
+      "net": -6
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v7": 2},
+  "qualitative": "v5 is clearly stronger here: it lands five verified findings including the test wrong-variable assertion, the scan() long->void API break, the ctor-validation removal, and the getApplicationName exception-type change, handles the diff truncation honestly (asks for confirmation instead of asserting absence), and commits only one fabrication (claiming the FluoAdmin setClearZookeeper javadoc was not updated when the diff updates it). v7 fabricates three points -- two classic absence-fabrications (bin.xml 'still references fluo.properties' and WorkerRunnable 'still calls setClientRetryTimeout', both updated by the PR itself) plus a confidently-reasoned but wrong claim that the SimpleConfiguration load-priority javadoc is backwards -- and its three real findings (dead code, ctor validation, deleteDirectory) are smaller-bore, leaving it net-negative after misses. Both candidates missed the two highest-value issues: the FluoInit argument-handling crash and the updateSharedConfig change that pushes Accumulo credentials into Zookeeper shared config. Neither beats the (single-point) human reference on its own item, but v5 substantially exceeds it in breadth."
+}

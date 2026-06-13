@@ -1,0 +1,62 @@
+{
+  "pr": 16132,
+  "own_review": [
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 392,
+      "issue": "New assertion block uses `topicConfig.contains(TopicConfig.REMOTE_LOG_DISABLE_POLICY_CONFIG)` while every sibling block uses `containsKey`. java.util.Properties.contains(Object) is a Hashtable VALUE lookup, and the key string 'remote.log.disable.policy' never appears as a value ('true', 'retain'/'delete'), so the condition is always false and the new policy verification silently never executes — the integration test passes without checking anything new.",
+      "severity": "major"
+    },
+    {
+      "file": "core/src/test/scala/integration/kafka/admin/RemoteTopicCrudTest.scala",
+      "line": 161,
+      "issue": "Test is named testCreateRemoteTopicWithDisablePolicyRetain but its @CsvSource covers both 'retain' and 'delete'; name should drop the 'Retain' suffix.",
+      "severity": "minor"
+    },
+    {
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java",
+      "line": 608,
+      "issue": "No cross-validation added for remote.log.disable.policy in validateTopicLogConfigValues: all other remote-storage checks are guarded by isRemoteLogStorageEnabled, but the policy can be set on topics with remote.storage.enable=false (or with tiered storage disabled cluster-wide) and is silently accepted. Also note the new unit tests use the single-arg LogConfig.validate(props), which only runs validateValues and would never exercise such a guard.",
+      "severity": "minor"
+    },
+    {
+      "file": "storage/src/main/java/org/apache/kafka/storage/internals/log/LogConfig.java",
+      "line": 327,
+      "issue": "Verified present (not issues): the .define() with in('retain','delete') validator and 'retain' default, the CONFIGS_WITH_NO_SERVER_DEFAULTS entry, the toString() update, and the remoteLogDisablePolicy() accessor are ALL in the diff; any claim that one is missing is a fabrication.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "RemoteTopicCrudTest:160 test name covers both retain and delete despite 'Retain' suffix", "grade": "good", "score": 1, "note": "Verified real; matches my finding."},
+        {"point": "TopicConfig naming inconsistency remote.storage.enable vs remote.log.disable.policy", "grade": "trivial", "score": 0, "note": "Factually true but the name is fixed by KIP-950; not actionable in this PR."},
+        {"point": "LogConfigTest:102 invalid value 'true' is unexplained, suggest case-sensitivity probes", "grade": "trivial", "score": 0, "note": "Style nit on test data."},
+        {"point": "RemoteLogConfig reads via getString; no broker-level override path; document in KIP", "grade": "trivial", "score": 0, "note": "Descriptive restatement of the design, no defect."},
+        {"point": "RemoteTopicCrudTest:392 .equals() vs assertEquals style; 'the logic is correct'", "grade": "trivial", "score": 0, "note": "Style nit at exactly the buggy line while asserting the logic is correct — it is not: the contains() guard never fires. Not scored as wrong (the .equals observation itself is true) but it walked past the real bug."}
+      ],
+      "missed": [
+        "RemoteTopicCrudTest:392 Properties.contains (value lookup) instead of containsKey makes the new assertion dead code",
+        "LogConfig:608 no cross-validation of the policy against remote storage being enabled"
+      ],
+      "exceeds": ["test-name misnomer (not in human reference)"],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {"point": "LogConfig:608 missing isRemoteLogStorageEnabled-guarded cross-validation for the new policy", "grade": "good", "score": 1, "note": "Verified: validateTopicLogConfigValues guards all remote-storage checks; the new config gets none and is accepted on non-tiered topics."},
+        {"point": "LogConfigTest:407-418 new validate tests do not set remote.storage.enable=true", "grade": "trivial", "score": 0, "note": "True observation but conditional/speculative; the config is legal standalone per the ConfigDef, so no defect as written."},
+        {"point": "LogConfig:673-677 single-arg validate(props) only runs validateValues, so a topic-level guard would be unreachable from that entry point", "grade": "good", "score": 1, "note": "Verified exactly correct path analysis; the PR's own unit tests use this path."},
+        {"point": "TopicConfig doc: clarify 'expiration thresholds'", "grade": "trivial", "score": 0, "note": "Doc wording nit."}
+      ],
+      "missed": [
+        "RemoteTopicCrudTest:392 Properties.contains (value lookup) instead of containsKey makes the new assertion dead code",
+        "RemoteTopicCrudTest:161 test name covers both policies despite 'Retain' suffix"
+      ],
+      "exceeds": ["missing cross-validation guard", "validate() entry-point reachability analysis"],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Neither candidate caught the one real subtle bug: the new block in verifyRemoteLogTopicConfigs uses Properties.contains (a Hashtable value lookup) where siblings use containsKey, so the new policy assertion is dead code. v5 stood at exactly that line and declared 'the logic is correct' while filing a style nit, which is the most damning miss of the round; its only scoring point is the test-name misnomer, with the rest being KIP-naming and documentation chatter. v7 produced the more substantive review: a verified, accurate missing-cross-validation finding plus correct path analysis showing the single-arg validate() would never exercise such a guard, but it missed both the containsKey bug and the test-name issue. Importantly, neither candidate fabricated absences this round — all four previously-fabricated 'missing' items (define, CONFIGS_WITH_NO_SERVER_DEFAULTS, toString, accessor) were correctly treated as present. v7 edges out v5 on depth and verified accuracy."
+}

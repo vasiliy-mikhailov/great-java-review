@@ -1,0 +1,206 @@
+{
+  "pr": 5478,
+  "own_review": [
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "95-110 (fail())",
+      "issue": "fail() lacks the CAS-retry loop that succeed() has: it does a single entries.remove(address, tail); if a concurrent selectFor appended a waiter between get() and remove(), the remove fails and the method silently exits, stranding the entire waiter chain (never completed) and leaking the map entry \u2014 later selects keep appending to a chain whose initialization already finished.",
+      "severity": "critical"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "~210 (registrationsUpdated)",
+      "issue": "registrationsUpdated() throws UnsupportedOperationException(\"Is this case valid ?\") when the entry is a pending WaiterEntry, yet wantsUpdatesFor() returns entries.containsKey(address) which is true for pending entries \u2014 so a cluster manager firing an update while getRegistrations is in flight will hit this throw in production.",
+      "severity": "critical"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "class-level",
+      "issue": "registrationsLost() is no longer overridden (old DefaultNodeSelector called Selectors.dataLost() to clear all entries); cached SelectorEntry instances survive a registration-data loss and keep routing to stale/dead nodes.",
+      "severity": "high"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "fail() broadcast loop",
+      "issue": "fail() broadcasts the failure tail->prev, i.e. newest-first (reverse submission order), whereas succeed() uses broadcastToWaiters which reverses to FIFO \u2014 inconsistent with the PR's ordering goal.",
+      "severity": "medium"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java",
+      "line": "init()",
+      "issue": "Breaking SPI change: init(Vertx, ClusterManager) -> init(ClusteredNode), plus package move spi.cluster.impl -> eventbus.impl.clustered; custom NodeSelector implementations lose the Vertx instance and must change imports.",
+      "severity": "high"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java",
+      "line": "selectForSend/selectForPublish",
+      "issue": "Breaking SPI change: Promise<T> parameter replaced with Completable<T>; all external NodeSelector implementations and callers break.",
+      "severity": "high"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/NodeSelector.java",
+      "line": "42-43, 53-54",
+      "issue": "Stale javadoc: still instructs implementers to complete the promise with Promise#tryComplete / Promise#tryFail, but the parameter is now Completable which has no such methods.",
+      "severity": "low"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/ClusteredEventBus.java",
+      "line": "~222-237",
+      "issue": "The old code wrapped selection results in ctx.promise() so send/publish continuations ran on the caller context; the new direct Completable lambdas run on whatever thread completes getRegistrations (e.g. a cluster-manager thread). Threading/context dispatch behavior change worth confirming with the author (uncertain whether it causes a concrete bug; new ordering test passes).",
+      "severity": "medium"
+    },
+    {
+      "file": "vertx-core/src/main/java/io/vertx/core/eventbus/impl/clustered/DefaultNodeSelector.java",
+      "line": "succeed()/registrationsUpdated()",
+      "issue": "Placeholder exception messages left in production code (\"Does this case make sense\", \"Is this case valid ?\") \u2014 WIP artifacts that should be resolved or documented before merge.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "broadcastToWaiters collects the NOOP sentinel and calls complete() on it (harmless no-op)",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Verified accurate (chain appended during broadcast has prev chain ending at NOOP), but explicitly harmless; cosmetic micro-optimization."
+        },
+        {
+          "point": "succeed() TOCTOU: concurrent registrationsUpdated could install a SelectorEntry and hit the UnsupportedOperationException",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Known fabrication trap: registrationsUpdated throws on a pending WaiterEntry before it could ever install a SelectorEntry over a waiter chain; the claimed race is unreachable."
+        },
+        {
+          "point": "fail() broadcasts failures in reverse-arrival order vs succeed()'s FIFO broadcastToWaiters",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real (matches my finding F4)."
+        },
+        {
+          "point": "init(Vertx, ClusterManager) -> init(ClusteredNode) is a breaking SPI change losing Vertx access",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real (F5)."
+        },
+        {
+          "point": "Javadoc still references Promise#tryComplete/tryFail though signature is now Completable; behavioral difference for custom selectors",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real (F7, plus partial F6 coverage; summary also flags Promise->Completable SPI change)."
+        },
+        {
+          "point": "FakeClusterManager setter named like a getter (getRegistrationsLatency(long))",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Real but test-code naming style nit."
+        },
+        {
+          "point": "registrationsUpdated throwing UnsupportedOperationException on pending WaiterEntry drops updates; testRegistrationUpdateBeforeGetResolution codifies it",
+          "verdict": "good",
+          "score": 1,
+          "note": "Test exists and behaves as described; partial credit for F2 \u2014 flags the throw but frames it 'by design' and misses that wantsUpdatesFor returns true for pending entries, making it a reachable production crash (would be +2 with that)."
+        },
+        {
+          "point": "ClusterManager -> ClusteredNode extraction impacts external cluster managers; coordinate release",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Methods moved to a superinterface ClusterManager extends \u2014 external impls stay source/binary compatible; soft release-note advice."
+        }
+      ],
+      "missed": [
+        "fail() lacks the CAS-retry loop succeed() has \u2014 concurrently appended waiter strands the whole chain (critical)",
+        "registrationsLost() no longer clears stale cached selectors (high)"
+      ],
+      "exceeds": [
+        "fail() reverse-order failure broadcast",
+        "init() SPI break / loss of Vertx",
+        "stale tryComplete/tryFail javadoc + Promise->Completable change",
+        "registrationsUpdated throw on pending entry (partial)"
+      ],
+      "net": 1
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "head = WaiterEntry.NOOP in succeed() is dead code never read after assignment",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False: head is read on the next loop iteration in 'tail.head == head' and is essential to the broadcast-respin logic (waiters appended during broadcast carry head == NOOP); removing it would break the retry."
+        },
+        {
+          "point": "selectFor() during broadcast (entry is NOOP) goes through initialize() issuing a redundant getRegistrations()",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False: a NOOP entry is a WaiterEntry, so selectFor appends to the chain and never calls initialize(); the cited testSelectWhenBroadcasting even asserts view.assertEmpty() (no extra getRegistrations)."
+        },
+        {
+          "point": "Placeholder UnsupportedOperationException with questioning comment in succeed()",
+          "verdict": "good",
+          "score": 1,
+          "note": "Real WIP artifact in production code; correctly does not claim the branch is reachable."
+        },
+        {
+          "point": "registrationsUpdated() throws UnsupportedOperationException while WaiterEntry pending, dropping the update",
+          "verdict": "good",
+          "score": 1,
+          "note": "Partial credit for F2 \u2014 identifies the throw but misses the wantsUpdatesFor()==true link that makes it a reachable production crash (would be +2 with that)."
+        },
+        {
+          "point": "init(Vertx, ClusterManager) -> init(ClusteredNode) breaking change for custom NodeSelector implementations",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real (F5)."
+        },
+        {
+          "point": "ClusterManager extends ClusteredNode \u2014 external impls remain compatible, note in release notes",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate but advisory."
+        },
+        {
+          "point": "Javadoc typo 'know' -> 'known'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Real typo, trivial; meanwhile missed the substantive stale tryComplete/tryFail reference in the same javadoc."
+        },
+        {
+          "point": "Weight.increment() public visibility is correct and justified",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Correct verification \u2014 avoided the visibility fabrication trap."
+        },
+        {
+          "point": "Praise for Serializer removal / callback pattern",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Commentary, not a finding."
+        },
+        {
+          "point": "testRegistrationUpdateBeforeGetResolution expects the exception, masking production handling; add eventual-consistency test",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Test exists as described; reasonable but duplicates point 4."
+        }
+      ],
+      "missed": [
+        "fail() lacks the CAS-retry loop succeed() has \u2014 stranded waiter chain (critical)",
+        "registrationsLost() no longer clears stale cached selectors (high)",
+        "fail() reverse-order failure broadcast",
+        "Promise -> Completable breaking SPI change in selectForSend/selectForPublish",
+        "stale Promise#tryComplete/tryFail javadoc (looked at the javadoc, found only the typo)"
+      ],
+      "exceeds": [
+        "placeholder exception messages flagged as WIP artifacts",
+        "init() SPI break",
+        "registrationsUpdated throw on pending entry (partial)"
+      ],
+      "net": -4
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 2
+  },
+  "qualitative": "The human reference contains only conversational test commentary, so grading leans on independent verification. v5 is the stronger review: four verified-real points (reverse-order fail broadcast, init SPI break, stale tryComplete javadoc plus the Promise->Completable change, and the registrationsUpdated throw via the test) against one fabrication \u2014 and that fabrication is exactly the known trap (a SelectorEntry race in succeed() that registrationsUpdated's own throw makes unreachable). v7 reads more confidently but fabricates twice about code it apparently traced ('dead' head=NOOP assignment that the CAS-respin loop actually reads, and a 'redundant getRegistrations' during broadcast that the very test it cites disproves via view.assertEmpty()), and it misses more of the real findings, including the reverse-order fail broadcast and the Completable SPI break. Both candidates missed the two highest-value items: the missing CAS-retry in fail() that strands a concurrently appended waiter chain, and the dropped registrationsLost() override leaving stale cached selectors; both also got only partial credit on the registrationsUpdated crash because neither connected it to wantsUpdatesFor() returning true for pending entries. Neither fell for the Weight.increment() visibility trap; v7 explicitly verified it correctly."
+}

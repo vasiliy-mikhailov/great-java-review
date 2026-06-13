@@ -1,0 +1,56 @@
+{
+  "pr": 81,
+  "own_review": [
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/wrapper/ConnectionWrapper.java", "line": "closeTrackedStatements()/addLeakedResultSets()", "issue": "False-positive leak reporting: ResultSets auto-closed by a user's proper Statement.close() (standard JDBC behavior) are counted via addLeakedResultSets() and reported as 'JDBC resources leaked' at connection close. The test change codifies this: statement.close() is added yet the leak warning is still asserted. Previously a closed statement removed itself and no leak was reported.", "severity": "high"},
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/util/AutoCloseableElement.java", "line": "closeAllAutocloseableElements() ~47-60", "issue": "Exception swallowing skips close(): if next.isClosed() throws (StatementWrapper.isClosed delegates to the driver and can throw SQLException; partially-constructed wrappers can NPE), the catch swallows it and next.close() is never invoked - the resource is leaked by the very mechanism meant to prevent leaks, and it is undercounted.", "severity": "high"},
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/wrapper/ConnectionWrapper.java", "line": "leakedResultSets field / addLeakedResultSets()", "issue": "Unsynchronized counter: plain int with non-atomic += and no volatile; statement closes on app threads race with connection close / leak reporting on transaction-completion or housekeeping threads - lost updates and visibility issues. Should be AtomicInteger or field-updater.", "severity": "medium"},
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/util/AutoCloseableElement.java", "line": "design: no unlinking on close", "issue": "Memory retention: closed wrappers never unlink from the list. A long-held connection creating many statements accumulates unbounded StatementWrapper nodes in trackedStatements until connection close (previously wrappers removed themselves via releaseTrackedStatement/releaseTrackedResultSet). Same pattern for ResultSet wrappers per statement and ConnectionWrappers per transaction.", "severity": "medium"},
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/ConnectionHandler.java", "line": "transactionEnd()", "issue": "Garbled warning message: 'Closing open connection(s) on after completion' ('on after' typo).", "severity": "trivial"},
+    {"file": "agroal-pool/src/main/java/io/agroal/pool/ConnectionHandler.java", "line": "transactionBeforeCompletion()", "issue": "Warning now fired once per batch instead of once per open connection - minor diagnostic information loss.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "leakedResultSets plain int, non-atomic += - lost updates under concurrent statement closes; use AtomicInteger", "grade": "good", "score": 1, "note": "Verified real; matches own finding #3, though it understates the cross-thread visibility aspect."},
+        {"point": "resultSetLeak test change shifts what is tested; original 'leaked Statement + ResultSets closed on connection close' path no longer exercised; suggest separate test", "grade": "good", "score": 1, "note": "Real coverage regression, verified. However it wrongly endorses the warning assertion as 'still valid', missing that the warning is now a false positive."},
+        {"point": "closeTrackedStatements may be missing the trackedStatements null guard / else branch - 'please confirm'", "grade": "wrong", "score": -1, "note": "The guard IS plainly present in the diff (if trackedStatements != null ... return JDBC_RESOURCES_NOT_LEAKED). Hedged absence-fabrication."},
+        {"point": "isClosed() override contract observation, 'no change needed', suggest documenting dual duty", "grade": "trivial", "score": 0},
+        {"point": "ResultSetWrapper.close() removal of releaseTrackedResultSet is intentional and correct - narration", "grade": "trivial", "score": 0},
+        {"point": "transactionBeforeCompletion count not included in warning message - diagnostics suggestion", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "False-positive leak reporting for ResultSets auto-closed by Statement.close() (own #1) - point 2 touches the test but explicitly calls the assertion valid",
+        "Exception swallowing in closeAllAutocloseableElements causing close() to be skipped when isClosed() throws (own #2)",
+        "Memory retention: closed wrappers never unlink, unbounded growth on long-held connections (own #4)",
+        "Human: document AutoCloseableElement logic/invariants/ordering (no equivalent point)"
+      ],
+      "exceeds": [
+        "leakedResultSets thread-safety (beyond human reference)",
+        "Test coverage regression in resultSetLeak (beyond human reference)"
+      ],
+      "net": -3
+    },
+    "v7": {
+      "points": [
+        {"point": "leakedResultSets plain int, non-atomic += under concurrent statement closes; use AtomicInteger/field-updater", "grade": "good", "score": 1, "note": "Verified real; matches own finding #3. Minor citation slip (names removed releaseTrackedResultSet instead of closeTrackedResultSets)."},
+        {"point": "Constructor publishes this via CAS before subclass fields initialized; concurrent traversal can see null fields, NPE swallowed and element skipped", "grade": "good", "score": 1, "note": "Verified: super(head) links this before handler/wrappedStatement assigned; isClosed() dereferences them; swallowed exception skips close(). Real this-escape acknowledged by @SuppressWarnings."},
+        {"point": "Race between CAS insertion and traversal: element inserted around head reset missed by in-flight traversal, undercount at a given close, caught on next traversal; clarify javadoc", "grade": "good", "score": 1, "note": "Verified from the CAS protocol; real subtle semantic gap (for enlistedOpenWrappers at transactionEnd the 'next traversal' may not come until handler reuse)."},
+        {"point": "transactionEnd exception contract silently narrowed: old code propagated SQLException from wrapper.close(), new closeAllAutocloseableElements swallows all", "grade": "good", "score": 1, "note": "Verified real behavior change; partially covers the exception-swallowing defect (own #2)."},
+        {"point": "closeTrackedStatements simplification and releaseTrackedStatement removal narration - 'clean simplification'", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "False-positive leak reporting for ResultSets auto-closed by Statement.close(), codified by the test change (own #1)",
+        "Memory retention: closed wrappers never unlink, unbounded growth on long-held connections (own #4)"
+      ],
+      "exceeds": [
+        "leakedResultSets thread-safety",
+        "this-escape / partially-constructed wrapper NPE in traversal",
+        "insertion-vs-traversal race and undercount semantics",
+        "transactionEnd exception contract narrowing"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v7": 0},
+  "qualitative": "v7 clearly outperforms v5 on this concurrency-heavy PR: all four of its substantive points are verified real (non-atomic leakedResultSets, this-escape with swallowed NPE skipping close, insertion/traversal race undercount, silently narrowed exception contract), it commits one zero fabrications, and its AutoCloseableElement documentation requests substantially cover the human reviewer's sole point. v5 lands the leakedResultSets issue and a genuine test-coverage regression but burns credit with a hedged absence-fabrication about the closeTrackedStatements null guard that is plainly present in the diff, plus three narration-only points. Both candidates miss the PR's most user-visible defect - the leak warning now falsely fires for ResultSets properly auto-closed by Statement.close(), which the modified test codifies - and both miss the memory retention from closed wrappers never unlinking; v5 even endorses the test's warning assertion as valid. Net: v7 +2, v5 -3."
+}

@@ -1,0 +1,73 @@
+{
+  "pr": 2296,
+  "own_review": [
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:102-144 (getTopicRequests, topic/request/{topicReqId}) and KafkaConnectController.java:157-161 (getConnectorRequests)", "issue": "Requestor-facing 'my requests' endpoints (they take isMyRequest and are used by ordinary requestors to view their own requests) are now gated behind approver-only permissions (APPROVE_TOPICS/APPROVE_TOPICS_CREATE/APPROVE_CONNECTORS/APPROVE_ALL_REQUESTS_TEAMS). Regular users with only REQUEST_* permissions will get 401 on their own request lists — a functional/security-model regression introduced by this PR.", "severity": "critical"},
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:74 (/createClaimTopicRequest)", "issue": "Left without @PermissionAllowed and the service method (TopicControllerService.createClaimTopicRequest, line 303) has no auth check either — endpoint is fully unprotected, inconsistent with /createClaimConnectorRequest which got REQUEST_CREATE_CONNECTORS in the same PR.", "severity": "high"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowed.java:18", "issue": "@Order(Ordered.HIGHEST_PRECEDENCE) is placed on the annotation declaration, where it has no effect on aspect precedence; it must be on the PermissionAllowedAspectInterceptor class (or via @Order/Ordered on the aspect bean) to guarantee the permission check runs before other advice/validation.", "severity": "medium"},
+    {"file": "core/src/main/java/io/aiven/klaw/service/KafkaConnectControllerService.java:641,791 (also 112, 508, 839)", "issue": "Migration is incomplete: blocking service-layer checks remain. approveConnectorRequests/declineConnectorRequests still check only APPROVE_CONNECTORS while the controller annotation allows APPROVE_ALL_REQUESTS_TEAMS OR APPROVE_CONNECTORS, so a user with only APPROVE_ALL_REQUESTS_TEAMS passes the aspect but gets a 200 + NOT_AUTHORIZED body from the service; createConnectorRequest/restartConnector/createConnectorDeleteRequest keep now-redundant checks.", "severity": "medium"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:67-70", "issue": "New PermissionConstraintException handler does not log (no log.error), unlike every other handler in this class — denied-access events become invisible in logs.", "severity": "minor"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java:5", "issue": "Extends jakarta.validation.ConstraintDeclarationException, which is for constraint declaration/configuration errors, not runtime authorization failures — semantically wrong base; a plain RuntimeException or project-style exception would be cleaner.", "severity": "minor"},
+    {"file": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:44,54,64,234", "issue": "Stale `throws KlawNotAuthorizedException` declarations remain on createTopicsCreateRequest/createTopicsUpdateRequest/createTopicDeleteRequest/getTopics paths although the checkIsAuthorized calls that threw it were removed.", "severity": "minor"},
+    {"file": "core/src/main/java/io/aiven/klaw/service/TopicControllerService.java:669, KafkaConnectControllerService.java:485", "issue": "Behavior change: deleteTopicRequests/deleteConnectorRequests used to return HTTP 200 with a NOT_AUTHORIZED body; now the aspect returns HTTP 401 — an API contract change for existing clients (documented by the new IT but not in the PR description).", "severity": "minor"},
+    {"file": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowedAspectInterceptor.java:22-25", "issue": "Pointcut @annotation(permissionAllowed) only matches method-level annotations, so the TYPE target and @Inherited on @PermissionAllowed are dead capability; the null check on the bound annotation parameter is also redundant (it can never be null when bound).", "severity": "minor"},
+    {"file": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:68", "issue": "Method name typo 'handlePermissionNotAuthoirzedExceptionInternal' (mirrors the pre-existing typo at line 31); unused @Autowired BuildProperties and wildcard imports added in TopicAclControllerIT are style nits.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Missing spring-boot-starter-aop dependency, aspect never woven, all checks silently disabled", "verdict": "wrong", "score": -1, "note": "Fabrication: spring-boot-starter-data-jpa (core/pom.xml line 61) transitively provides spring-boot-starter-aop under the Boot 3.2.0 parent; the PR's own ITs asserting 401 prove the aspect fires. Absence-fabrication."},
+        {"point": "PermissionConstraintException extends wrong base class (ConstraintDeclarationException)", "verdict": "good", "score": 1},
+        {"point": "Functional mismatch: annotation allows APPROVE_ALL_REQUESTS_TEAMS OR APPROVE_CONNECTORS but service approve/decline still enforce only APPROVE_CONNECTORS", "verdict": "good", "score": 1, "note": "Verified at KafkaConnectControllerService lines 641 and 791."},
+        {"point": "Redundant blocking service-layer checks remain (createConnectorRequest, restartConnector, createConnectorDeleteRequest, approve/decline), correctly excluding the filtering check at 532", "verdict": "good", "score": 1},
+        {"point": "Typo handlePermissionNotAuthoirzedExceptionInternal", "verdict": "trivial", "score": 0},
+        {"point": "Stale throws KlawNotAuthorizedException declarations on controller methods", "verdict": "good", "score": 1},
+        {"point": "Consider @Around instead of @Before", "verdict": "trivial", "score": 0},
+        {"point": "Removed validator tests may need replacement / ensure coverage", "verdict": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Approver-only permissions now gate requestor-facing /getTopicRequests, /topic/request/{topicReqId} and /getConnectorRequests (biggest real regression)",
+        "/createClaimTopicRequest left completely unprotected (no annotation, no service check)",
+        "@Order(HIGHEST_PRECEDENCE) on the annotation declaration is ineffective; belongs on the aspect class",
+        "New exception handler missing log.error, inconsistent with every other handler",
+        "Human reference point: checkPermissions signature cleanup in PermissionAllowedAspectInterceptor"
+      ],
+      "exceeds": [
+        "ConstraintDeclarationException base-class misuse",
+        "OR-logic mismatch between annotation and residual APPROVE_CONNECTORS-only service checks",
+        "Inventory of redundant residual service-layer checks with correct filtering-check exclusion",
+        "Stale throws declarations"
+      ],
+      "net": -2
+    },
+    "v7": {
+      "points": [
+        {"point": "CRITICAL: missing AOP dependency, aspect silently ignored", "verdict": "wrong", "score": -1, "note": "Same fabrication as v5; data-jpa transitively provides AOP and the PR's ITs prove the aspect fires. Absence-fabrication."},
+        {"point": "ConstraintDeclarationException misuse as parent class; overlaps existing KlawNotAuthorizedException handler", "verdict": "good", "score": 1},
+        {"point": "Typo handlePermissionNotAuthoirzedExceptionInternal", "verdict": "trivial", "score": 0},
+        {"point": "Stale throws KlawNotAuthorizedException declarations (44,54,64,234)", "verdict": "good", "score": 1, "note": "Line numbers verified accurate."},
+        {"point": "/getTopicTeam has no @PermissionAllowed", "verdict": "good", "score": 1, "note": "Verified unannotated; legitimate coverage gap given the PR's uniformity goal."},
+        {"point": "/createClaimTopicRequest has no @PermissionAllowed", "verdict": "good", "score": 1, "note": "Real and important (one of the PR's biggest gaps), though the suggested VIEW_TOPICS permission is questionable vs the connector counterpart's REQUEST_CREATE."},
+        {"point": "/getTopicRequests and /topic/request/{topicReqId} have no @PermissionAllowed annotation", "verdict": "wrong", "score": -1, "note": "False: the diff explicitly adds @PermissionAllowed to both endpoints. v7 inverted the real issue (they ARE annotated — with approver-only permissions that lock out requestors). Absence-fabrication."},
+        {"point": "Validator permission check removed; conditional hedge on AOP dependency; ensure IT coverage", "verdict": "trivial", "score": 0},
+        {"point": "superAdmin-unauthorized test intent should be verified/clarified", "verdict": "trivial", "score": 0},
+        {"point": "Other controllers (Schema/Acl/etc.) not annotated; suggest scoping note", "verdict": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Approver-only permissions gating requestor-facing endpoints — v7 not only missed it but asserted the opposite (that those endpoints are unannotated)",
+        "@Order(HIGHEST_PRECEDENCE) on the annotation declaration is ineffective",
+        "New exception handler missing log.error",
+        "Residual service-layer checks / OR-logic mismatch in KafkaConnectControllerService (approve/decline still APPROVE_CONNECTORS-only)",
+        "Human reference point: checkPermissions signature cleanup in PermissionAllowedAspectInterceptor"
+      ],
+      "exceeds": [
+        "ConstraintDeclarationException base-class misuse",
+        "Stale throws declarations with accurate line numbers",
+        "/getTopicTeam unannotated",
+        "/createClaimTopicRequest unannotated"
+      ],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v7": 2},
+  "qualitative": "Both candidates anchor their reviews on the same fabricated blocker — a 'missing' spring-boot-starter-aop dependency that is in fact transitively present via spring-boot-starter-data-jpa under the Boot 3.2.0 parent, disproven by the PR's own ITs asserting 401. v5 is the stronger review on substance: its OR-logic mismatch and residual-service-check findings in KafkaConnectControllerService are verified real and valuable, but it misses every endpoint-coverage issue including the PR's biggest regression (approver-only permissions on requestor-facing list endpoints) and the unprotected /createClaimTopicRequest. v7 commendably catches /createClaimTopicRequest and /getTopicTeam, but commits a second absence-fabrication by claiming /getTopicRequests and /topic/request/{id} are unannotated when the diff plainly annotates them — inverting the actual bug — and pads with low-value scope/hedge points. Neither matched the human's aspect-signature suggestion, and neither caught the ineffective @Order placement or the unlogged exception handler.\n"
+}

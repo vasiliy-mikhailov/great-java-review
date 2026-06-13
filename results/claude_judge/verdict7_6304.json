@@ -1,0 +1,51 @@
+{
+  "pr": 6304,
+  "own_review": [
+    {"file": "controller/src/main/java/org/jboss/as/controller/parsing/ExtensionXml.java", "line": 101, "issue": "Breaking change with no migration path: at base the raw module attribute was passed through and DeferredExtensionContext canonicalized via ModuleIdentifier.fromString, so configs with module=\"name:main\" booted fine. The PR now throws XMLStreamException at parse time for any non-canonical name, so previously-valid standalone.xml/domain.xml configs fail to boot. No auto-correction or relaxed-mode fallback is offered.", "severity": "critical"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/logging/ControllerLogger.java", "line": 3813, "issue": "Typo in new message id 518: \"only if the is slot is not 'main'\" — duplicated/misplaced 'is'; should be \"only if the slot is not 'main'\".", "severity": "minor"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/ModuleIdentifierUtil.java", "line": 156, "issue": "MODULE_NAME_CORRECTOR is orphaned — grep over the repo finds zero usages; it is also left non-deprecated while every method it calls is now @Deprecated(forRemoval=true), so it cannot survive the removal. Should be deprecated/removed or moved.", "severity": "minor"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/ModuleIdentifierUtil.java", "line": 22, "issue": "Deprecation cascade: ~12 non-test in-tree files (server deployment module processors, jboss-deployment-structure parsers, elytron ClassLoadingAttributeDefinitions/PermissionMapperDefinitions/DirContextDefinition, domain-http ConsoleMode/ErrorContextHandler) still call the now forRemoval methods, generating build warnings; in-tree callers should be migrated to JBossModulesNameUtil in this PR or a follow-up.", "severity": "minor"},
+    {"file": "controller/src/main/java/org/jboss/as/controller/extension/ExtensionAddHandler.java", "line": 64, "issue": "parseCanonicalModuleIdentifier throws raw IllegalArgumentException for malformed names (empty spec, empty slot 'foo:', unterminated escape). In ExtensionAddHandler.execute this escapes as a runtime exception instead of OperationFailedException; in ExtensionXml it bypasses the XMLStreamException-with-location path. Should be caught and converted.", "severity": "minor"},
+    {"file": "controller-client/src/main/java/org/jboss/as/controller/client/helpers/JBossModulesNameUtil.java", "line": 191, "issue": "No newline at end of file (also ModuleIdentifierUtil.java); message id 518 says 'Resource /extension=%s' but is also used in the XML-parse context where it is an element, not a resource.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Typo in id 518 'only if the is slot'", "verdict": "good", "score": 1},
+        {"point": "MODULE_NAME_CORRECTOR orphaned, zero references", "verdict": "good", "score": 1},
+        {"point": "JBossModulesNameUtil missing trailing newline", "verdict": "trivial", "score": 0},
+        {"point": "Deprecation cascade: ~14 in-tree callers of forRemoval methods will see warnings", "verdict": "good", "score": 1},
+        {"point": "Existing configs with non-canonical names will fail on boot via the ExtensionXml check — intentional breaking change worth confirming", "verdict": "critical", "score": 2},
+        {"point": "TODO comment on escape-sequence tests inherited from original behavior, fine to leave", "verdict": "trivial", "score": 0}
+      ],
+      "missed": [
+        "IllegalArgumentException from parseCanonicalModuleIdentifier escapes ExtensionAddHandler/ExtensionXml without conversion to OperationFailedException/XMLStreamException"
+      ],
+      "exceeds": [
+        "Verified that ModuleLoader.loadModule(String) and Module.loadServiceFromCallerModuleLoader(String, Class) exist in jboss-modules 2.1.6.Final (confirmed correct)"
+      ],
+      "net": 4
+    },
+    "v7": {
+      "points": [
+        {"point": "Typo in id 518 'only if the is slot'", "verdict": "good", "score": 1},
+        {"point": "JBossModulesNameUtil missing trailing newline", "verdict": "trivial", "score": 0},
+        {"point": "ExtensionsLoader (CLI) canonicalizes while DeferredExtensionContext/TransformerRegistry/ApplyExtensionsHandler pass through — asks if defensive for legacy servers; accurate inconsistency observation (CLI can connect to older servers whose model may hold name:main)", "verdict": "good", "score": 1},
+        {"point": "ExtensionAddHandler validation is a breaking change for clients/scripts using explicit :main; document for 28.0.0", "verdict": "good", "score": 1},
+        {"point": "MODULE_NAME_CORRECTOR still works via delegation; 'verify callers are aware' — there are zero callers, so no-action point resting on a wrong premise, but no defect fabricated", "verdict": "trivial", "score": 0}
+      ],
+      "missed": [
+        "The critical boot-path framing: ExtensionXml now rejects previously-bootable configs at XML parse time with no migration path (v7 only flagged the management-API add-time aspect)",
+        "MODULE_NAME_CORRECTOR is orphaned (zero usages) — v7 looked at it but assumed callers exist",
+        "Deprecation cascade across ~12 in-tree non-test callers of the forRemoval methods",
+        "IllegalArgumentException escaping uncaught from ExtensionAddHandler/ExtensionXml"
+      ],
+      "exceeds": [
+        "ExtensionsLoader canonicalization-inconsistency question is beyond both the human review and the judge's own list"
+      ],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Both candidates are fabrication-free and caught the id-518 typo; the gap is depth on the one issue that matters. v5 explicitly identified that existing configurations with non-canonical module names will fail at boot when ExtensionXml applies the new check (+2 critical), and also landed the orphaned MODULE_NAME_CORRECTOR and the deprecation cascade, missing only the uncaught IllegalArgumentException path. v7 flagged the breaking change only at the management-API/ExtensionAddHandler level and never connected it to boot-time XML parsing of existing configs, missed the cascade entirely, and discussed MODULE_NAME_CORRECTOR while assuming it has callers when it has none. v7's one distinctive contribution — the canonicalization inconsistency between the CLI ExtensionsLoader and the server-side pass-through paths — is accurate and genuinely exceeds both references. Human reference points (message hint, moving the util to controller-client) were already incorporated into the final diff, so neither candidate is penalized for them; net result v5 4 vs v7 -1."
+}

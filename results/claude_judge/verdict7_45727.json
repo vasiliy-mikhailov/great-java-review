@@ -1,0 +1,104 @@
+{
+  "pr": 45727,
+  "own_review": [
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+      "line": "202/229/244/258 (base) and inner classes 476/666/787/921/1431",
+      "issue": "Removal of public, never-deprecated API on the 3.5.1-SNAPSHOT patch line: buildConsumerProperties(SslBundles), buildProducerProperties(SslBundles), buildAdminProperties(SslBundles), buildStreamsProperties(SslBundles) and the public inner Consumer/Producer/Admin/Streams/Ssl.buildProperties(SslBundles) carried no @Deprecated at base. Binary- and source-incompatible for downstream callers; Spring Boot policy requires deprecate-first, remove in a later minor/major. Note buildAdminProperties/buildStreamsProperties had NO no-arg form at base, so the (SslBundles) signature simply vanishes.",
+      "severity": "critical"
+    },
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+      "line": "1426-1431 (base) / ~1394 (diff)",
+      "issue": "PR description is inverted: it claims to remove 'the deprecated buildConsumerProperties(SslBundles)', but that overload was never deprecated. The only @Deprecated(since=3.2.0, forRemoval=true) method, Ssl.buildProperties() no-arg, is the one KEPT — its deprecation annotation is silently dropped (un-deprecation) while the non-deprecated SslBundles variant is removed.",
+      "severity": "moderate"
+    },
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/test/java/org/springframework/boot/autoconfigure/kafka/KafkaPropertiesTests.java",
+      "line": "104-112 (base)",
+      "issue": "sslBundleConfiguration test deleted without replacement. The behavior it covered — Ssl.buildProperties returns empty properties (no SSL_ENGINE_FACTORY_CLASS_CONFIG / per-key SSL props) when spring.kafka.ssl.bundle is set — still exists via the early return at KafkaProperties.java:1435-1437 and is trivially testable with the no-arg buildConsumerProperties(); coverage is lost.",
+      "severity": "minor"
+    },
+    {
+      "file": "spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/kafka/KafkaProperties.java",
+      "line": "1431-1456 (base)",
+      "issue": "Verified the sslBundles parameter was already dead at base — Ssl.buildProperties(SslBundles) never reads it; bundle resolution happens via PropertiesKafkaConnectionDetails.getBundle()/KafkaAutoConfiguration.applySslBundle(). Internal runtime behavior is therefore unchanged; all internal call sites are consistently updated and the four mutual-exclusion tests still exercise validate() correctly via the no-arg path.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "No external callers of the parameterized build*Properties methods exist outside the changed files; 'The API removal is safe'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "The in-repo grep claim is true, but the conclusion is false: these are public, never-deprecated methods of a widely-consumed framework on a patch branch. Declaring the removal 'safe' affirmatively denies the central blocker."
+        },
+        {
+          "point": "@Deprecated annotation on Ssl.buildProperties() no-arg is 'correctly removed along with the method'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Mischaracterizes the diff: the no-arg method is NOT removed — it is kept (absorbing the body) and merely un-deprecated; the SslBundles variant is what was removed. The trailing observation about bundle/validate() remaining is true but cannot rescue the false core claim."
+        },
+        {
+          "point": "buildAdminProperties previously had only the parameterized form, so this is a signature change rather than an overload removal; all callers updated",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified at base: no no-arg buildAdminProperties existed; KafkaAutoConfiguration:173 was the sole caller and is updated."
+        },
+        {
+          "point": "sslBundleConfiguration 'appropriately removed'; four mutual-exclusion tests correctly updated to method-reference no-arg form; unused imports cleaned",
+          "grade": "trivial",
+          "score": 0,
+          "note": "The test-update and import verification is accurate (covers the human reference points), but blessing the sslBundleConfiguration deletion as appropriate overlooks the real coverage loss."
+        }
+      ],
+      "missed": [
+        "Un-deprecated public-API break on 3.5.1 patch branch (v5 asserted the opposite: 'removal is safe')",
+        "PR-description/deprecation inversion: the removed overloads were never deprecated, the kept method was the deprecated one (v5 stated the reverse)",
+        "Coverage loss from deleting sslBundleConfiguration without a no-arg rewrite"
+      ],
+      "exceeds": [
+        "buildAdminProperties signature-change-vs-overload-removal observation (not in human reference)"
+      ],
+      "net": -4
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Removes public API methods (lists all four build*Properties(SslBundles) plus inner-class variants); no in-repo callers but public methods of a widely-used framework; upgrading.adoc has zero mention — migration note needed for downstream callers",
+          "grade": "critical",
+          "score": 2,
+          "note": "Identifies the verified blocker: public-API removal with downstream impact. Both absence claims check out (no in-repo callers; upgrading.adoc has no Kafka/SslBundles mention). Under-weights severity though — framed as a documentation concern, missing that the methods were never deprecated and this is a patch branch."
+        },
+        {
+          "point": "PR description says 'the removed test has been restored' but sslBundleConfiguration is deleted entirely; the SSL_ENGINE_FACTORY concern now lives in applySslBundle() in KafkaAutoConfiguration",
+          "grade": "good",
+          "score": 1,
+          "note": "Deletion is real; applySslBundle() exists (KafkaAutoConfiguration:243-245) — verified, not fabricated. The 'no longer applicable' rationale is debatable (the bundle short-circuit is still testable no-arg), but the observable claims are accurate."
+        },
+        {
+          "point": "Four SSL conflict tests correctly updated to no-arg; Ssl.validate() runs regardless of the SslBundles argument so mutual-exclusion assertions remain valid",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified: validate() (KafkaProperties.java:1458) never used sslBundles. Covers all four human reference points."
+        }
+      ],
+      "missed": [
+        "Deprecation inversion: removed overloads were never @Deprecated while the kept Ssl.buildProperties() no-arg loses its @Deprecated(since=3.2.0) annotation — the PR description's 'deprecated method' claim is backwards",
+        "Coverage loss: the bundle-set early-return in Ssl.buildProperties is now untested; v7 rationalized the deletion as 'no longer applicable' instead of asking for a no-arg rewrite"
+      ],
+      "exceeds": [
+        "Public-API break / upgrading.adoc migration-note point (not in human reference)",
+        "PR-description inaccuracy about the 'restored' test (not in human reference)"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 0
+  },
+  "qualitative": "v7 clearly beats v5 on this PR. v7 found the one finding that matters — the removal of public, never-deprecated build*Properties(SslBundles) overloads in a widely-used framework — and backed it with two verified absence claims (no in-repo callers, no upgrading.adoc mention), though it soft-pedaled the blocker as a documentation concern rather than a deprecation-policy violation on a patch branch. v5 did the opposite: it declared the API removal 'safe' and fabricated a description of the diff, claiming the deprecated no-arg Ssl.buildProperties() was removed when it is actually the survivor (merely un-deprecated). Both candidates verified the four restored mutual-exclusion tests (the entirety of the human reference) and both rationalized the deleted sslBundleConfiguration test instead of flagging the lost coverage of the bundle short-circuit. Neither candidate fabricated an absence; v5's errors are presence mischaracterizations plus a false safety assurance."
+}

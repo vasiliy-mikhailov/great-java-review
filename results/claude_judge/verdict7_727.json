@@ -1,0 +1,50 @@
+{
+  "pr": 727,
+  "own_review": [
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:111", "issue": "Unguarded shell.getData().getClass() inside the global SWT.Paint display filter: getData() returns null for any shell that never had setData() called (tooltips, popups, progress shells). An NPE thrown from a display filter propagates out of the event loop and can break the whole test run, not just this dialog handler. Needs a null check (or instanceof Dialog guard, which pressOk/pressCancel already assume).", "severity": "blocker"},
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:54", "issue": "Hard-coded class-name prefix 'org.eclipse.ltk.internal.ui.refactoring.Refactoring' is Eclipse internal API; if LTK renames/repackages these dialogs the filter silently stops matching and the test hangs until timeout instead of failing with a clear message.", "severity": "medium"},
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:89", "issue": "Blind sleep bumped 2000ms -> 5000ms; still race-prone sleep-based synchronization and adds 3s wall clock per run; a condition-based wait would be more robust.", "severity": "minor"},
+    {"loc": "pom.xml:169", "issue": "download-maven-plugin 1.6.1 -> 1.6.7 bump is unrelated to the test fix described in the PR title; scope creep, should be mentioned or split.", "severity": "minor"},
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:53", "issue": "Constant name WIZARD_CLASSNAME_TEMPLATE is misleading: it is a class-name prefix, not a template.", "severity": "trivial"},
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:164", "issue": "'static private' modifier order is unconventional ('private static'); pure style nit.", "severity": "trivial"},
+    {"loc": "org.eclipse.wildwebdeveloper.tests/src/org/eclipse/wildwebdeveloper/tests/TestJsTs.java:164-171", "issue": "getButtons() always traverses the full widget tree and allocates a HashSet on every Paint event vs old short-circuiting hasButton(); negligible in test code.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"loc": "TestJsTs.java:111", "claim": "NPE on shell.getData() chain in global SWT.Paint filter; recommends null check", "grade": "critical", "score": 2, "note": "Verified blocker; matches known real issue, correct location and fix."},
+        {"loc": "TestJsTs.java:88", "claim": "Sleep 2000->5000 now the longest sleep in suite (next is 4000 in TestAngular); questions necessity", "grade": "good", "score": 1, "note": "Verified: TestAngular.java:54,76 use sleep(4000); claim accurate and grounded."},
+        {"loc": "TestJsTs.java:54", "claim": "LTK internal-API class-name prefix is fragile across Eclipse releases", "grade": "good", "score": 1, "note": "Verified real; matches known LTK internal-API fragility issue."},
+        {"loc": "pom.xml:169", "claim": "download-maven-plugin bump unrelated to PR title; split or document", "grade": "good", "score": 1, "note": "Real scope-creep observation; PR description does not mention it."},
+        {"loc": "TestJsTs.java:164", "claim": "'static private' unconventional ordering nit", "grade": "trivial", "score": 0, "note": "Accurate but pure style."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "NPE blocker at TestJsTs.java:111 (human reference missed it)",
+        "LTK internal-API fragility",
+        "Cross-suite verification of the sleep bump (4000ms TestAngular comparison)",
+        "pom.xml scope-creep flag"
+      ],
+      "net": 5
+    },
+    "v7": {
+      "points": [
+        {"loc": "TestJsTs.java:111", "claim": "NPE regression: getData() may be null for non-IDE shells; original text-only check was safe", "grade": "critical", "score": 2, "note": "Verified blocker; correctly frames it as a regression vs the old code."},
+        {"loc": "TestJsTs.java:89", "claim": "Sleep tripled; suggests condition-based polling instead of blind sleep", "grade": "good", "score": 1, "note": "Real and actionable suggestion."},
+        {"loc": "TestJsTs.java:53", "claim": "Internal LTK package prefix is fragile; document or add fallback", "grade": "good", "score": 1, "note": "Verified real."},
+        {"loc": "TestJsTs.java:164-171", "claim": "getButtons() full traversal vs old short-circuit; algorithm-change observation", "grade": "trivial", "score": 0, "note": "True but inconsequential in test code; no actionable issue."},
+        {"loc": "TestJsTs.java:164,176,188", "claim": "'static private' is redundant — 'private' already prevents inheritance; drop static", "grade": "wrong", "score": -1, "note": "False claim: static and private are orthogonal; static on a private method is not redundant (it forbids instance-state access and documents statelessness). Suggesting to drop static is incorrect advice; the only valid nit is modifier order."},
+        {"loc": "pom.xml:169", "claim": "Benign patch-level bump, no concerns", "grade": "trivial", "score": 0, "note": "Not a finding; misses the scope-creep angle but makes no false claim."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "NPE blocker at TestJsTs.java:111 (human reference missed it)",
+        "LTK internal-API fragility",
+        "Condition-polling alternative to the blind sleep"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Both candidates caught the one true blocker (the unguarded shell.getData() NPE inside the global SWT.Paint filter at TestJsTs.java:111) and the LTK internal-API fragility, both of which the human reference missed (the human's sole MANIFEST.MF point is absent from this diff and excluded). v5 is the stronger review: every point is accurate, its sleep-duration comparison against TestAngular's 4000ms was verified against the repo, and it correctly flags the unrelated pom.xml bump as scope creep. v7 matches v5 on the blocker and frames it well as a regression, but loses a point for the factually wrong 'static private is redundant / private prevents inheritance' claim and spends two slots on non-findings (the getButtons traversal observation and a no-concerns pom note). Neither candidate fabricated absences. v5 wins 5 to 3 on precision rather than recall."
+}

@@ -1,0 +1,169 @@
+{
+  "pr": 659,
+  "own_review": [
+    {
+      "file": ".github/workflows/build.yml",
+      "line": "136-139",
+      "issue": "No readiness gate: the server is started with 'nohup java ... &' and the conformance suite runs immediately afterwards with no health-check/wait loop; whether the server is up when npx connects is a race (partially masked by npx package download time) -> flaky CI. Compounded by the 2s dynamic-feature registration delay in ConformanceServer.registerDynamicFeatures()",
+      "severity": "major"
+    },
+    {
+      "file": ".github/workflows/build.yml",
+      "line": "139",
+      "issue": "npx @modelcontextprotocol/conformance is unpinned, so every CI run pulls the latest package version; a breaking release of the conformance suite breaks CI for unrelated PRs (the human reviewer's sole point: latest is a deliberate interim choice until a stable release exists, then pin)",
+      "severity": "major"
+    },
+    {
+      "file": ".github/workflows/build.yml",
+      "line": "141-144",
+      "issue": "'Stop test server' is gated on steps.start_test_server.outcome == 'success' but lacks always(); the implicit success() means the step is skipped whenever the conformance step fails, which is exactly when cleanup is needed. Should be if: always() && steps.start_test_server.outcome == 'success'",
+      "severity": "major"
+    },
+    {
+      "file": ".github/workflows/build.yml",
+      "line": "131-134",
+      "issue": "The 'Start test server' step backgrounds the JVM, so it always exits 0 even if the jar crashes on startup; the outcome=='success' guard is therefore effectively meaningless and startup failures surface only as opaque conformance-step failures",
+      "severity": "minor"
+    },
+    {
+      "file": "conformance/pom.xml",
+      "line": "16",
+      "issue": "quarkus.platform.version pinned to 3.32.1 while the root project builds against quarkus 3.27.2 (root pom.xml line 40) and samples use 3.27.0; the conformance run therefore validates the extension on a newer runtime than it officially targets — should be aligned or documented",
+      "severity": "minor"
+    },
+    {
+      "file": "conformance/src/main/resources/application.properties",
+      "line": "6",
+      "issue": "CORS origin 'http://::1' is not a syntactically valid origin (IPv6 literal must be bracketed); the correct 'http://[::1]' is already in the list, so this entry is dead",
+      "severity": "trivial"
+    },
+    {
+      "file": "conformance/pom.xml",
+      "line": "60-117",
+      "issue": "Copied archetype boilerplate: quarkus-junit5 test dependency, surefire/failsafe configuration and the native profile, but the module contains no tests; native-image-agent goal likewise unused",
+      "severity": "trivial"
+    },
+    {
+      "file": ".github/workflows/build.yml",
+      "line": "124,127",
+      "issue": "Trailing whitespace on run lines; single-value os/java matrices are noise",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Stop test server skipped when conformance step fails; needs always()",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real: implicit success() in the if expression skips cleanup exactly on test failure"
+        },
+        {
+          "point": "No readiness check before running conformance tests; also flags 2s dynamic-registration window",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real race; the key CI reliability issue. Correct polling-loop fix proposed"
+        },
+        {
+          "point": "Node.js version 24 may not be resolvable / 'not yet a stable LTS release'",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Stale-knowledge fabrication: Node 24 IS an LTS release; setup-node resolves it fine"
+        },
+        {
+          "point": "Module excluded from parent reactor; suggest README",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate observation, intentional design (like samples/), no defect"
+        },
+        {
+          "point": "ProgressTracker advance additive-vs-absolute rumination",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Self-resolving hedge: advance() is additive (advance BY value); code is correct, no issue raised"
+        },
+        {
+          "point": "ElicitationRequest schema constructors verified",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Verification note, not a finding; arities do match the records at base"
+        },
+        {
+          "point": "Dynamic resource name vs URI mismatch — 'verify'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Speculative; name is the internal feature id, URI is set separately by design"
+        },
+        {
+          "point": "CORS origins lack ports, conformance client may be rejected",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Speculative hedge; CORS only applies if the client sends an Origin header; Node CLI generally does not"
+        }
+      ],
+      "missed": [
+        "npx @modelcontextprotocol/conformance package version unpinned — the human's sole point (latest-for-now vs pinning)"
+      ],
+      "exceeds": [
+        "always() cleanup condition (real, beyond human review)",
+        "readiness gate before conformance run (real, beyond human review)"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Race condition: dynamic features registered 2s after startup while conformance run starts immediately with no health check; add wait-for-ready",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real — this is the readiness-gate defect, correctly bundled with the dynamic-registration window and with the right fix (wait-for-ready step). The 'consistent failures' framing slightly overstates, but the defect and remedy are correct"
+        },
+        {
+          "point": "Server cleanup not guaranteed; use if: always() && steps.start_test_server.outcome == 'success'",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified real and the proposed condition is the exactly correct fix; the stated trigger scenario ('manually skipped') is slightly off — the primary case is the conformance step failing — but the diagnosis stands"
+        },
+        {
+          "point": "Completion handler throws IllegalStateException on null input instead of returning completions",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Speculative: the MCP completion request always carries a value (possibly empty string), so the null branch is defensive/unreachable in practice; deliberate test-fixture code"
+        },
+        {
+          "point": "Quarkus version mismatch: conformance pins platform 3.32.1 while root pom uses 3.27.2 (line 40)",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified exactly correct including the line number; samples stay at 3.27.0, so conformance genuinely validates against a newer runtime than the extension targets — legitimate align-or-document finding"
+        },
+        {
+          "point": "No per-job path filtering — conformance job runs on every trigger including documentation changes",
+          "grade": "wrong",
+          "score": -1,
+          "note": "Doubly false: the workflow's top-level paths-ignore already excludes *.md/*.adoc etc., so doc changes never trigger it; and the suggested github.event.pull_request.changed_files_names context field does not exist in GitHub Actions. Also inconsistent with the repo's pattern (all jobs run unconditionally)"
+        },
+        {
+          "point": "CORS configuration unnecessary for Node.js conformance client",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Factually fine (CORS is browser-enforced) but harmless config plausibly kept for browser-based inspector testing, as v7 itself concedes; style noise"
+        }
+      ],
+      "missed": [
+        "npx @modelcontextprotocol/conformance package version unpinned — the human's sole point (latest-for-now vs pinning)"
+      ],
+      "exceeds": [
+        "always() cleanup condition with the precise correct fix (real, beyond human review)",
+        "readiness gate / dynamic-registration race (real, beyond human review)",
+        "Quarkus platform 3.32.1 vs root 3.27.2 mismatch, verified to the line (real, beyond human review)"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 0
+  },
+  "qualitative": "Both candidates caught the two genuine CI defects (missing always() on the cleanup step and the absent readiness gate) and both missed the human's sole point about pinning the npx conformance package. The decisive split is on fabrications: v5 repeated the stale-knowledge Node-24 absence claim ('not yet a stable LTS release' — it is LTS), while v7 avoided the Node-24 trap entirely and added a verified-to-the-line real finding (Quarkus platform 3.32.1 vs root 3.27.2). v7's one wrong point is a presence-fabrication of a nonexistent GitHub Actions context field plus a claim contradicted by the workflow's existing paths-ignore, but it is less damaging than a confident stale-knowledge environment claim. v7's leaner, git-tool-equipped run produced a higher signal-to-noise review: three substantive correct points and only two filler points versus v5's five filler/hedge points."
+}

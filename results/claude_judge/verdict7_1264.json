@@ -1,0 +1,65 @@
+{
+  "pr": 1264,
+  "own_review": [
+    {"file": "tycho-extras/tycho-pomless/pom.xml", "line": 50, "issue": "polyglot-common bumped to 0.4.9-SNAPSHOT, which depends on the unmerged upstream polyglot-maven PR #242 (PR description admits the update is 'not yet functional'). A SNAPSHOT dependency on an unreleased third-party artifact is a merge/release blocker.", "severity": "critical"},
+    {"file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java", "line": 81, "issue": "ThreadLocal leak: IS_FIRST.set(false) executes, but IS_FIRST.remove() is only reached inside the 'if (subFolders != null)' block after the loop. If dir.listFiles() returns null (I/O error/permissions) or locatePomReference throws inside the loop, the flag stays false for the thread's lifetime — every later top-level aggregator call on that thread silently takes the skip branch. Severe in thread-reusing environments (mvnd, IDE embedders, ITs in one JVM). Needs try/finally. Note the re-entrancy mechanism itself DOES work: nested locatePomReference calls re-enter this mapping on the same thread with the flag false, which is exactly the intended 'skip nested' behavior.", "severity": "high"},
+    {"file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/AbstractTychoMapping.java", "line": 57, "issue": "The tycho.pomless.aggregator.names system property is removed without deprecation; existing user configurations setting it are now silently ignored, and no documentation/RELEASE_NOTES entry records the breaking change.", "severity": "medium"},
+    {"file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java", "line": 97, "issue": "Behavior regression vs COMMON_NAMES: aggregators nested inside aggregators (e.g. releng/sites, bundles/tests — previously matched anywhere by name) are no longer discovered, since nested folders without poms are skipped during a scan. Intentional per the comment, but a silent regression for existing multi-level layouts that deserves explicit documentation.", "severity": "medium"},
+    {"file": "tycho-its/src/test/java/org/eclipse/tycho/test/buildextension/PomlessTest.java", "line": 141, "issue": "assertMentionedDirectories asserts an exact ORDER of skipped folders ('target', 'otherFolder', 'target'), but the order comes from File.listFiles(), whose ordering is unspecified (e.g. hash order on ext4). Potentially flaky across filesystems; should compare order-insensitively or sort.", "severity": "low"},
+    {"file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoFeatureMapping.java", "line": 70, "issue": "isValidLocation switched from String.endsWith to Path.of(location).endsWith — now matches only an exact last path segment ('feature.xml'/'pom.tycho'), no longer arbitrary suffixes like 'myfeature.xml'. A correctness tightening, but a behavior change worth confirming; Path.of may also throw InvalidPathException on malformed location strings. TychoTargetMapping still uses String.endsWith (inconsistent).", "severity": "low"},
+    {"file": "tycho-its/src/test/java/org/eclipse/tycho/test/buildextension/PomlessTest.java", "line": 41, "issue": "testPomlessTestPluginDetection downgraded from 'clean test' to 'clean compile' — the IT no longer verifies that the detected eclipse-test-plugin packaging actually drives test execution; unrelated to this PR's purpose. (The removed verifyTextInLog(\"\") was a no-op.)", "severity": "low"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "ThreadLocal state leak: IS_FIRST.remove() nested inside if(subFolders!=null); listFiles()==null leaves flag false permanently, subsequent aggregators silently skipped; fix with try/finally", "verdict": "critical", "score": 2, "note": "Verified real — exact leak path and correct fix; the centerpiece bug of this PR."},
+        {"point": "ThreadLocal persists across Maven builds in thread-reusing daemon/IDE mode", "verdict": "trivial", "score": 0, "note": "As stated ('never re-initialized') is inaccurate — remove() resets it on the happy path; only the leak from point 1 makes it persist. Corollary/amplifier of point 1, not an independent issue."},
+        {"point": "IS_FIRST does not enforce 'directly nested' semantics; a bundle with a stale pom.tycho processed first would cause the aggregator's first real directory to be skipped entirely", "verdict": "wrong", "score": -1, "note": "Fabricated failure scenario: each top-level locatePom call starts with the flag true (remove() resets after every successful scan), and per-thread re-entrancy IS exactly the directly-nested semantics. The claimed skip cannot occur outside the already-reported leak."},
+        {"point": "Path.of(location).endsWith(TYCHO_POM) tightens matching from suffix to exact last segment in TychoAggregatorMapping", "verdict": "good", "score": 1, "note": "Verified real semantic change, accurately described."},
+        {"point": "Same Path-based matching change in TychoFeatureMapping", "verdict": "trivial", "score": 0, "note": "Duplicate of the previous observation for a second file."},
+        {"point": "Removed default getPriority() in base class; verified all five subclasses override it", "verdict": "trivial", "score": 0, "note": "Accurate positive verification, not an issue."},
+        {"point": "Unrelated test scope change: testPomlessTestPluginDetection switched from 'test' to 'compile' goals", "verdict": "trivial", "score": 0, "note": "Real observation but framed only as commit hygiene, not as the (mild) coverage loss."},
+        {"point": "polyglot-common 0.4.9-SNAPSHOT depends on unreleased polyglot-maven PR #242; blocks CI/merge", "verdict": "critical", "score": 2, "note": "Verified blocker — cannot be merged/released against an unpublished SNAPSHOT."}
+      ],
+      "missed": [
+        "Human's point: polyglot XmlMapping.accept() falsely accepts any *.xml (including feature.xml) by extension; explicit feature priority is needed because the previous safe ordering was a plexus implementation-detail accident",
+        "Silent removal of tycho.pomless.aggregator.names is a breaking change for users with no deprecation/RELEASE_NOTES entry",
+        "Nested-aggregator regression: aggregators inside aggregators previously matched via COMMON_NAMES are no longer discovered",
+        "New log-order assertion depends on unspecified File.listFiles() ordering — potentially flaky test"
+      ],
+      "exceeds": [
+        "ThreadLocal leak with exact mechanism and try/finally fix (not in human reference)",
+        "SNAPSHOT dependency merge-blocker (not in human reference)",
+        "Path.of last-segment matching tightening (not in human reference)"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "IS_FIRST ThreadLocal logic is broken — withInitial re-invokes the supplier after remove() so get() always returns true; the 'Skip nested folder' else branch is unreachable and the new test assertions will fail", "verdict": "wrong", "score": -1, "note": "Fabricated. The skip branch runs on RE-ENTRANT calls: during a scan, locatePomReference re-enters this mapping on the same thread while the flag is still false (remove() only happens after the loop). The mechanism works and the test passes."},
+        {"point": "IS_FIRST is per-thread; parallel builds (-T) cause duplicate scanning, defeating the optimization", "verdict": "wrong", "score": -1, "note": "False — IS_FIRST is a re-entrancy guard, not a global once-per-build flag; no directory is ever scanned twice because polyglot calls locatePom once per module dir. Per-thread scope is exactly correct. Built on the same misreading as point 1."},
+        {"point": "Redundant getPriority() override (+1) in TychoFeatureMapping — AbstractXMLTychoMapping already returns 1; dead code, remove it", "verdict": "trivial", "score": 0, "note": "Numerically verified (base class line 98-99 returns 1), but the override carries the comment documenting WHY feature must outrank polyglot's XmlMapping — removing it would erase exactly the invariant the human reviewer highlights. Accurate fact, counterproductive advice."},
+        {"point": "Removing getPriority() from AbstractTychoMapping breaks implicit contract for future subclasses (compile error instead of inherited 0)", "verdict": "trivial", "score": 0, "note": "Speculative forward-looking note; acknowledges all current subclasses override it."},
+        {"point": "Nit: Path.of(location).endsWith(...) marginally more robust but original String.endsWith was sufficient; avoid Path allocation", "verdict": "trivial", "score": 0, "note": "Misses the actual semantic point (suffix vs exact-last-segment matching) and even mixes up the constants (TYCHO_POM vs FEATURE_XML); recommendation points the wrong way but is not a fabricated defect."},
+        {"point": "Clean removal of -Dtycho.pomless.aggregator.names from maven.config; no other references remain in the codebase", "verdict": "trivial", "score": 0, "note": "Verified true (the constant is removed by this PR too), but it is a positive observation that overlooks the silent-breaking-change angle."}
+      ],
+      "missed": [
+        "ThreadLocal leak: IS_FIRST.remove() skipped when listFiles() returns null or the loop throws — the real bug (v7 instead fabricated a different, nonexistent bug in the same code)",
+        "polyglot-common 0.4.9-SNAPSHOT dependency on unmerged upstream PR — merge/release blocker, never mentioned",
+        "Human's point: XmlMapping.accept() accepts any *.xml by extension; the explicit feature priority guards a previously accidental ordering (v7 touched the override but recommended deleting it)",
+        "Nested-aggregator regression vs old COMMON_NAMES behavior",
+        "Log-order test assertion depends on unspecified File.listFiles() ordering"
+      ],
+      "exceeds": [
+        "Verified AbstractXMLTychoMapping base priority value in the repo (accurate fact-check beyond the diff)",
+        "Verified no remaining references to the removed aggregator.names property"
+      ],
+      "net": -7
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 1
+  },
+  "qualitative": "v5 delivers both genuinely real, high-value findings — the ThreadLocal remove() leak with the exact failure path and fix, and the 0.4.9-SNAPSHOT merge blocker — plus an accurate note on the Path.of matching change, but it burns credit on a fabricated 'first real directory gets skipped' scenario and misses the human's XmlMapping-accept insight along with the property-removal breaking change, nested-aggregator regression, and the order-dependent log assertion. v7 is substantially worse: its headline claim that the IS_FIRST else-branch is unreachable and the PR's own test will fail is a confident fabrication that inverts reality (the skip branch fires on re-entrant calls before remove()), its -T duplicate-scanning point repeats the same misreading, and it completely misses both real blockers (the ThreadLocal leak and the SNAPSHOT dependency). v7's one distinctive contribution — verifying that AbstractXMLTychoMapping already returns priority 1 — is factually right but leads to advice (delete the override) that would erase the documented invariant the human reviewer explains. Net: v5 0, v7 -7; v5 clearly stronger on this PR."
+}

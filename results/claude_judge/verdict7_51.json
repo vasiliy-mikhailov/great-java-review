@@ -1,0 +1,43 @@
+{
+  "pr": 51,
+  "own_review": [
+    {"file": "transports/stdio/pom.xml", "line": 14, "issue": "Typo in user-facing description: 'stanard input/output' should be 'standard input/output'. Central to the PR's purpose (fixing generic/wrong descriptions), so shipping a new typo defeats the point.", "severity": "medium"},
+    {"file": "transports/sse/pom.xml", "line": 14, "issue": "Terminology: 'server side events (SSE)' should be 'Server-Sent Events (SSE)' (the standard name). Same wrong term appears in the sse quarkus-extension.yaml name (line 1).", "severity": "low"},
+    {"file": "transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "line": 5, "issue": "Guide URL question: new yamls set guide to https://docs.quarkiverse.io/quarkus-mcp-server/dev/index.html while core/runtime's quarkus-extension.yaml deliberately keeps the guide commented out and with a different path (/mcp-server/dev/). Confirm the guide is published and align core for consistency (human confirmed it is published and suggested this exact URL).", "severity": "low"},
+    {"file": "transports/sse/runtime/src/main/resources/META-INF/quarkus-extension.yaml", "line": 1, "issue": "Consistency: core's quarkus-extension.yaml has an explicit top-level 'description:' field; the two new yamls omit it and rely on the <description> placed in the parent pom being inherited by the runtime module. Adding description to the yaml (or runtime pom) would match the core convention and be more robust.", "severity": "low"},
+    {"file": "transports/sse/pom.xml", "line": 14, "issue": "Blank line removed where description was inserted; purely cosmetic.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "stdio pom.xml:14 typo 'stanard' -> 'standard'", "grade": "good", "score": 1, "note": "Verified real; matches human reference point 3."},
+        {"point": "Both new yamls omit top-level description field present in core yaml; consistency question", "grade": "good", "score": 1, "note": "Verified: core yaml has 'description:', new yamls do not. Real consistency issue beyond human."},
+        {"point": "Guide URL active in new files but commented out in core; verify docs live / consider uncommenting core", "grade": "good", "score": 1, "note": "Verified: core yaml has '#  guide: ...' commented. Matches the human's guide-URL concern (human confirmed guide is published)."}
+      ],
+      "missed": [
+        "'server side events' should be 'Server-Sent Events' in sse pom description and sse yaml name"
+      ],
+      "exceeds": [
+        "yaml description-field consistency with core extension"
+      ],
+      "net": 2
+    },
+    "v7": {
+      "points": [
+        {"point": "stdio pom.xml:14 typo 'stanard' -> 'standard'", "grade": "good", "score": 1, "note": "Verified real; matches human reference point 3."},
+        {"point": "New SSE/stdio yamls lack the top-level description field that core yaml has; consistency question", "grade": "good", "score": 1, "note": "Verified real; beyond human reference."},
+        {"point": "Guide URL differs from core's commented-out URL in both path structure (/mcp-server/ vs /quarkus-mcp-server/) and commented vs uncommented; confirm correctness and align core", "grade": "good", "score": 1, "note": "Verified: core has '#  guide: https://docs.quarkiverse.io/mcp-server/dev/'. More precise than v5's version of the same point; matches the human's guide-URL concern."}
+      ],
+      "missed": [
+        "'server side events' should be 'Server-Sent Events' in sse pom description and sse yaml name"
+      ],
+      "exceeds": [
+        "yaml description-field consistency with core extension",
+        "explicit identification of the path discrepancy between core's commented guide URL and the new URLs"
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Both candidates caught the 'stanard' typo (the human's concrete fix), raised the guide-URL question that maps onto the human's main comment, and independently surfaced the real yaml description-field inconsistency with the core extension — all three points verified against the repo, with zero fabrications on either side. Both missed the 'server side events' vs 'Server-Sent Events' terminology error in the SSE pom description and yaml name, which is squarely within this metadata-focused PR's scope. v7's guide-URL point is meaningfully sharper than v5's: it pinpoints the path discrepancy (/mcp-server/dev/ vs /quarkus-mcp-server/dev/index.html) rather than just the commented/uncommented status. Nets tie at 2; on equal scores v7 edges ahead on precision, with v5 slightly more hedged phrasing but equally accurate claims."
+}

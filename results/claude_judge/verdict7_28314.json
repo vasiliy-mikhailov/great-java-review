@@ -1,0 +1,88 @@
+{
+  "pr": 28314,
+  "own_review": [
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/**",
+      "line": 1,
+      "issue": "Systematic package-name typo: 'intrumentation' (missing 's') baked into 17 renamed runtime files (grpc, vertx, reactivemessaging, restclient subpackages) plus 6 import references in TracerProcessor.java:99-100, OpenTelemetryProcessor.java:49-50, TracerRecorder.java:24-25, and the self-import in InstrumenterVertxTracer.java:9. Verified: 75 occurrences of 'intrumentation' in the full diff across 17 renamed files. The deployment test side uses the correctly spelled 'deployment.instrumentation', so runtime and test trees are mutually inconsistent. Compiles fine (internally consistent, no external refs), but this PR's whole purpose is establishing package structure for future work, so the typo is the central blocker.",
+      "severity": "critical"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation",
+      "line": 1,
+      "issue": "Naming diverges from the claimed Micrometer alignment: Micrometer runtime has 'binder' and 'config' subpackages (verified: extensions/micrometer/runtime/.../runtime/{binder,config,export,registry}). The new 'config' package aligns, but 'tracing.intrumentation' has no Micrometer counterpart — Micrometer's equivalent is 'binder'. Either use 'binder' or justify the divergence.",
+      "severity": "medium"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/deployment/src/test/java/io/quarkus/opentelemetry/deployment/instrumentation/GrpcOpenTelemetryTest.java",
+      "line": 32,
+      "issue": "GrpcOpenTelemetryTest moved to deployment.instrumentation but the proto-generated gRPC classes stay in io.quarkus.opentelemetry.deployment (hello.proto/streaming.proto: option java_package = \"io.quarkus.opentelemetry.deployment\"), forcing a wall of 18 new imports of generated classes (Greeter, GreeterBean, HelloProto, ...). The proto java_package options should be aligned with the new test package (the human reviewer's point).",
+      "severity": "medium"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/config/TracerRuntimeConfig.java",
+      "line": 20,
+      "issue": "resourceAttributes widened from package-private to public — required because consumers TracerRecorder/TracerUtil now live in 'tracing' while the config moved to 'config'. Correct and necessary, but it is a visibility change inside a PR billed as a pure refactor; worth an explicit note.",
+      "severity": "low"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/vertx/InstrumenterVertxTracer.java",
+      "line": 108,
+      "issue": "Stale comment still references the old package path io.quarkus.opentelemetry.runtime.tracing.vertx.OpenTelemetryVertxTracer.sendRequest after the rename.",
+      "severity": "trivial"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/deployment/src/main/java/io/quarkus/opentelemetry/deployment/OpenTelemetryProcessor.java",
+      "line": 176,
+      "issue": "isClassPresent helper removal is SAFE: verified at base that the only callers are the two BooleanSuppliers in TracerProcessor, which the PR switches to a direct static import of QuarkusClassLoader.isClassPresentAtRuntime. Identical behavior; any claim that this breaks TracerProcessor is fabricated.",
+      "severity": "info"
+    },
+    {
+      "file": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/cdi/WithSpanInterceptor.java",
+      "line": 1,
+      "issue": "Trap check: WithSpanInterceptor was ALREADY in tracing.cdi at the base commit (verified via git show HEAD); the PR only updates its static import of INSTRUMENTATION_NAME. Claims that it 'remains in the base tracing package' or was moved by this PR are false. Also verified: no references to any renamed class outside the extension at base, so the rename is compile-safe repo-wide.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "BLOCKER: 'intrumentation' typo across all new instrumentation subpackages, 25+ locations, must be fixed before merge", "verdict": "critical", "score": 2, "note": "Verified: 17 renamed files, 75 diff occurrences. Says \"missing 'e'\" (actually missing 's') — wrong letter detail but the finding is exactly right and correctly scoped as blocker."},
+        {"point": "TracerRuntimeConfig.resourceAttributes made public, unnoted visibility change", "verdict": "good", "score": 1, "note": "Verified real (line 20). Attributed rationale (SmallRye reflection) is slightly off — real reason is cross-package access from TracerRecorder/TracerUtil — but flagging an unnoted visibility change in a 'pure refactor' is legitimate."},
+        {"point": "Package naming diverges from claimed Micrometer alignment; Micrometer uses 'binder'", "verdict": "good", "score": 1, "note": "Verified: Micrometer runtime has binder/config/export/registry; matches the human's 'binder vs intrumenter' general comment."},
+        {"point": "isClassPresent helper removed; TracerProcessor uses isClassPresentAtRuntime directly — clean simplification", "verdict": "good", "score": 1, "note": "Verified safe; correctly avoids the fabrication trap."},
+        {"point": "WithSpanInterceptor 'remains in the base tracing package' while TracerProducer is in tracing/cdi — inconsistency", "verdict": "wrong", "score": -1, "note": "Fabricated: WithSpanInterceptor was already in tracing.cdi at base and stays there; the claimed inconsistency does not exist. This is the known trap."}
+      ],
+      "missed": [
+        "Proto-generated gRPC class package alignment (the human's point): java_package in hello.proto/streaming.proto left at io.quarkus.opentelemetry.deployment, causing the 18-import wall in the relocated GrpcOpenTelemetryTest"
+      ],
+      "exceeds": [
+        "intrumentation typo flagged as explicit blocker (human reference text never spells out the typo)",
+        "resourceAttributes visibility change",
+        "isClassPresent removal verified safe"
+      ],
+      "net": 3
+    },
+    "v7": {
+      "points": [
+        {"point": "'intrumentation' typo in all four new instrumentation subpackages; Micrometer confirmed to have no 'instrumentation' package; typo confirmed newly introduced, absent from base", "verdict": "critical", "score": 2, "note": "Verified on all counts: 17 files, typo new in this PR, Micrometer has binder/config/export/registry (no instrumentation package). Both absence claims check out. Same \"missing 'e'\" letter slip as v5 — immaterial. Folds the Micrometer-alignment doubt into this point rather than proposing 'binder' explicitly."},
+        {"point": "resourceAttributes visibility changed package-private to public, unnoted; confirm intent and consistency", "verdict": "good", "score": 1, "note": "Verified real; same caveat as v5 on the attributed rationale."},
+        {"point": "isClassPresent removed (thin wrapper); TracerProcessor updated to call isClassPresentAtRuntime directly; no other callers exist in the codebase", "verdict": "good", "score": 1, "note": "Verified: the no-other-callers absence claim is true at base. Avoids the trap."}
+      ],
+      "missed": [
+        "Proto-generated gRPC class package alignment (the human's point): java_package in hello.proto/streaming.proto left at io.quarkus.opentelemetry.deployment, causing the 18-import wall in the relocated GrpcOpenTelemetryTest"
+      ],
+      "exceeds": [
+        "intrumentation typo with verified-against-base and verified-against-Micrometer absence claims",
+        "resourceAttributes visibility change",
+        "isClassPresent removal verified safe"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 0
+  },
+  "qualitative": "Both candidates nail the central defect — the systematic 'intrumentation' package typo across the 17 renamed runtime files — and both correctly treat the isClassPresent removal as a safe simplification rather than fabricating breakage. Both also flag the unnoted resourceAttributes visibility widening, and both miss the human's actual review point about aligning the proto java_package for the gRPC generated classes. v5 earns an extra point for explicitly proposing the Micrometer 'binder' naming but falls into the WithSpanInterceptor trap, fabricating that the class 'remains in the base tracing package' when it was already in tracing.cdi at base — its one absence-fabrication. v7 is leaner and fully accurate: its two absence claims (typo absent from base; Micrometer has no instrumentation package) both verify, giving it the same net of +3 with zero fabrications, which makes v7 the higher-trust review at equal score."
+}

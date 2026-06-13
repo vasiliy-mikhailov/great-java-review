@@ -1,0 +1,77 @@
+{
+  "pr": 801,
+  "own_review": [
+    {"file": ".github/workflows/build.yml:101 & .github/workflows/docker-publish.yml:101", "issue": "gluonhq/setup-graalvm pinned to mutable @master branch (vs @v1 tag used for graalvm/setup-graalvm) — non-reproducible builds, supply-chain risk; pin to a tag or commit SHA", "severity": "medium"},
+    {"file": ".github/workflows/build.yml:50-57 & docker-publish.yml:99-106", "issue": "GUI jobs lose Maven dependency caching: graalvm/setup-graalvm@v1 had cache: 'maven', the new gluonhq/setup-graalvm step has no cache support and no actions/cache was added — slower GUI CI on every run", "severity": "minor"},
+    {"file": ".github/workflows/docker-publish.yml:105", "issue": "arch: 'amd64' on gluonhq/setup-graalvm is unnecessary — Docker executables are only released for amd64 and that is the action default (human's point); also inconsistent naming vs build.yml which passes 'x86_64'/'aarch64'", "severity": "minor"},
+    {"file": "GUI/src/main/resources/META-INF/native-image/", "issue": "New reachability-metadata.json added but legacy reflect-config.json (521 lines) and jni-config.json (123 lines) are not removed — GraalVM auto-discovers and merges both, so reflection/JNI metadata now exists twice and the legacy copies will go stale/drift", "severity": "medium"},
+    {"file": "GUI/src/main/resources/META-INF/native-image/resource-config.json (bundles)", "issue": "Root locale \"\" dropped from bundles for QuantumMessagesBundle, XMLEntities and controls (was [\"\", \"en-US\", \"und\"], now [\"en-US\",\"und\"]) — base resource bundle may not be embedded, risking missing-bundle fallback on non-en-US default locales", "severity": "medium"},
+    {"file": "GUI/src/main/resources/META-INF/native-image/resource-config.json (globs)", "issue": "New globs section is an incomplete mirror of resources.includes: DrawRoundRect_Color.frag, Blend_SRC_IN.frag, LinearConvolveShadow_20.frag, LinearConvolveShadow_4.frag, GUI SplashLight.png and the icudt72b entries appear in includes but not in globs. Currently harmless because the includes section retains every entry (verified by parsing the new JSON), but it is an inconsistent migration that breaks the moment includes is deleted. Note FillRoundRect_Color.frag and LinearConvolveShadow_28.frag ARE present in globs.", "severity": "minor"},
+    {"file": "GUI/src/main/resources/META-INF/native-image/resource-config.json", "issue": "File rewritten as a single minified line — future diffs of this frequently-regenerated file become unreviewable; keep it pretty-printed", "severity": "trivial"},
+    {"file": "pom.xml:30,35", "issue": "JavaFX left at 23-ea+20 (early-access) while the project moves to 'stable' Java 23; JavaFX 23 GA is available and an EA build should not back a release upgrade", "severity": "medium"},
+    {"file": "Website/app/docs/Development/Quickstart.md:22, Website/app/docs/Development/Building-Executables.md:11,13,43,45", "issue": "Docs still instruct contributors to install Java 21 / GraalVM 21 — stale after this upgrade (PR checklist even acknowledges docs not updated)", "severity": "minor"},
+    {"file": "Docker/dev/commons/base/Dockerfile + docker-compose.yaml:7", "issue": "Dev container still downloads Oracle GraalVM (download.oracle.com/graalvm/23/...) while CI GUI builds switched to Gluon's GraalVM — dev environment can no longer reproduce the CI GUI native build", "severity": "minor"},
+    {"file": ".github/workflows/codeql.yml:34-36, formatter.yml:23-25", "issue": "setup-java with distribution 'oracle' and java-version 23: Java 23 is a non-LTS feature release; Oracle stops serving it once JDK 24 GAs (weeks after this PR), so these workflows are set up to break; an LTS or a distribution with archived non-LTS builds would be safer", "severity": "medium"},
+    {"file": "GUI/pom.xml:126-131", "issue": "Windows GUI profile pins gluonfx-maven-plugin back to 1.0.23, so Windows is effectively not upgraded and (per the PR description) untested — contradicts the claim of fixing builds for all three OS", "severity": "minor"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Stale reflect-config.json/jni-config.json not removed alongside new reachability-metadata.json", "grade": "good", "note": "Verified: both files exist at base with exactly the 521/123 line counts v5 cites; duplication is real"},
+        {"point": "globs array omits DrawRoundRect_Color.frag, LinearConvolveShadow_20.frag, Blend_SRC_IN.frag", "grade": "good", "note": "Verified by parsing the new JSON: all three are in includes but absent from globs; v5's framing ('globs omits, verify or add back') is accurate and measured"},
+        {"point": "Bundles lost the empty-string default locale", "grade": "good", "note": "Verified: [\"\",\"en-US\",\"und\"] -> [\"en-US\",\"und\"] for three bundles"},
+        {"point": "Windows gluonfx override comment lacks issue-tracker link", "grade": "trivial", "note": "Pure documentation nicety"},
+        {"point": "gluonhq/setup-graalvm@master mutable pin", "grade": "good", "note": "Real reproducibility/supply-chain issue, correctly contrasted with @v1 on the CLI path"},
+        {"point": "reachability-metadata.json lacks regeneration documentation", "grade": "trivial", "note": "Soft process suggestion, no defect"},
+        {"point": "CodeQL uses Oracle JDK rather than GraalVM", "grade": "trivial", "note": "Self-admits Oracle is acceptable for analysis; no actionable issue"}
+      ],
+      "missed": [
+        "human's point: unnecessary arch param in docker-publish.yml (amd64 is the only published Docker arch / action default)",
+        "GUI CI loses Maven caching (gluon action has no cache: 'maven' equivalent)",
+        "JavaFX still at 23-ea+20 early-access build",
+        "stale Java-21/GraalVM-21 docs in Website/app/docs",
+        "dev docker base still downloads Oracle GraalVM while CI GUI moved to Gluon's GraalVM"
+      ],
+      "exceeds": [
+        "stale reflect/jni config duplication",
+        "globs shader omissions",
+        "root-locale loss in bundles",
+        "@master mutable pin"
+      ],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {"point": "4 shader files dropped during reformat, 'entirely absent from both resources.includes and globs'", "grade": "good", "note": "The globs omission of DrawRoundRect_Color/Blend_SRC_IN/LinearConvolveShadow_20/_4 is real (verified), and v7 correctly avoids the FillRoundRect trap. BUT the claim they are 'entirely absent from both' sections is false — all four remain in resources.includes (verified by parsing), so the 'runtime crashes' severity is fabricated inflation. Credit for the real core; counted as 1 absence-fabrication."},
+        {"point": "Default locale \"\" removed from bundles", "grade": "good", "note": "Verified for QuantumMessagesBundle, XMLEntities, controls"},
+        {"point": "SplashLight.png in includes but missing from globs while SplashDark.png is in both", "grade": "good", "note": "Verified by parsing: SplashLight globs=0/includes=1, SplashDark in both; correctly framed as conditional risk"},
+        {"point": "gluonhq/setup-graalvm@master unpinned in both workflows", "grade": "good", "note": "Real; cites both build.yml and docker-publish.yml"},
+        {"point": "Windows profile keeps gluonfx 1.0.23, contradicting PR claim of fixing all three OS", "grade": "good", "note": "Accurate, substantive observation about effective non-upgrade of the Windows GUI path"},
+        {"point": "Legacy reflect-config.json/jni-config.json not cleaned up", "grade": "good", "note": "Verified: files exist at base; v7 explicitly verified via repo investigation"},
+        {"point": "CodeQL/Formatter use Oracle JDK; verify OpenRewrite on Java 23", "grade": "trivial", "note": "Hedged 'not incorrect... verify' — no concrete issue"},
+        {"point": "Redundant per-module maven.compiler.source/target given parent plugin <source>/<target>", "grade": "trivial", "note": "Technically correct (parent's explicit plugin config wins; verified in pom.xml:75-83) but pre-existing style duplication with no functional impact"}
+      ],
+      "missed": [
+        "human's point: unnecessary arch param in docker-publish.yml",
+        "GUI CI loses Maven caching",
+        "JavaFX still at 23-ea+20 early-access build",
+        "stale Java-21/GraalVM-21 docs in Website/app/docs",
+        "dev docker base still downloads Oracle GraalVM while CI GUI moved to Gluon's GraalVM"
+      ],
+      "exceeds": [
+        "globs shader omissions",
+        "root-locale loss in bundles",
+        "SplashLight.png globs omission",
+        "@master mutable pin",
+        "Windows-not-actually-upgraded observation",
+        "stale reflect/jni config duplication"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 1
+  },
+  "qualitative": "Both candidates found the four genuinely substantive items (legacy config duplication, globs omissions, root-locale loss, @master pin) and both missed the same five real items including the human's sole point about the unnecessary arch param. v7 edges ahead on coverage with two extra verified findings (SplashLight globs omission, the Windows profile effectively not being upgraded) and its repo-verified phrasing on the legacy configs, plus an accurate (if trivial) compiler-property redundancy note. However, v7 commits one absence-fabrication: it claims the four dropped shaders are 'entirely absent from both resources.includes and globs' and predicts runtime crashes, when parsing the new file shows all four remain in resources.includes — the real defect is only globs/includes inconsistency, which v5 reported with correctly calibrated severity. v5 is the more precise reviewer (exact 521/123 line counts, measured hedging) but carries more filler points; v7 is broader but inflates its headline finding."
+}

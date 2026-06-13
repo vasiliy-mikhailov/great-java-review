@@ -1,0 +1,129 @@
+{
+  "pr": 645,
+  "own_review": [
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 163,
+      "issue": "Argument undercount for lambda arguments: numArgsInCode = dot.getNextSibling().getChildCount(TokenTypes.EXPR) counts only EXPR children of ELIST, but LAMBDA arguments are direct ELIST children not wrapped in EXPR (verified empirically against the checkstyle AST in prior rounds). E.g. forbid 'submit' with argumentCount '1': submit(x -> x) counts 0 args and escapes the check. Note: a naive fix of raw ELIST.getChildCount() would itself miscount because ELIST also contains COMMA tokens (cf. OverridableMethodInConstructorCheck.getMethodParamsCount which counts COMMAs+1). Correct fix: count non-COMMA children, or COMMAs+1 when non-empty.",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 165,
+      "issue": "Doc/metadata vs behavior mismatch: eclipse metadata desc says the check 'reads method & constructor names' and isForbiddenMethod javadoc says 'method/constructor call', but only TokenTypes.METHOD_CALL is registered - constructor calls (LITERAL_NEW, CTOR_CALL, SUPER_CTOR_CALL) are never checked.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 219,
+      "issue": "IntRange javadoc claims 'No lower limit when null' / 'null is equivalent to 0' but lowerLimit/upperLimit are primitive int and can never be null - stale doc.",
+      "severity": "trivial"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 278,
+      "issue": "Typo 'vaild ranges' in IntRange javadoc.",
+      "severity": "trivial"
+    },
+    {
+      "file": "eclipsecs-sevntu-plugin/src/com/github/sevntu/checkstyle/checks/coding/checkstyle-metadata.properties",
+      "line": 27,
+      "issue": "Malformed HTML in desc: <li> directly inside <dl> (should be <dt>/<dd>) and an orphaned period after </dl><br/><br/>.",
+      "severity": "trivial"
+    },
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": 105,
+      "issue": "If a later range token in setArgumentCount throws, argumentCountRanges has already been cleared and partially repopulated; harmless in practice because module initialization fails, but defensive ordering (parse all, then swap) would be cleaner.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "getNextSibling() is 'structurally fragile - other tokens could appear between them'; replace with findFirstToken(ELIST).getChildCount()",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Fabricated structural risk: for METHOD_CALL the first child's next sibling is always ELIST. Worse, the recommended plain getChildCount() would count COMMA tokens (asList(1,2) -> 3), introducing a new bug; the codebase's OverridableMethodInConstructorCheck counts COMMAs+1 precisely to avoid this."
+        },
+        {
+          "point": "getChildCount(TokenTypes.EXPR) may undercount arguments if ELIST children are not always EXPR-typed",
+          "verdict": "good",
+          "score": 1,
+          "note": "This is the one real correctness bug (LAMBDA args are direct ELIST children, not EXPR-wrapped). Hedged and without the concrete lambda case, and the proposed plain-getChildCount fix is itself broken, so +1 not +2."
+        },
+        {
+          "point": "Method name extraction for obj.method() could use a clarifying comment",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Correctly concludes the code is right; pure comment suggestion."
+        },
+        {
+          "point": "Typo 'vaild' in IntRange javadoc",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Verified real, but a javadoc typo."
+        },
+        {
+          "point": "Orphaned period after <br/><br/> in checkstyle-metadata.properties desc",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "The orphan period is real ('</dl><br/><br/>. Argument count...'), though mischaracterized as 'ends with'."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Flagged the real getChildCount(TokenTypes.EXPR) undercount that the human reviewer missed entirely",
+        "Caught the 'vaild' typo and properties orphan period"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "NPE on 0-argument method calls: dot.getNextSibling() returns null because ELIST is absent",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "Fabricated blocker. ELIST is always present under METHOD_CALL even with zero arguments; the PR's own passing tests run visitToken over 0-arg calls (ForbiddenMethod.exit2(), .count()) in InputForbidCertainMethodCheck.java. Absence-fabrication (claims ELIST absent)."
+        },
+        {
+          "point": "Missing test for 0-argument method matching (e.g. methodName=exit2, argumentCount=0)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real: no test ever flags a 0-arg call; exit2 appears only in config-failure tests. Minor path typo in the cited test file path (missing 'checkstyle' segment)."
+        },
+        {
+          "point": "Whitespace-only tokens between commas yield unclear errors; '1, , 3' fails 'wrapped as Specified range is not valid'",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Core behavior real (parseInt('') NFE for empty segment) but the stated mechanism is wrong (no '-' means the parseInt branch, not the range-pattern CheckstyleException), and the ' , 1-4 ' case is already covered by testBadRange4ForArgumentCount as intentional rejection."
+        },
+        {
+          "point": "Sonar metadata param types / argumentCount description could clarify accepted formats",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Self-described as 'this is fine'; cosmetic doc suggestion."
+        },
+        {
+          "point": "setArgumentCount rejects empty string while default is '0-' - asymmetry",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Real but intentional and explicitly tested (testWithEmptyArgumentCount); design musing labeled 'defensible' by the review itself."
+        }
+      ],
+      "missed": [
+        "The lambda/EXPR argument undercount in getChildCount(TokenTypes.EXPR) - the one real correctness bug in the PR"
+      ],
+      "exceeds": [
+        "The 0-arg matching test gap is a real coverage point beyond the human review"
+      ],
+      "net": -1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 1
+  },
+  "qualitative": "The human reviewer approved with no technical findings, so the bar is the diff itself, whose single real defect is the lambda argument undercount in getChildCount(TokenTypes.EXPR). v5 lands a hedged hit on exactly that defect but pairs it with a fabricated 'getNextSibling is fragile' claim and a recommended fix (raw ELIST.getChildCount()) that would introduce a COMMA-counting bug, netting out to 0. v7 misses the real bug entirely and instead leads with a fabricated NPE blocker premised on ELIST being absent for 0-arg calls - disproven by the AST structure and by the PR's own passing tests over 0-arg calls - an absence-fabrication that headlines its summary. v7's one genuine contribution is spotting the missing 0-argument matching test; its remaining points are cosmetic musings, one with an incorrect error-mechanism claim. Net: v5 0, v7 -1; v5 is the better review here because its core finding is the actual bug, while v7's confidence is spent on a phantom crash."
+}

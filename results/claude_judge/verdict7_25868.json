@@ -1,0 +1,74 @@
+{
+  "pr": 25868,
+  "own_review": [
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions loop (new code, next.put on the create-new branch)",
+      "issue": "Duplicate-NAR classloader leak: if two NARs in the directory declare the same function name, the first one processed is placed into `next` (possibly a reused, open previous FunctionArchive); the second does remaining.remove(name)==null, so prev==null, and next.put(name, new FunctionArchive(...)) silently displaces the first entry. The displaced instance ends up in neither `next` nor `functionsToClose`, so its NarClassLoader/extracted NAR is never closed. Fix: capture the return of next.put and add a non-null displaced value to toClose. (Same flaw exists in pre-existing ConnectorUtils.reloadConnectors, but copying it here is still a defect of this PR.)",
+      "severity": "major"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "49-60 (computeArchiveMd5Hex/calculateMd5Hex)",
+      "issue": "MD5 helper duplicated verbatim from ConnectorUtils.computeArchiveMd5Hex/calculateMd5Hex (ConnectorUtils.java:61-66); the whole reloadFunctions body is also a near-verbatim copy of reloadConnectors. Common methods should be extracted to a shared utility in pulsar-functions-utils instead of duplicating. This is the human reviewer's point.",
+      "severity": "minor"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionArchive.java",
+      "line": "new 5-arg constructor (MD5 computation block)",
+      "issue": "Behavioral change to the existing 4-arg constructor: it now eagerly reads the whole archive to compute MD5 and wraps IOException in UncheckedIOException. In searchForFunctions this unchecked exception is swallowed by the pre-existing catch(Throwable), so an IO error during hashing now silently drops a function that previously (no IO in constructor) would have been registered - fail-open behavior with only a warn log. Throwing UncheckedIOException from a constructor is also a questionable API.",
+      "severity": "medium"
+    },
+    {
+      "file": "pulsar-functions/runtime/src/main/java/org/apache/pulsar/functions/worker/FunctionsManager.java",
+      "line": "reloadFunctions (volatile field + read-modify-write)",
+      "issue": "Unsynchronized read-modify-write race: volatile only gives visibility. reloadBuiltinFunctions (FunctionsImpl.java:764) can be invoked concurrently by admins; two concurrent reloads snapshot the same this.functions, both may reuse the same prev instances, and one's functionsToClose can contain archives the other kept in its winning map - leaving closed archives in the active map (IllegalStateException on getFunctionPackage) or leaking the loser's new archives. The old full-replace code never put old instances into the new map, so this race is newly harmful; reloadFunctions should be synchronized.",
+      "severity": "medium"
+    },
+    {
+      "file": "pulsar-functions/utils/src/main/java/org/apache/pulsar/functions/utils/functions/FunctionUtils.java",
+      "line": "reloadFunctions catch(Throwable) inside loop",
+      "issue": "A transient IO error reading an unchanged NAR (getFunctionDefinition or computeArchiveMd5Hex throws before remaining.remove) leaves the active archive in `remaining`, so it is closed and the function vanishes from the active set until a later successful reload. Roughly parity with old full-reload behavior, but defeats the PR's reuse goal on transient errors; also drops the previous 'Found function' info log.",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Missing test case for a NAR newly added between scans (tests cover unchanged/changed/removed/missing-dir only)", "verdict": "good", "score": 1, "note": "Verified: none of the four tests covers the brand-new-function path; real, actionable coverage gap in new code."},
+        {"point": "computeArchiveMd5Hex/calculateMd5Hex indirection; same two-level indirection in ConnectorUtils (lines 63-67); cross-cutting cleanup", "verdict": "good", "score": 1, "note": "Substantially covers the human's sole point: identifies the duplicated MD5 helper region and the ConnectorUtils parallel, suggests cleanup. Line citations accurate."},
+        {"point": "Constructor wraps IOException in UncheckedIOException; searchForFunctions catches Throwable and silently skips the function; callers never see the IOException", "verdict": "good", "score": 1, "note": "Verified real fail-open behavior introduced by eager MD5 in the constructor; matches my finding."},
+        {"point": "Swap-then-close ordering means old and new archives coexist briefly; consistent with ConnectorsManager", "verdict": "trivial", "score": 0, "note": "Accurate (ConnectorsManager.java:104-105) but explicitly framed as a non-concern with no action."}
+      ],
+      "missed": [
+        "Duplicate-NAR same-name displacement leak in FunctionUtils.reloadFunctions (displaced archive neither retained nor added to functionsToClose)",
+        "Unsynchronized reload read-modify-write race (concurrent reloadBuiltinFunctions can leave closed archives in the active map or leak)"
+      ],
+      "exceeds": [
+        "UncheckedIOException fail-open in searchForFunctions",
+        "Missing added-NAR test case"
+      ],
+      "net": 1
+    },
+    "v7": {
+      "points": [
+        {"point": "Each archive's content is hashed twice per reload cycle; searchForFunctions should use the 5-arg constructor with precomputed MD5", "verdict": "wrong", "score": -1, "note": "Fabricated inefficiency: reloadFunctions computes the MD5 once and passes it to the 5-arg constructor (no recompute), and searchForFunctions is not invoked during reload - each NAR is hashed exactly once per cycle. The suggested fix would change nothing."},
+        {"point": "volatile gives visibility but reloadFunctions is not atomic; readers holding evicted archives get IllegalStateException; acceptable, same as old code", "verdict": "trivial", "score": 0, "note": "Facts verified (ThreadRuntime.java ~126 does call getFunction; readers had the same exposure before), but it explicitly dismisses concurrency concerns and never identifies the real reload-vs-reload read-modify-write race."},
+        {"point": "Identical writeMinimalNar/sampleDefinition helpers duplicated across the two new test files; extract shared test utility", "verdict": "good", "score": 1, "note": "Verified: both test files contain verbatim-identical helpers; real, actionable cleanup."},
+        {"point": "UncheckedIOException in constructor is intentional, consistent with Connector.java; searchForFunctions catches Throwable so failures are handled gracefully; no change needed", "verdict": "trivial", "score": 0, "note": "Facts accurate (Connector.java:50-62 does the same), but framed as pure reassurance with no action; misses that this is a new silent-drop failure mode for previously-registerable functions."},
+        {"point": "computeArchiveMd5Hex is public but only used in-package; visibility could be tightened in a follow-up", "verdict": "trivial", "score": 0, "note": "Accurate but a non-blocking visibility nit, self-deferred to follow-up."}
+      ],
+      "missed": [
+        "Duplicate-NAR same-name displacement leak in FunctionUtils.reloadFunctions",
+        "Production code duplication of the MD5 helper (and reload routine) verbatim from ConnectorUtils - the human's sole point (v7 only flagged test-helper duplication)",
+        "Unsynchronized reload read-modify-write race on concurrent reloadBuiltinFunctions"
+      ],
+      "exceeds": [
+        "Test helper duplication across the two new test files"
+      ],
+      "net": -3
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Both candidates missed the two substantive defects: the duplicate-NAR displaced-archive leak in FunctionUtils.reloadFunctions and the unsynchronized reload read-modify-write race that the volatile keyword only papers over. v5 is the stronger review: three verified, actionable points including the UncheckedIOException fail-open and the missing added-NAR test, and its duplication point substantially lands on the human's sole comment about extracting the shared MD5 helper. v7 reads fluently but its lead point fabricates a double-hashing inefficiency that does not exist (the MD5 is computed once and passed as precomputed), and its remaining points are mostly reassurance-framed observations ('no change needed', 'acceptable', 'follow-up') with only the test-helper duplication being a real actionable catch; it also missed the human's production-code duplication point. Neither candidate fabricated safe behavior at the leak site this round (no false 'goes into toClose' claims), so absence-fabrications are zero for both; v7's error is an invented problem rather than an invented safety guarantee."
+}

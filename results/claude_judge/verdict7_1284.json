@@ -1,0 +1,96 @@
+{
+  "pr": 1284,
+  "own_review": [
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "948-986",
+      "issue": "Ser.readResolve() switch ends at case 17, so the new FILE_CONVERTER (id 19) and URI_CONVERTER (id 20) — plus pre-existing PATH_CONVERTER (id 18) — fall through to default and throw ConfigMessages.msg.unknownConverterId on deserialization. BuiltInConverter.writeReplace serializes only the id, so any serialized File/URI/Path built-in converter is unrecoverable. Cases 18/19/20 must be added.",
+      "severity": "blocker"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "191-195",
+      "issue": "Inconsistent trimming: URI_CONVERTER wraps with newTrimmingConverter but FILE_CONVERTER does not (test even pins ' test' -> new File(' test')). PATH_CONVERTER also doesn't trim, so File matches Path, but the human reviewer's suggestion to add trimming (as PATTERN_CONVERTER at lines 184-185 does) is a legitimate consistency/usability point that deserves an explicit decision.",
+      "severity": "minor"
+    },
+    {
+      "file": "implementation/src/main/java/io/smallrye/config/Converters.java",
+      "line": "194-195",
+      "issue": "URI.create propagates a raw IllegalArgumentException; a dedicated message already exists at _private/ConfigMessages.java:122-123 (id 34, uriSyntaxInvalid(@Cause Throwable, String)). Wrapping the failure (as UUID_CONVERTER/INET_ADDRESS_CONVERTER wrap theirs) would give consistent SRCFG-coded error messages.",
+      "severity": "suggestion"
+    },
+    {
+      "file": "documentation/src/main/docs/config/getting-started.md",
+      "line": "152-164",
+      "issue": "The documented list of default converters (which includes java.nio.file.Path, Pattern, Currency, etc.) is not updated to mention java.io.File and java.net.URI.",
+      "severity": "minor"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Ser.readResolve missing cases 18/19/20 — deserialization of Path/File/URI built-in converters throws unknownConverterId",
+          "verdict": "critical",
+          "score": 2,
+          "note": "Verified: switch at Converters.java:948-986 ends at case 17. Correct fix proposed, correctly flags case 18 as pre-existing."
+        },
+        {
+          "point": "URI converter should wrap IllegalArgumentException with existing ConfigMessages.uriSyntaxInvalid (ConfigMessages.java:122-123)",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: message id 34 exists exactly where cited; UUID/InetAddress converters do wrap their exceptions, so the pattern claim is accurate."
+        },
+        {
+          "point": "FILE_CONVERTER preserves whitespace unlike URI_CONVERTER; consider newTrimmingConverter for consistency",
+          "verdict": "good",
+          "score": 1,
+          "note": "Matches the human reviewer's point; accurately notes it currently matches PATH_CONVERTER and that the test pins the behavior."
+        }
+      ],
+      "missed": [
+        "Documentation list of default converters in getting-started.md not updated with File/URI"
+      ],
+      "exceeds": [
+        "Ser.readResolve serialization blocker (incl. pre-existing case 18) — not in human review",
+        "uriSyntaxInvalid message reuse with exact file:line citation — not in human review"
+      ],
+      "net": 3
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Ser.readResolve has no case 19/20; deserializing File/URI built-in converters throws unknownConverterId",
+          "verdict": "critical",
+          "score": 2,
+          "note": "Verified blocker; accurate line references and correct fix."
+        },
+        {
+          "point": "Pre-existing gap: PATH_CONVERTER (id 18) also missing from readResolve; suggest fixing in same PR",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real and actionable; correctly labeled pre-existing."
+        },
+        {
+          "point": "Notes the trim asymmetry (File preserves, URI trims) but concludes it is intentional and consistent with conventions — recommends no action",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Factually accurate observation, but reaches the opposite conclusion of the human reviewer (who suggested adding trimming); descriptive endorsement with no actionable ask, so no credit."
+        }
+      ],
+      "missed": [
+        "uriSyntaxInvalid message reuse for URI.create failures (ConfigMessages.java:122-123)",
+        "Documentation list of default converters in getting-started.md not updated with File/URI"
+      ],
+      "exceeds": [
+        "Ser.readResolve serialization blocker for new ids plus pre-existing Path gap — not in human review"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 0
+  },
+  "qualitative": "Both candidates caught the one genuine blocker (Ser.readResolve missing cases 18/19/20), exceeding the human reference, and neither fabricated anything — every file:line and behavioral claim verified against the base repo. v5 is the stronger review: it additionally surfaced the uriSyntaxInvalid message-reuse improvement with an exact citation and aligned with the human's trimming suggestion by recommending newTrimmingConverter be considered for File. v7 split the serialization issue into two solid points but spent its third point endorsing the File/URI trim asymmetry as intentional — the opposite of the human's recommendation — and missed the existing uriSyntaxInvalid message entirely. Both missed the stale built-in-converter list in getting-started.md, a minor doc omission. Net: v5 clearly ahead on coverage at equal precision."
+}

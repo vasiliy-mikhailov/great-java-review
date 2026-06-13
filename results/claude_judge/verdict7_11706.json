@@ -1,0 +1,73 @@
+{
+  "pr": 11706,
+  "own_review": [
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 49,
+      "issue": "Dead import: `java.util.Optional` is added by the diff but never referenced anywhere in the file (the fix uses plain null guards and for-loops). Should be removed.",
+      "severity": "minor"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 478,
+      "issue": "Fix itself is correct: both LoadedValuesCollectorImpl implementations (FollowOnLockingAction.java:293-294/333-340 and CollectionLockingAction.java:161-162/197-204) lazily initialize entitiesToLock/collectionsToLock and return null from getCollectedEntities()/getCollectedCollections() when nothing was registered, so the old unguarded forEach NPEs. Verified at base commit.",
+      "severity": "info"
+    },
+    {
+      "file": "hibernate-core/src/main/java/org/hibernate/sql/exec/internal/lock/LockingHelper.java",
+      "line": 480,
+      "issue": "Cosmetic inconsistency: '-> empty' is printed only when the list is null; a non-null empty list prints nothing. Debug-log-only, negligible.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Unused import java.util.Optional at line 49, should be removed",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real: grep at base+diff shows Optional appears only in the import. The single residual defect of this PR. Not a blocker (warning only), so +1 not +2."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Unused Optional import — not flagged in the human reference (human comments only addressed the lambda-to-loop refactor already incorporated in the diff)."
+      ],
+      "net": 1
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Remove unused import java.util.Optional at line 49",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real; same single residual defect."
+        },
+        {
+          "point": "Null checks are correct and necessary; root cause traced to lazy-initialized fields in both LoadedValuesCollectorImpl classes (FollowOnLockingAction 293-294, CollectionLockingAction 161-162)",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate and well-verified (cited line numbers check out against the base commit), but it is confirmation/analysis of the fix, not an actionable defect. No points, no penalty."
+        },
+        {
+          "point": "Bug checklist 'Add test reproducing the bug' unchecked; suggests a regression test exercising the null branch",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "True (single-file diff, no test; author explicitly asks whether a test is needed), but it restates the PR's own open checklist item — conventional process nudge, not a code defect."
+        }
+      ],
+      "missed": [],
+      "exceeds": [
+        "Unused Optional import — beyond the human reference.",
+        "Root-cause analysis of why the getters return null, with correct file/line citations in both collector implementations — deeper than both the human reference and v5."
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 0
+  },
+  "qualitative": "This is a one-defect PR: the null-guard fix is correct (both LoadedValuesCollectorImpl classes really do return null from their getters when nothing is registered), and the only residual issue is the dead java.util.Optional import. Both v5 and v7 caught exactly that defect and fabricated nothing, so they tie at net +1 with zero misses. v7 is the qualitatively stronger review: it independently verified the NPE root cause through both collector implementations with accurate line citations, and added a reasonable (if conventional) note about the unchecked regression-test task, while v5 delivered the same essential finding more tersely. Neither candidate made absence claims that were false; both correctly stated Optional is unused and that no test accompanies the fix."
+}

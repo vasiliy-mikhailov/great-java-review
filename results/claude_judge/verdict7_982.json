@@ -1,0 +1,87 @@
+{
+  "pr": 982,
+  "own_review": [
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "131-133 (new)",
+      "issue": "System.exit(-1) inside the catch(FluoException) of scanFluo sits inside the outer try-with-resources for FluoClient; exit() does not unwind the stack, so FluoClient.close() (zookeeper/connection cleanup) is skipped. The inner Snapshot is closed before the catch runs, but the client is not. A cleaner pattern is to set an exit flag / rethrow and exit in the CLI caller after resources close.",
+      "severity": "minor-medium"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "92, 140",
+      "issue": "System.exit(-1) added to a shared core-module utility used by both FluoScan.main() and the deprecated AppRunner.scan(); both current callers are CLI-terminal so it is safe today and consistent with the existing exit(-1) at lines 106-107/158-159, but it makes the methods hostile to embedding/testing.",
+      "severity": "minor"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "92-93, 128, 140-141",
+      "issue": "Leftover stray blank lines where the println/entriesFound statements were removed (empty first line of both methods, blank line replacing entriesFound++).",
+      "severity": "trivial"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "131, 169",
+      "issue": "Moving 'Scan failed' to stderr and adding a non-zero exit code is the real bug fix here: previously a failed scan printed to stdout and the process exited 0, so scripts could not detect failure. Matches conventions in FluoWorkerImpl/FluoOracleImpl/BaseOpts.",
+      "severity": "positive"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "90-95, 138-140",
+      "issue": "Removal of 'Scanning snapshot...', 'No data found', and the entriesFound counter is the intended behavior of issue #981 (stop polluting stdout so scan output is pipeable/parseable) - not a defect. Claims that this contradicts the PR title misread the title.",
+      "severity": "note"
+    },
+    {
+      "file": "modules/core/src/main/java/org/apache/fluo/core/util/ScanUtil.java",
+      "line": "7, 10",
+      "issue": "License-header trailing-whitespace churn unrelated to the change; harmless.",
+      "severity": "trivial"
+    },
+    {
+      "file": "modules/command/src/test/java/org/apache/fluo/command/ScanTest.java",
+      "line": "-",
+      "issue": "Existing ScanTest only covers option parsing; no test asserts the new exit/stderr behavior or the cleaned-up output. Hard to test due to System.exit, which reinforces the design concern.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "PR title 'contradicts the natural reading' / ambiguous intent (ScanUtil.java:90-93)", "grade": "wrong", "value": -1, "why": "Issue #981 asked exactly for stopping the meta-info printing; the title 'stopped printing meta info in scan' matches the diff. The contradiction claim is false and the requested clarification is noise."},
+        {"point": "stderr switch is correct, consistent with FluoWorkerImpl 87/94, FluoOracleImpl 90/97, ScanUtil 106/158", "grade": "good", "value": 1, "why": "All line citations verified in repo; matches the human point's underlying bug (errors invisible to scripts)."},
+        {"point": "System.exit(-1) consistent with existing pattern; both callers verified to have no code after scan; no library consumers", "grade": "good", "value": 1, "why": "Verified: FluoScan.main and AppRunner.scan end after the call; only those two callers exist. Covers the human point. However 'the exit is safe' overlooks skipped FluoClient.close() (counted under missed)."},
+        {"point": "Same err/exit change in scanAccumulo is good", "grade": "trivial", "value": 0, "why": "Redundant restatement of the previous point for the second method."},
+        {"point": "Removing entriesFound/'No data found' leaves no way to distinguish empty result from silent failure", "grade": "trivial", "value": 0, "why": "Hedged UX opinion that runs against the stated goal of #981; also overstated - after this PR failure exits 255 with stderr output, so the cases are distinguishable (only the checkError break path is silent)."},
+        {"point": "Removing 'Scanning snapshot...' startup feedback is questionable", "grade": "trivial", "value": 0, "why": "That removal is the core purpose of #981; hedged suggestion, no defect."}
+      ],
+      "missed": [
+        "System.exit(-1) inside the nested try-with-resources skips FluoClient.close() in scanFluo - v5 even asserted 'the exit is safe' (judge + prior-round nuance)"
+      ],
+      "exceeds": [
+        "Cross-file convention verification (FluoWorkerImpl/FluoOracleImpl line-accurate citations) and caller-safety analysis beyond the human reference"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "'No data found' removal degrades UX; checkError break makes empty vs silently-broken output indistinguishable", "grade": "trivial", "value": 0, "why": "Hedged UX concern against the stated goal of #981; the checkError silent-break observation is accurate but pre-existing behavior, and failure now carries exit 255."},
+        {"point": "Informational startup messages removal may be intentional; document rationale", "grade": "trivial", "value": 0, "why": "This is the purpose of #981; hedged, no defect."},
+        {"point": "stderr + exit(-1) is a positive change matching ScanUtil 105-107/158-160 and FluoExec/FluoInit/BaseOpts; both callers verified, AppRunner noted as deprecated", "grade": "good", "value": 1, "why": "All citations verified (FluoExec:49-50, FluoInit:125-126, BaseOpts:33-35); AppRunner @Deprecated at line 45 confirmed. Covers the human point's bug rationale."},
+        {"point": "exit(-1) becomes 255 on Unix; minor inconsistency notes vs FluoWait", "grade": "trivial", "value": 0, "why": "Factually accurate (FluoWait uses exit(-1)) but low-actionability style note; consistent with the file's existing convention."},
+        {"point": "License-header whitespace churn could be a separate commit", "grade": "trivial", "value": 0, "why": "Accurate but cosmetic."}
+      ],
+      "missed": [
+        "System.exit(-1) inside the nested try-with-resources skips FluoClient.close() in scanFluo (judge + prior-round nuance)"
+      ],
+      "exceeds": [
+        "Noted AppRunner is @Deprecated (verified) and the -1 -> 255 exit-code detail; cross-command convention check (FluoExec/FluoInit/BaseOpts)"
+      ],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 0
+  },
+  "qualitative": "Both candidates correctly identified and verified the one substantive fix the human highlighted - moving scan failures to stderr with a non-zero exit code - with accurate cross-file citations. v5 undermines itself with a fabricated 'title contradicts the diff' claim (issue #981 asked for exactly this removal) and pads with redundant and intent-questioning points; v7 avoids any false claims and adds genuinely verified context (AppRunner deprecation, exit-code 255 semantics) but its top two points still second-guess the PR's stated purpose. Neither caught the real nuance that System.exit(-1) inside the nested try-with-resources skips FluoClient.close(); v5 explicitly (and wrongly in spirit) declared the exit 'safe'. Net scores tie at 0, but v7's review is cleaner: zero wrong points versus v5's one fabrication."
+}

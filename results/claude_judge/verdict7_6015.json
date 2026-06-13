@@ -1,0 +1,79 @@
+{
+  "pr": 6015,
+  "own_review": [
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": "ReloadParameters.setTimeout javadoc (new code, ~L519)",
+      "issue": "Javadoc says timeout is 'in milliseconds' but the value is actually interpreted as SECONDS: it flows into awaitServers/awaitHostController where deadline = start + timeout * 1000 and the TimeoutException message reports seconds; the null-fallback is configuration.getStartupTimeoutInSeconds(). Pre-existing error in the removed overload's doc, now perpetuated in the new public builder API. A caller passing milliseconds would wait 1000x too long.",
+      "severity": "medium"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": "ReloadParameters.setTimeout javadoc",
+      "issue": "Invalid javadoc reference {@link WildFlyManagedConfiguration.startupTimeoutInSeconds} — uses dot instead of '#' and names a private field; should be {@link WildFlyManagedConfiguration#getStartupTimeoutInSeconds()}. Will produce a doclint warning / broken link.",
+      "severity": "minor"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": "ReloadParameters class + kept reload(String) javadoc",
+      "issue": "Defaults are not documented: ReloadParameters' class javadoc does not state adminOnly=false, restartServers=true, waitForServers=true, timeout=configured startup timeout, and the retained reload(String) javadoc does not say it now blocks waiting for servers and restarts them. This is the human reviewer's ambiguity point (the PR moved to primitives, so the doc must spell out the defaults to keep call-site semantics clear).",
+      "severity": "minor"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": "reload(String, ReloadParameters) (~L438-446)",
+      "issue": "VERIFIED NON-ISSUE: the new code always sets admin-only and restart-servers on the op, whereas the old private method omitted them when null. This is semantically equivalent: HostProcessReloadHandler defines restart-servers with default TRUE (lines 41-42, resolveModelAttribute(...).asBoolean(true)) and admin-only resolves to false by default. Every migrated call site (null->builder-default-true for restartServers; null->true for waitForServers, matching the old 'waitForServers == null || waitForServers' logic) preserves behavior, including the untouched external callers of the kept reload(String) (ReadOnlyModeTestCase, HostReloadProxyTestCase) and reloadAdminOnly.",
+      "severity": "none (verification)"
+    },
+    {
+      "file": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java",
+      "line": "removed reload(String,Boolean[,Boolean[,Long]]) overloads",
+      "issue": "VERIFIED: grep over the base repo shows all callers of the removed Boolean-arg overloads are exactly the 10 test files updated in this PR; reload(String host) is KEPT and delegates to reload(host, new ReloadParameters()). Only residual risk is downstream consumers of the published testsuite-shared artifact (e.g. wildfly/wildfly full testsuite) compiled against the removed overloads — acceptable for a test utility but worth a release note.",
+      "severity": "low"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "L438 always-sets admin-only/restartServers, functionally equivalent to old null-omission, 'no issue here'", "grade": "good", "score": 1, "note": "Correct and the key question of this PR; verified — server default for restart-servers is TRUE (HostProcessReloadHandler:41-42)."},
+        {"point": "L503 restartServers default true matches prior effective behavior of callers", "grade": "good", "score": 1, "note": "Verified: null previously meant server-side default true, so default true is semantically correct."},
+        {"point": "L516 waitForServers default true aligns with old 'waitForServers == null || waitForServers'", "grade": "good", "score": 1, "note": "Verified against base code at old line ~500."},
+        {"point": "L460-474 removed overloads have no callers outside the 10 updated files; reload(String)/reloadAdminOnly preserved", "grade": "good", "score": 1, "note": "Verified by repo-wide grep; accurate absence claim, correctly states reload(String) is preserved."},
+        {"point": "AdminOnlyModeTestCase migrations correct", "grade": "trivial", "score": 0, "note": "Accurate but redundant migration-fidelity praise."},
+        {"point": "SimpleDomainControllerMigrationTestCase mapping preserved", "grade": "trivial", "score": 0, "note": "Accurate, redundant."},
+        {"point": "IgnoredResourcesTestCase duplicate parameter construction could be extracted", "grade": "trivial", "score": 0, "note": "Self-described minor style feedback."},
+        {"point": "OutboundLdapConnectionTestCase setWaitForServers(false) functionally identical", "grade": "trivial", "score": 0, "note": "Accurate, redundant."}
+      ],
+      "missed": [
+        "Javadoc ambiguity / undocumented defaults on ReloadParameters and kept reload(String) (human's point)",
+        "setTimeout javadoc says milliseconds but value is used as seconds (incl. broken {@link WildFlyManagedConfiguration.startupTimeoutInSeconds} reference)"
+      ],
+      "exceeds": [
+        "Explicit verification that null->explicit-default migration is semantically equivalent, grounded in server-side defaults",
+        "Repo-wide caller-completeness verification of the removed overloads"
+      ],
+      "net": 2
+    },
+    "v7": {
+      "points": [
+        {"point": "L458-463 'Behavioral change: restartServers defaults to true instead of null... semantic shift... could affect tests'", "grade": "wrong", "score": -1, "note": "False. Server-side default for restart-servers IS true (HostProcessReloadHandler:41-42), so omitting (null) and explicitly sending true are identical. No behavioral shift exists; v7 never checked the handler."},
+        {"point": "L415 'Two external callers of reload(String) not updated... these tests' semantics are affected'", "grade": "wrong", "score": -1, "note": "False impact claim. reload(String) is kept and old null restartServers == server default true == new explicit true; ReadOnlyModeTestCase and HostReloadProxyTestCase behavior is unchanged."},
+        {"point": "AdminOnlyModeTestCase:104-108 'Silent restartServers=true... if intent was don't restart, this is now incorrect'", "grade": "wrong", "score": -1, "note": "Old null also meant restart=true (server default); behavior identical regardless of intent. Same false premise as point 1."},
+        {"point": "AdminOnlyModeTestCase:174-178 'Same implicit default... make the choice explicit'", "grade": "wrong", "score": -1, "note": "Repeat of the same false semantic-change premise; no behavior difference exists."},
+        {"point": "HostLifecycleWithRolloutPlanTestCase:218-224 'Consider explicit .setRestartServers(false) if servers should not restart'", "grade": "wrong", "score": -1, "note": "Repeat of false premise; following the suggestion with false would actually CHANGE long-standing behavior (old null restarted servers)."},
+        {"point": "SecondaryReconnectTestCase:139 reloadAdminOnly not migrated, functionally acceptable", "grade": "trivial", "score": 0, "note": "Accurate (verified line 139) but pure consistency nit; the wrapper now uses the builder internally."},
+        {"point": "L517-521 inconsistent nullability; 'consider adding a Javadoc note to setTimeout() explaining the null semantics'", "grade": "wrong", "score": -1, "note": "The setTimeout javadoc in this very diff already documents the null semantics ('if null ... startupTimeoutInSeconds will be used'). Asks for documentation that is present — absence fabrication."}
+      ],
+      "missed": [
+        "setTimeout javadoc says milliseconds but value is used as seconds (the one real doc bug at the line it stared at)"
+      ],
+      "exceeds": [],
+      "net": -7
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 1
+  },
+  "qualitative": "v5 delivers an accurate review: it correctly resolves the central question of this refactor — that replacing nullable Booleans with explicit primitive defaults is semantically equivalent because the management operation's server-side default for restart-servers is true — and verifies caller completeness, though it pads with redundant per-file migration praise and misses the two genuine doc bugs (ms-vs-seconds timeout unit, undocumented defaults/broken @link). v7 builds five of its seven points on a single unverified false premise, escalating 'null omitted vs explicit true' into a 'behavioral shift' that 'affects' external tests, when one look at HostProcessReloadHandler shows the defaults are identical; its only remaining substantive point asks for null-semantics javadoc that the diff already contains (an absence fabrication). v7's leaner-context/tool setup produced confident cross-file impact claims without verification, which is exactly the failure mode the rubric penalizes. v5 clearly wins this PR."
+}

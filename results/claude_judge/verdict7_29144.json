@@ -1,0 +1,120 @@
+{
+  "pr": 29144,
+  "own_review": [
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1338,
+      "issue": "getFileScanPartitionSpec uses requireNonNull(spec, \"Table specs doesn't contain specId: \" + specId): (a) the message string is concatenated eagerly on every call, on the per-file hot path this perf PR is optimizing; (b) NPE is the wrong exception type for a guaranteed-invariant condition -- checkState/verifyNotNull is more idiomatic (matches the human reviewer's checkState ask); (c) grammar: 'specs doesn't' should be 'specs don't'.",
+      "severity": "minor"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java",
+      "line": 447,
+      "issue": "In pruneFileScanTask the spec lookup is hoisted above the pathDomain and fileModifiedTimeDomain early-return branches, so the lookup is wasted when those branches prune the task; note the spec IS still needed later at line 464 for getPartitionKeys, so it cannot simply be moved inside the partitionDomain block. Only a HashMap.get, negligible.",
+      "severity": "trivial"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergSplitSource.java",
+      "line": 430,
+      "issue": "getFileScanPartitionSpec is looked up independently up to 3x per task (pruneFileScanTask, noDataColumnsProjected, toIcebergSplit) instead of being computed once per task; each is a cheap map get, so negligible.",
+      "severity": "trivial"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java",
+      "line": 1335,
+      "issue": "Behavior change: task.spec() always succeeded (spec JSON is carried with the task), whereas the map lookup throws if the file's specId is absent from table.specs(). Safe in practice -- Iceberg table metadata retains all historical specs (so even the time-travel useSnapshot scan in IcebergMetadata:934 is covered), and IcebergSplitSource:361 already does specsById.get(deleteFile.specId()) on the same assumption.",
+      "severity": "info"
+    },
+    {
+      "file": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/StructLikeWrapperWithFieldIdToIndex.java",
+      "line": 33,
+      "issue": "Verified at base commit: the removed createStructLikeWrapper(FileScanTask) overload had exactly 3 callers (IcebergMetadata:942, IcebergSplitSource:416, PartitionsTable:181) and the re-signatured (StructType->PartitionSpec) overload had 1 caller (FilesTablePageSource:324); all 4 updated in the PR, no test usages (TestStructLikeWrapperWithFieldIdToIndex uses the constructor directly). Removed getPartitionKeys(FileScanTask) overload's only caller (IcebergSplitSource:464) is updated; IcebergStatistics:95, IcebergPageSourceProvider:325, IcebergMetadata:956/3415 already use the 2-arg form. specsById is an existing final field (IcebergSplitSource:178, init at 221). No compile breaks, refactor is sound.",
+      "severity": "positive"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Grammar in error message: 'Table specs doesn't contain' should be plural 'don't'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Real but cosmetic."
+        },
+        {
+          "point": "Confirmed all 4 callers of the removed/re-signatured createStructLikeWrapper overloads are updated within the PR; no external breakage",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true against base commit (3 callers of the FileScanTask overload + FilesTablePageSource for the re-signatured one)."
+        },
+        {
+          "point": "Confirmed removed getPartitionKeys(FileScanTask) overload had a single caller (IcebergSplitSource:464), updated in the PR; other callers already used the 2-arg form",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true (IcebergStatistics:95, IcebergPageSourceProvider:325, IcebergMetadata:956/3415 use the 2-arg form)."
+        },
+        {
+          "point": "Verified specsById is a final instance field initialized in the constructor from icebergTable.specs(); all new usages in instance methods, no threading/availability concerns",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true (field at line 178, init at 221)."
+        },
+        {
+          "point": "requireNonNull guard is a good fail-fast defensive check",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate praise, but endorses the construct the human reviewer asked to change to checkState."
+        }
+      ],
+      "missed": [
+        "Human: use checkState instead of requireNonNull for the guaranteed-present spec (IcebergUtil.java:1338); also the eagerly-concatenated error message on the hot path -- v5 discussed the guard but endorsed it rather than flagging it"
+      ],
+      "exceeds": [],
+      "net": 2
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Grammar in error message: 'doesn't' should be 'don't'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Real but cosmetic; identical to v5's nit."
+        },
+        {
+          "point": "partitionSpec computed unconditionally before if (!partitionDomain.isAll()) 'even though partitionSpec is only used inside that block'; suggests moving the lookup inside the conditional",
+          "grade": "wrong",
+          "score": -1,
+          "note": "False premise: partitionSpec is used AGAIN at line 464 (getPartitionKeys(fileScanTask.partition(), partitionSpec)) in the same method, visible in the same diff. Moving the lookup inside the conditional as suggested would break (or duplicate) that later use. The hoisting-above-early-returns kernel is real but trivial; the stated factual claim is fabricated."
+        },
+        {
+          "point": "requireNonNull in getFileScanPartitionSpec is appropriate; failing fast is right; 'No change needed'",
+          "grade": "trivial",
+          "score": 0,
+          "note": "Accurate description, but explicitly endorses the construct the human asked to change to checkState -- an active anti-recommendation against the reference fix."
+        },
+        {
+          "point": "createStructLikeWrapper signature change clean; all 4 callers within the PR updated; no external callers",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true against base commit."
+        },
+        {
+          "point": "Removing 1-arg getPartitionKeys(FileScanTask) is safe; sole caller (IcebergSplitSource:464) updated; no callers outside the PR",
+          "grade": "good",
+          "score": 1,
+          "note": "Verified true."
+        }
+      ],
+      "missed": [
+        "Human: use checkState instead of requireNonNull for the guaranteed-present spec (IcebergUtil.java:1338); v7 affirmatively said 'No change needed', also missing the eager message concatenation on the hot path"
+      ],
+      "exceeds": [],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v5": 0,
+    "v7": 1
+  },
+  "qualitative": "v5 (identical text to the prior round) stays fully grounded: its three caller-migration/field-initialization verification points all check out against the base commit, its only nits are a real grammar issue and mild praise, and it fabricates nothing -- its sole miss is the human's checkState ask, which it brushes past by endorsing requireNonNull. v7 matches v5's grounded verification points but spends one of its two 'findings' on a false claim: it asserts partitionSpec is 'only used inside' the partitionDomain block when the very same diff uses it again at line 464 for getPartitionKeys, so its suggested refactor would not work -- an absence-fabrication about a usage that exists. v7 also goes a step beyond v5 on the human's point, actively declaring 'No change needed' on the requireNonNull the human wanted converted to checkState. Net: the leaner-context v7 is slightly less reliable here than v5 -- equal grounding on the verification work, but one fabricated point and a firmer anti-recommendation against the reference fix."
+}

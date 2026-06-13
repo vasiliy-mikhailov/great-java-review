@@ -1,0 +1,60 @@
+{
+  "pr": 13489,
+  "own_review": [
+    {"loc": ".github/workflows/build-and-test-pr.yml:345,449 (samples-test-result, integration-test-result)", "issue": "Both result-merge jobs keep `if: always()` while gaining `needs: check-format`, so they still run even when check-format fails — the new format gate is silently bypassed for these jobs and the added needs entry is effectively a no-op there.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:33 (check-format run step)", "issue": "Uses bare `mvn` while every other job in all 5 workflow files uses `./mvnw` (wrapper exists at repo root); runner's preinstalled Maven version may drift from the pinned wrapper version.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:46-50 (failed-run summary)", "issue": "Log parsing is brittle: grep ERROR | sed with a hardcoded fixed string containing the job/step display names (which do not appear in a --log-file maven log, so the sed is dead weight) and `head -n -11` magic footer count that breaks if Maven output format changes.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:35,51-57 (continue-on-error + github-script)", "issue": "Convoluted failure pattern: `continue-on-error: true` then a separate actions/github-script@v7.0.1 step calling core.setFailed. A plain `exit 1` (or letting the step fail and using `if: failure()`/`always()` for the summary/upload steps) is simpler; github-token is passed but no API call is made.", "severity": "low"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:37-41 (upload step)", "issue": "Artifact and step are named 'checkstyle-result'/'Upload checkstyle result' but the check is Spotless, not Checkstyle; also uploaded unconditionally even on success.", "severity": "low"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:27-31", "issue": "Step named 'Setup Maven' actually runs actions/setup-java (sets up a JDK); misleading name.", "severity": "trivial"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:23-57 (check-format job)", "issue": "No Maven repository cache (other jobs use actions/cache), so plugin downloads repeat every run; combined with making every job `needs: check-format` (including license, error-code-inspecting, native-image-inspecting that don't need formatting), the whole previously-parallel pipeline is serialized behind this job, adding wall-clock time to every PR.", "severity": "medium"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:24-26", "issue": "New job uses checkout@v4/setup-java@v4/upload-artifact@v4 while the rest of the repo uses @v3 (and @v1) — version inconsistency within one workflow.", "severity": "trivial"},
+    {"loc": ".github/workflows/build-and-test-pr.yml:191,275,342,446,466", "issue": "Explicit check-format entries in needs arrays of unit-test/samples-test-job/integration-test-job/jacoco-result-merge are redundant — already transitively required via build-source/prepare jobs.", "severity": "trivial"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "Action version inconsistency @v4 vs repo-wide @v3", "grade": "good", "score": 1, "note": "Verified: 67x checkout@v3, 34x upload-artifact@v3, no v4 anywhere else."},
+        {"point": "Missing name: field on check-format job", "grade": "wrong", "score": -1, "note": "Fabrication: the diff explicitly contains `name: Check if code needs formatting`. Absence-fabrication."},
+        {"point": "Fragile sed-based error parsing / head -n -11 magic number", "grade": "good", "score": 1, "note": "Verified real and well-explained."},
+        {"point": "Redundant needs: check-format on transitively-dependent jobs", "grade": "good", "score": 1, "note": "Verified true (build-source/prepare jobs already need check-format), though it stops short of the if: always() bypass insight."},
+        {"point": "check-format gates ALL jobs, serializing independent checks", "grade": "good", "score": 1, "note": "Real design issue; license/error-code-inspecting need not wait on formatting."}
+      ],
+      "missed": [
+        "if: always() on samples-test-result/integration-test-result silently bypasses the new check-format gate",
+        "bare mvn instead of ./mvnw used everywhere else in the repo",
+        "convoluted continue-on-error + github-script core.setFailed pattern instead of letting the step fail"
+      ],
+      "exceeds": [
+        "Action version inconsistency",
+        "Fragile sed parsing",
+        "Redundant transitive needs",
+        "Pipeline serialization"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "mvn vs ./mvnw wrapper inconsistency", "grade": "good", "score": 1, "note": "Verified: mvnw exists at root and all 5 workflow files use ./mvnw."},
+        {"point": "Action version inconsistency @v4 vs @v3", "grade": "good", "score": 1, "note": "Verified real."},
+        {"point": "Dependency cascade serializes previously parallel jobs", "grade": "good", "score": 1, "note": "Verified real with accurate job list and actionable fix."},
+        {"point": "Fragile log parsing (hardcoded step names, head -n -11)", "grade": "good", "score": 1, "note": "Verified real."},
+        {"point": "Artifact misnamed 'checkstyle-result' and uploaded unconditionally", "grade": "good", "score": 1, "note": "Verified: it is a Spotless check and the upload step has no if: condition."}
+      ],
+      "missed": [
+        "if: always() on samples-test-result/integration-test-result silently bypasses the new check-format gate",
+        "convoluted continue-on-error + github-script core.setFailed pattern instead of letting the step fail"
+      ],
+      "exceeds": [
+        "mvn vs ./mvnw",
+        "Action version inconsistency",
+        "Pipeline serialization",
+        "Fragile log parsing",
+        "Artifact misnaming/unconditional upload"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 1, "v7": 0},
+  "qualitative": "The human reference is a conversational reply with no substantive findings, so both machine reviews exceed it on nearly every point. v7 is the clearly stronger review: all five of its points verified true against the repo, including the mvn-vs-mvnw wrapper inconsistency and the misnamed always-uploaded artifact that v5 missed, and it contains zero fabrications. v5 fabricated an absence claim (asserting the check-format job lacks a name: field when the diff plainly contains one) and missed the wrapper issue, dragging its net to zero despite four otherwise solid points. Both candidates missed the subtlest real defect: the two result-merge jobs retain if: always(), so they run even when check-format fails, silently bypassing the new gate; both also overlooked the convoluted continue-on-error + github-script failure pattern."
+}

@@ -1,0 +1,57 @@
+{
+  "pr": 28256,
+  "own_review": [
+    {"loc": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:401-404", "issue": "Re-enabling IS_NOT_DISTINCT_FROM in gatherConstraints lets constant inference substitute constants for equi-join keys (a=2, d=2, b=1, e=1), reducing join conditions to non-equi/true. testInnerJoinWithJoinConditionPushDown now throws TableException ('Cannot generate a valid execution plan') under BroadcastHashJoin/ShuffledHashJoin/SortMergeJoin — a real behavioral regression that the PR accepts via test overrides; NestedLoopJoin becomes the only viable strategy for such queries.", "severity": "critical"},
+    {"loc": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rel/metadata/RelMdPredicates.java:225-230", "issue": "Verified root cause: eqConstant() emits IS_NOT_DISTINCT_FROM (line 230) for nullable refs when pulling constants through Project/Aggregate; with gatherConstraints now consuming INDF, those pulled-up constants feed inference and eliminate the join keys.", "severity": "major"},
+    {"loc": "BroadcastHashJoinTest.xml / ShuffledHashJoinTest.xml / SortMergeJoinTest.xml (testInnerJoinWithJoinConditionPushDown removal)", "issue": "The golden-XML removal is REQUIRED, not inconsistent: the overridden Scala tests assert an exception, so no plan is generated and no golden resource can exist. Claims of inconsistency are wrong.", "severity": "info"},
+    {"loc": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:77-84", "issue": "Stale fork-rationale javadoc: the class header still says the file was copied 'because of current Calcite way of inferring constants from IS NOT DISTINCT FROM clashes with filter push down', yet this PR re-enables exactly that behavior; with Calcite 1.37.0 in flink-table/pom.xml:82 the only remaining fork purpose is the CALCITE-6764 backport — the rationale should be rewritten.", "severity": "minor"},
+    {"loc": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:398-430", "issue": "NULL-literal inference edge case: 'x IS NOT DISTINCT FROM NULL' now flows through the EQUALS path and maps x -> NULL constant although the semantics differ (x = NULL is UNKNOWN, x INDF NULL is TRUE); isConstant() accepts NULL literals, so a targeted test is warranted.", "severity": "minor"},
+    {"loc": "flink-table/flink-table-planner/src/test/resources/org/apache/flink/table/planner/plan/stream/sql/join/JoinTest.xml:427-440,467-482", "issue": "Streaming consequence: plans degrade from leftInputSpec/rightInputSpec=[JoinKeyContainsUniqueKey] to [NoUniqueKey] (larger join state / more expensive retraction handling) and one case changes Exchange(distribution=[hash[...]]) to Exchange(distribution=[single]) with where=[true], forcing single-parallelism — a potential streaming performance regression worth flagging in the PR.", "severity": "minor"},
+    {"loc": "flink-table/flink-table-planner/src/test/scala/org/apache/flink/table/planner/runtime/batch/table/DecimalITCase.scala:22", "issue": "import org.apache.flink.table.api.config.ExecutionConfigOptions becomes unused after the PR removes all seven TABLE_EXEC_DISABLED_OPERATORS settings (verified: no remaining usage in the file).", "severity": "trivial"},
+    {"loc": "flink-table/flink-table-planner/src/main/java/org/apache/calcite/rex/RexUtil.java:61 (new javadoc 'Line 2489~2494')", "issue": "The updated line-number comment is essentially correct: the PR removes 5 net lines above the FLINK MODIFICATION markers (base 2494-2498), landing them at 2489-2493; 'corrections' claiming different numbers are fabrications.", "severity": "info"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "RexUtil.java:79-86 class javadoc not updated to explain why re-enabling INDF inference is now safe; fork rationale stale", "grade": "good", "score": 1},
+        {"point": "Test overrides (BroadcastHashJoinTest/ShuffledHashJoinTest/SortMergeJoinTest) assert TableException for a query that previously produced a valid plan — flags the central regression and asks for root-cause investigation", "grade": "critical", "score": 2},
+        {"point": "Golden XML removal while Scala tests expect exceptions is 'inconsistent'; suggests keeping the XML or deleting the tests", "grade": "wrong", "score": -1, "note": "The removal is required: overridden tests assert exceptions, so no plan/golden resource exists. Verified false."},
+        {"point": "RexUtil.java:401 NULL-literal edge case — 'x IS NOT DISTINCT FROM NULL' inferring x = NULL; requests targeted test", "grade": "good", "score": 1},
+        {"point": "RexUtil.java:84 'Line 2489~2494' line-number comment is fragile to drift; suggests anchors", "grade": "trivial", "score": 0, "note": "Style nit only; correctly does NOT claim the numbers are wrong."}
+      ],
+      "missed": [
+        "RelMdPredicates.eqConstant (line 230) as the verified root cause of INDF predicate creation (asked for investigation but did not find it)",
+        "Streaming JoinTest.xml consequence: NoUniqueKey input specs and Exchange(distribution=[single]) perf regression",
+        "Unused ExecutionConfigOptions import in DecimalITCase.scala after removing all usages"
+      ],
+      "exceeds": [
+        "Stale fork-rationale javadoc (not in human reference)",
+        "NULL-literal INDF inference edge case (not in human reference)"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "RexUtil.java:402 NULL-literal semantics — INDF treated as EQUALS glosses over null-safe equality; left -> NULL_LITERAL enters the constant map", "grade": "good", "score": 1},
+        {"point": "Test overrides mask the regression: testInnerJoinWithJoinConditionPushDown previously worked and now throws TableException in three join-strategy tests — central regression caught, demands root-cause fix or JIRA", "grade": "critical", "score": 2},
+        {"point": "RexUtil.java:79-84 stale class javadoc about fork rationale; should explain remaining modifications", "grade": "good", "score": 1},
+        {"point": "RexUtil.java:82-83 'Calcite 1.32.0 behavior' comment unclear, 'clarify whether this comment still applies or should be removed'", "grade": "wrong", "score": -1, "note": "Fabricated: the PR's diff already deletes that javadoc note (removed lines in the first hunk). Treats removed text as still present — an absence-fabrication."},
+        {"point": "RelMdPredicates.java:230 eqConstant() creates IS_NOT_DISTINCT_FROM for nullable types feeding back into gatherConstraints — identifies the verified root cause", "grade": "good", "score": 1},
+        {"point": "NestedLoopJoinTest.xml:388 join condition reduced to where=[true] (cross-product) after constant inference — verified real plan change, captures the key-elimination mechanism the human reference describes", "grade": "good", "score": 1},
+        {"point": "DecimalITCase.scala 'good cleanup' note on removing TABLE_EXEC_DISABLED_OPERATORS workarounds", "grade": "trivial", "score": 0, "note": "Positive note, reasoning slightly imprecise (removal is required because forced SortMergeJoin would now fail; NestedLoopJoin is the needed fallback), but not the v6-style inverted fabrication."}
+      ],
+      "missed": [
+        "Streaming JoinTest.xml consequence: NoUniqueKey input specs and Exchange(distribution=[single]) perf regression",
+        "Unused ExecutionConfigOptions import in DecimalITCase.scala after removing all usages"
+      ],
+      "exceeds": [
+        "RelMdPredicates.eqConstant root cause (beyond human reference)",
+        "NULL-literal INDF inference edge case (beyond human reference)",
+        "Stale fork-rationale javadoc (beyond human reference)"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 1},
+  "qualitative": "Both candidates caught the central regression (testInnerJoinWithJoinConditionPushDown now throws TableException under hash/sort-merge strategies) for the critical +2. v7 is clearly stronger: it independently identified the verified root cause in RelMdPredicates.eqConstant:230 and the where=[true] key-elimination mechanism that matches the human reference, and it engaged with the DecimalITCase changes. v5's analysis stayed shallower ('cross-referenced constants the optimizer cannot handle') and it repeated the known false 'golden XML removal is inconsistent' claim, which is verifiably wrong since the overridden tests assert exceptions and generate no plan. v7's one fabrication is treating the 'Calcite 1.32.0 behavior' javadoc note as still present when the diff deletes it — an absence-fabrication. Both missed the streaming NoUniqueKey/single-exchange performance consequence and the now-unused ExecutionConfigOptions import."
+}

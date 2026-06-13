@@ -1,0 +1,71 @@
+{
+  "pr": 4771,
+  "own_review": [
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 113,
+      "issue": "The one-boolean fix (optional false->true) is safe and correct: the 6-arg MetadataFactory.createRequirement overload keeps greedy=true by default, so resolvable extra.classpath entries are still pulled in greedily while unresolvable ones (platform-specific fragments) no longer fail resolution. Matches PDE behavior and existing repo precedents: InstallableUnitResolver.java:225 (optionalGreedySourceBundleRequirement, args true,false,true) and P2ResolverImpl.java:363 (optionalGreedyRequirementTo, args true,true,true).",
+      "severity": "info (change is correct)"
+    },
+    {
+      "file": "tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java",
+      "line": 22,
+      "issue": "No test covers the new behavior: the existing IT only runs resolvable extra-classpath projects with verifyErrorFreeLog; nothing exercises an unresolvable platform: URL entry to guard the fix against regression.",
+      "severity": "minor"
+    },
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 113,
+      "issue": "Side effect: typo'd or genuinely missing jars.extra.classpath entries are now silently ignored with no warning (previously a hard resolution error). Acceptable since PDE behaves the same, but a debug/warn log on unsatisfied optional extra-classpath requirements would aid diagnosis.",
+      "severity": "low"
+    },
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2resolver/P2GeneratorImpl.java",
+      "line": 407,
+      "issue": "Scope note: the ICapabilityAdvice from getExtraEntriesAdvice is added as publisher advice, so the optional flag lands in generated p2 metadata for both the global jars.extra.classpath and per-jar extra.<jar> entries.",
+      "severity": "info"
+    },
+    {
+      "file": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java",
+      "line": 41,
+      "issue": "Import reorder of StatusTool/OptionalResolutionAction is cosmetic noise unrelated to the fix (restores alphabetical order).",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "optional is the 5th param; verified against BundleDependenciesAction.java:162-168 explicit /* optional */ comment; change makes platform-specific entries non-fatal", "grade": "good", "score": 1, "note": "Citation verified real; correct parameter analysis. But never mentions greedy."},
+        {"point": "OptionalResolutionAction is passed to getPublisherActions but not getPublisherAdvice, so optional=true here is hardcoded regardless of configuration", "grade": "good", "score": 1, "note": "Verified: AbstractMetadataGenerator.java:56-64 confirms the plumbing. Genuine design observation beyond the human."},
+        {"point": "No test for unresolvable-entry scenario; existing ExtraClasspathEntriesTest only covers resolvable entries", "grade": "good", "score": 1, "note": "Substance verified (actual file ExtraClassPathEntriesTest.java, minor casing misname; tests indeed only verifyErrorFreeLog on resolvable projects)."},
+        {"point": "Cosmetic import reorder, no functional impact", "grade": "trivial", "score": 0}
+      ],
+      "missed": [
+        "Human's key insight: the 6-arg createRequirement overload defaults greedy=true, which is what makes the optional-only flip safe (entries still included when resolvable). v5 shows zero awareness of the greedy dimension."
+      ],
+      "exceeds": [
+        "Parameter-ordering verification via BundleDependenciesAction",
+        "OptionalResolutionAction plumbing observation",
+        "Missing-test point"
+      ],
+      "net": 2
+    },
+    "v7": {
+      "points": [
+        {"point": "Change semantically correct; pattern consistent with InstallableUnitResolver.java:225 and P2ResolverImpl.java:363 optionalGreedyRequirementTo", "grade": "good", "score": 1, "note": "Both precedent citations verified real and are exactly the precedents that validate the human's greedy insight; v7 names the optional+greedy pattern though it stops short of explicitly stating the 6-arg overload defaults greedy=true."},
+        {"point": "Change affects both jars.extra.classpath and per-jar extra.<jar> entries via extractExtraEntriesAsIURequirement", "grade": "good", "score": 1, "note": "Verified: AbstractMetadataGenerator.java:93-97 routes both through the same helper."},
+        {"point": "Suggest IT for unresolvable scenario; existing TYCHO253extraClassPathEntries tests only cover resolvable entries", "grade": "good", "score": 1, "note": "Cited path exists; claim about test coverage verified true."},
+        {"point": "Import reorder cosmetic, maintains alphabetical order", "grade": "trivial", "score": 0, "note": "Alphabetical claim verified correct."}
+      ],
+      "missed": [],
+      "exceeds": [
+        "Precedent citations (the exact verified optional+greedy precedents)",
+        "Per-jar vs global scope observation",
+        "Missing-test point with correct IT path"
+      ],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Tiny 1-line semantic PR where the human's whole review is the greedy-default insight: the 6-arg createRequirement overload keeps greedy=true, so flipping only 'optional' already gives the desired optional-but-greedy behavior. v7 effectively captures this by citing the exact verified optional+greedy precedents (InstallableUnitResolver.java:225, P2ResolverImpl.java:363) and naming the optionalGreedyRequirementTo helper, though it never states the greedy default explicitly; v5 never mentions greediness at all and so misses the reference's core point despite otherwise solid parameter verification. Both reviews are fully grounded — every file, line, and coverage claim checked out, zero absence-fabrications on either side — and both add a legitimate missing-test point. v5's OptionalResolutionAction plumbing note and v7's global-vs-per-jar scope note are each real, verified value-adds beyond the human. v7 edges out v5 on the decisive greedy dimension and on citation precision (correct IT path vs v5's slightly misnamed test file)."
+}

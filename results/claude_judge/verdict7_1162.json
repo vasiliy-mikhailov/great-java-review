@@ -1,0 +1,120 @@
+{
+  "pr": 1162,
+  "own_review": [
+    {
+      "file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java",
+      "line": "74-87",
+      "issue": "Expected-violation array hardcodes the full English message text ('Condition with && at line N position M need optimization...') instead of using the getCheckMessage(MSG_KEY, \"&&\", line, pos) convention used by every other expectation in this same file (including the test() method above and the two lines being replaced). Duplicates messages.properties wording, double-encodes line/col (prefix and message body), and silently breaks if the message resource changes.",
+      "severity": "major"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java",
+      "line": 118,
+      "issue": "New method typeGuardAfterParenthesizedPatternWithMethodCall reintroduces 'case (String s) && s.isEmpty() ->' -- the parenthesized-pattern && guard form from the removed Java 17/18 preview (final Java 21 / JEP 441 uses 'when' guards). This directly contradicts the PR's stated purpose of aligning the input with Java 21 syntax; the file stays noncompilable because of this one case.",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java",
+      "line": "4-21,50-67,23-38,69-84",
+      "issue": "typeGuardAfterParenthesizedTrueSwitchStatement1 and ...2 are now byte-identical and contain no logic conditions at all -- they are inert for this check, and their names ('typeGuardAfterParenthesizedTrue...') are misleading since no guard or parenthesized pattern remains. Expression1/2 differ only in 'default ->' vs 'case Object x ->', IfStatement1/2 only in a comment. The original 1-vs-2 distinction (&&-placement at line breaks in guards) is gone, so half the file is dead duplication and guard-pattern violation coverage (old violations at 32:17, 66:34) is removed.",
+      "severity": "medium"
+    },
+    {
+      "file": "sevntu-checks/src/test/resources-noncompilable/com/github/sevntu/checkstyle/checks/coding/InputLogicConditionNeedOptimizationCheck2.java",
+      "line": "41,43,87,89,112",
+      "issue": "Inconsistent '// violation' markers: line 89 is marked but the byte-identical line 43 (which fires two violations) is not, nor are lines 41, 87, 112.",
+      "severity": "minor"
+    },
+    {
+      "file": "sevntu-checks/src/test/java/com/github/sevntu/checkstyle/checks/coding/LogicConditionNeedOptimizationCheckTest.java",
+      "line": "EOF",
+      "issue": "Diff appends a stray trailing blank line after the closing brace of the test class.",
+      "severity": "trivial"
+    },
+    {
+      "file": "(verification)",
+      "line": "n/a",
+      "issue": "Functional correctness confirmed: reconstructed post-PR input file places the && conditions exactly at lines 41, 43(x2), 87, 89(x2), 112, matching all 7 expected violations. The switches are exhaustive ('case Object x' is a total pattern; 'default' after it would not compile) -- any non-exhaustiveness claim is false.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {
+          "point": "Line 118 'case (String s) && s.isEmpty()' is preview syntax, not final Java 21, contradicting the PR's stated goal",
+          "verdict": "good",
+          "score": 1,
+          "note": "Core finding verified real (matches own review). Proposed fix is itself wrong -- JEP 441 final syntax is 'case String s when s.isEmpty()', not 'case String s && s.isEmpty()' -- but the identified defect stands."
+        },
+        {
+          "point": "typeGuardAfterParenthesizedTrueSwitchExpression2 (line 82) missing 'default', switch expression non-exhaustive",
+          "verdict": "wrong",
+          "score": -1,
+          "note": "False. 'case Object x' is a total/unconditional type pattern for selector Object, so the expression is exhaustive; adding 'default' after a total pattern is a compile error. Fabricated absence claim (the known trap)."
+        },
+        {
+          "point": "testCoverageCase (line 112) exercises useful METHOD_CALL branch coverage",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate praise/commentary, not an actionable finding."
+        }
+      ],
+      "missed": [
+        "Hardcoded message strings replacing the getCheckMessage(MSG_KEY,...) convention in the test expectations (the central code-quality defect of the PR)",
+        "Byte-identical inert duplicate methods (SwitchStatement1/2 etc.) with now-misleading names and removed guard-pattern violation coverage"
+      ],
+      "exceeds": [
+        "Line 118 preview-syntax-vs-Java-21-claim finding (not in human reference)"
+      ],
+      "net": -1
+    },
+    "v7": {
+      "points": [
+        {
+          "point": "Pattern guard test coverage removed: guard cases producing old violations 32:17/66:34 replaced with plain if-statements; PR claims Java 21 alignment but removes guard coverage",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified real -- the rewritten switch methods contain no && at all and the guard-pattern violation cases are gone; matches own finding on inert/regressed coverage."
+        },
+        {
+          "point": "Line 118 new guard case has no expected violation; (String s) parses as pattern not instanceof, check fires nothing; uncommented no-violation case is confusing",
+          "verdict": "good",
+          "score": 1,
+          "note": "Verified: no violation is registered for 118 and none fires empirically; the maintainability concern about an unexplained no-violation guard case is real."
+        },
+        {
+          "point": "Expected violations at 41, 43(x2), 87, 89(x2), 112 look correct, line 112 method-call-first correctly flagged",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate verification commentary (line numbers confirmed by reconstruction), but not a finding."
+        },
+        {
+          "point": "New coverage methods (testParenthesisCase, testCoverage, getValue, testCoverageCase) are appropriate no-violation coverage",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Accurate commentary, no action."
+        },
+        {
+          "point": "Consider retaining at least one pattern guard variant with explicit expectation",
+          "verdict": "trivial",
+          "score": 0,
+          "note": "Suggestion restating point 1; no independent credit."
+        }
+      ],
+      "missed": [
+        "Hardcoded message strings replacing the getCheckMessage(MSG_KEY,...) convention in the test expectations (the central code-quality defect of the PR)"
+      ],
+      "exceeds": [
+        "Guard-coverage regression finding (not in human reference)",
+        "Line 118 no-violation/unclear-intent analysis (not in human reference)"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v5": 1,
+    "v7": 0
+  },
+  "qualitative": "The human reference ('remove all changes from non Test and non Input') is inapplicable to this diff, which touches only the test and input files, so grading leans on the judge's own review. v5 lands the line-118 preview-syntax finding but pairs it with an incorrect fix (suggests '&&' guard form instead of 'when') and then walks straight into the trap, fabricating a 'missing default / non-exhaustive switch' blocker against a total 'case Object x' pattern -- a clear absence-fabrication. v7 is more grounded: it correctly identifies the guard-coverage regression behind the 'Java 21 alignment' framing, verifies the no-violation behavior of line 118 with plausible AST reasoning, and accurately confirms all seven expected violation positions, with no fabrications. Both candidates miss the PR's most concrete code-quality defect: replacing getCheckMessage(MSG_KEY,...) with hardcoded English message strings, breaking the file's own convention. v7 additionally fails to flag the byte-identical duplicate methods explicitly, but its coverage-regression point substantially covers that ground; overall v7 is the stronger, more verifiable review."
+}

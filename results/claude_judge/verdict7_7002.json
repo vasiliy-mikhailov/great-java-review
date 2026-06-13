@@ -1,0 +1,51 @@
+{
+  "pr": 7002,
+  "own_review": [
+    {"file": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt", "line": "118-142", "issue": "KDoc on the now-active expect declarations maxAge/maxStale/minFresh still references [TimeUnit.SECONDS], but java.util.concurrent.TimeUnit is JVM-only and not importable in commonMain — broken Dokka links on all three methods. Should read 'seconds precision' or reference [DurationUnit.SECONDS].", "severity": "medium"},
+    {"file": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt", "line": "153-191", "issue": "JVM Builder now exposes BOTH DurationUnit and TimeUnit overloads for maxAge/maxStale/minFresh — the public API surface is doubled, and multiplatform callers cannot write shared code against the TimeUnit variants. This is the design problem the maintainer flagged ('stuck doubling our methods'); a kotlin.time.Duration-based API or common alias would avoid it.", "severity": "medium"},
+    {"file": "okhttp/src/jvmMain/kotlin/okhttp3/CacheControl.kt", "line": "155-181", "issue": "Newly added KDoc on the TimeUnit overloads duplicates the commonMain expect docs verbatim — doc maintenance duplication.", "severity": "minor"},
+    {"file": "okhttp/src/commonMain/kotlin/okhttp3/CacheControl.kt", "line": "168", "issue": "FORCE_CACHE remains commented out in commonMain even though this PR makes maxStale available in common code; it only needs maxStale(Int.MAX_VALUE, SECONDS) and could be promoted now.", "severity": "minor"},
+    {"file": "okhttp/src/commonTest/kotlin/okhttp3/CacheControlTest.kt", "line": "50-52", "issue": "Common tests only exercise DurationUnit.SECONDS; no cross-unit conversion, sub-second truncation, or Int.MAX_VALUE clamping coverage for the new common path (CacheControlJvmTest.kt covers those only for the JVM TimeUnit overloads).", "severity": "minor"},
+    {"file": "okhttp/src/commonMain/kotlin/okhttp3/internal/-CacheControlCommon.kt", "line": "45-68", "issue": "NO-ISSUE verification note: toDuration(unit).inWholeSeconds saturates (out-of-range -> infinite -> Long.MAX_VALUE) then commonClampToInt caps at Int.MAX_VALUE, exactly matching old TimeUnit.toSeconds + clampToInt semantics. Kotlin is 1.6.10 so DurationUnit is a standalone enum on JVM — no platform declaration clash with the TimeUnit overloads. Any overflow-regression claim would be wrong.", "severity": "none"}
+  ],
+  "versions": {
+    "v5": {
+      "points": [
+        {"point": "commonMain KDoc references [TimeUnit.SECONDS] which cannot resolve on non-JVM targets; change to [DurationUnit.SECONDS]", "grade": "good", "score": 1, "note": "Verified: TimeUnit is JVM-only, not imported in commonMain; broken links on all three methods."},
+        {"point": "Common test only exercises DurationUnit.SECONDS; JVM tests cover DAYS/MILLISECONDS but no non-JVM equivalent; add MINUTES/HOURS conversion test", "grade": "good", "score": 1, "note": "Verified: CacheControlJvmTest.kt lines 174/184/204 cover DAYS, clamping, MILLISECONDS for TimeUnit only; common test uses only SECONDS."},
+        {"point": "commonClampToInt lacks underflow clamp; rename or add Int.MIN_VALUE branch", "grade": "trivial", "score": 0, "note": "Self-admitted unreachable (inputs validated >= 0); naming nitpick."},
+        {"point": "JVM TimeUnit overloads now delegate to commonClampToInt; 'verify bytecode resolves Integer.MAX_VALUE equivalently (this is fine)'", "grade": "trivial", "score": 0, "note": "Vacuous self-answered observation; no issue raised."},
+        {"point": "KDoc could note the value is interpreted in the given DurationUnit before conversion", "grade": "trivial", "score": 0, "note": "Cosmetic doc-wording suggestion."}
+      ],
+      "missed": [
+        "JVM method-doubling design problem: dual TimeUnit/DurationUnit overloads double the API and block multiplatform callers (the human maintainer's sole comment)",
+        "FORCE_CACHE could now be promoted to commonMain since maxStale is available in common (left commented at CacheControl.kt:168)"
+      ],
+      "exceeds": [
+        "Broken [TimeUnit.SECONDS] KDoc links in commonMain (not raised by human)",
+        "Non-JVM DurationUnit conversion test-coverage gap (not raised by human)"
+      ],
+      "net": 0
+    },
+    "v7": {
+      "points": [
+        {"point": "Stale [TimeUnit.SECONDS] KDoc references in the common expect declarations; correctly notes the new JVM overload docs are fine since those genuinely take TimeUnit", "grade": "good", "score": 1, "note": "Verified, and the JVM/common distinction is exactly right — most precise statement of this issue."},
+        {"point": "commonClampToInt omits negative clamping; 'no action needed' given require(>=0) guards", "grade": "trivial", "score": 0, "note": "Accurate but self-declared non-issue."},
+        {"point": "PR establishes a new multiplatform time-unit pattern: first kotlin.time usage in the codebase, diverging from the TimeUnit + java.time.Duration convention in OkHttpClient.Builder, with TimeUnit kept as a JVM-only supplementary overload", "grade": "good", "score": 1, "note": "All factual claims verified (zero kotlin.time hits at base commit; OkHttpClient imports both java.time.Duration and TimeUnit). Substantive API-precedent observation adjacent to the maintainer's concern, though it stops short of flagging the doubling problem itself."},
+        {"point": "Test coverage minimal: no cross-unit conversion (MINUTES->60s), millisecond truncation (4999ms->4s), or overflow clamping tests for the DurationUnit path; JVM tests cover these for TimeUnit", "grade": "good", "score": 1, "note": "Verified against CacheControlJvmTest.kt; concrete, correct test cases proposed."}
+      ],
+      "missed": [
+        "JVM method-doubling design problem as a *problem*: point 3 describes the dual-overload structure but never flags that the API is doubled and multiplatform callers are stuck (the human's actual concern)",
+        "FORCE_CACHE could now be promoted to commonMain since maxStale is available in common (left commented at CacheControl.kt:168)"
+      ],
+      "exceeds": [
+        "Broken KDoc links with correct common-vs-JVM scoping (not raised by human)",
+        "Verified-true kotlin.time precedent observation (not raised by human)",
+        "Concrete DurationUnit test-coverage gaps (not raised by human)"
+      ],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v5": 0, "v7": 0},
+  "qualitative": "Both candidates found the substantive broken [TimeUnit.SECONDS] KDoc links in commonMain and the non-JVM test-coverage gap, and neither fabricated anything — every absence claim (no non-JVM unit-conversion tests, first kotlin.time usage, OkHttpClient's TimeUnit/java.time.Duration convention) verified true against the base commit. Neither candidate made the false overflow-regression claim; v5 even implicitly and v7 explicitly treated the clamping as sound. v7 is the stronger review: its KDoc point correctly scopes common vs JVM docs, its test point gives concrete verified cases, and its kotlin.time-precedent observation is accurate and comes closest to the maintainer's method-doubling concern, though neither candidate actually articulates that the dual TimeUnit/DurationUnit overloads double the JVM API and leave multiplatform callers stuck. v5 pads with three zero-value points (an unreachable underflow nitpick, a vacuous self-answered bytecode note, and a doc-wording suggestion), diluting an otherwise accurate review. Both missed the FORCE_CACHE promotion opportunity that this PR unlocks."
+}
