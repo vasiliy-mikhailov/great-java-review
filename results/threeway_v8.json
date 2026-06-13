@@ -1,0 +1,14 @@
+[
+  {
+    "repo": "eclipse-tycho/tycho",
+    "pr": 4771,
+    "reviewer": "HannesWell",
+    "net": null,
+    "sec": 292.0,
+    "sent": 255005,
+    "recv": 8818,
+    "calls": 23,
+    "text": "SUMMARY:\nThis PR changes the `optional` flag from `false` to `true` when creating IU requirements for `jars.extra.classpath` platform URLs, allowing Tycho to gracefully ignore unresolvable platform-specific bundles (e.g., fragments for other OS/arch combinations), matching PDE behavior.\n\nPOINTS:\n- [tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:112-113] The change from `false` to `true` (5th parameter) correctly sets the requirement as optional. This is confirmed by multiple codebase conventions: `ArtifactTypeHelper.java:93` has an explicit comment `// optional=false, multiple=true` documenting the same 6-arg overload, `P2ResolverImpl.java:363` names its helper `optionalGreedyRequirementTo` and passes `true` in this position, and `InstallableUnitResolver.java:225` uses a variable named `optionalGreedySourceBundleRequirement` with `true` here. The change is semantically correct and well-justified.\n- [tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java] No existing integration test covers the scenario where a `jars.extra.classpath` entry references an unresolvable bundle. The existing tests all assume referenced bundles are available in the target platform. Consider adding a test case that references a platform-specific bundle not available in the test environment to validate the optional resolution behavior \u2014 this would guard against regression and document the intended behavior.\n- [tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:38-47] Minor: the diff includes a cosmetic reordering of the `StatusTool` import. Not functional, but worth noting for reviewers.",
+    "judge": null
+  }
+]
