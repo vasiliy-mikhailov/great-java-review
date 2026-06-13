@@ -1,0 +1,20 @@
+{
+ "pr": 28811,
+ "kind": "test",
+ "net": 1,
+ "n_good": 2,
+ "n_critical": 0,
+ "n_wrong": 1,
+ "n_trivial": 4,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "BIG (human): moving dictionary check to reader-time via initializePageReader materializes the whole ChunkedInputStream (up to 8MB maxBufferSize) instead of the old targeted ~KB dictionary-only read -> for pruned row groups this is a large over-read per candidate column; defeats the PR's own goal. Fix: split DiskRange at dict/data boundary.",
+  "MAX_DICTIONARY_SIZE=8096 guard removed -> arbitrarily large dictionaries now decoded even when no pruning benefit",
+  "dictionaryPredicateMatch iterates only projected primitiveFields vs old descriptorsByPath.values() (all cols) -> predicate on non-projected dict-encoded column no longer pruned at reader",
+  "ParquetCorruptionException is a CHECKED IOException; the throws clause is REQUIRED (V8 claims the opposite)",
+  "predicateMatches public->private + boolean->PredicateMatchResult; all RowGroupInfo construction sites updated"
+ ],
+ "notes": "V8 P1 (MAX_DICTIONARY_SIZE guard removal) = good, real and grounded. P3 (projected primitiveFields vs all descriptors behavioral change) = good substantive question. P2 is FACTUALLY WRONG: it asserts ParquetCorruptionException extends RuntimeException so the throws is unnecessary -- the class actually 'extends IOException' (checked), so the throws is required (= 1 wrong/refutable). P4,P5,P6,P7 are verification/praise restating = trivial. CRITICAL MISS: V8 did not catch the human reference's central performance regression -- initializePageReader reads the full (up to 8MB) column-chunk stream rather than the small dictionary chunk, turning a few-KB read into a multi-MB read for pruned row groups (the very over-read the PR claims to eliminate). 1 missed (the only human point, and the most important issue)."
+}

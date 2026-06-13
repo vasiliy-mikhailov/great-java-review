@@ -1,0 +1,21 @@
+{
+  "pr": 385,
+  "kind": "general",
+  "net": 2,
+  "n_good": 5,
+  "n_critical": 0,
+  "n_wrong": 1,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 1,
+  "own_review_points": [
+    "AttachTab.initializeFrom changed portSpinner.setSelection(getAttribute(PORT,-1)) to defaultPort -> saved port no longer restored (regression)",
+    "performApply always calls setMappedResources(new File(programPath).toURI()) even in URL mode where programPath is empty/disabled",
+    "Design: PR persists both PROGRAM and URL attributes; reviewer-preferred approach is to store only one and clear the other (set unused to null), avoiding the URL flag",
+    "Firefox delegate now depends on chrome package constants ChromeRunDAPDebugDelegate.URL/RUNTIME_EXECUTABLE -> cross-package coupling",
+    "Hardcoded UI strings (\"URL: \", \"Run with: \") and error text not externalized to messages.properties",
+    "Typo 'debuging' in RunFirefoxDebugTab_URL_Note"
+  ],
+  "notes": "v8 leads with a FALSE BLOCKER: it claims createRadioButton(...) is undefined and will fail compilation ('confirmed by grep'). createRadioButton(Composite,String) is a protected method inherited from Eclipse's AbstractLaunchConfigurationTab, so the call compiles fine — wrong (-1, fab; the grep covered only the PR repo, missing the platform base class). Solid good points: port-restore regression (+1), setMappedResources used in URL mode (+1), Firefox->chrome coupling (+1), hardcoded UI string i18n (+1), 'debuging' typo (+1). Several low-value nits (removed setDefaults override that only delegated to super is a no-op; hardcoded pre-existing 'Not a html file'; missing url validation; redundant setDirty) -> trivial. Missed the human reviewer's central design feedback (don't persist both File and URL; clear the unused attribute) and the stray .project change. Net modestly positive, dragged down by a flashy false blocker."
+}

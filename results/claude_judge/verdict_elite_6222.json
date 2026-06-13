@@ -1,0 +1,23 @@
+{
+  "pr": 6222,
+  "kind": "general",
+  "n_good": 4,
+  "n_critical": 2,
+  "n_wrong": 0,
+  "n_trivial": 2,
+  "n_unverifiable": 0,
+  "n_missed": 4,
+  "fabs": 0,
+  "own_review_points": [
+    "CERT_CONTENT attribute defined but never addParameter()'d to DEFINITION => certificate-content unusable via mgmt API",
+    "Empty else branch with only '// throw exception' => silent no-op when neither cert-file nor certificate-content supplied",
+    "context.getResult().set(info) inside loop immediately overwritten by result.set(mCertificates) \u2014 dead/misleading assignment",
+    "getAllChannelNames() defined but never called \u2014 dead code",
+    "Test mock parseCertificate uses while(reader.ready()) \u2014 unreliable BufferedReader idiom, should use readLine()!=null",
+    "CLI AddCertificatesCommand prints status before checking executeOp result; print vs println",
+    "i18n: several handlers log/throw raw strings bypassing InstMgrLogger (human ref)",
+    "AddCertificatesCommand: 'cert-file' literal where a constant exists; redundant String.format with no args (human ref)"
+  ],
+  "notes": "v8 strong and well-grounded. VERIFIED: CERT_CONTENT defined (setRequired false) but DEFINITION only addParameter(CERT_FILE) \u2014 addParameter(CERT_CONTENT) absent => point2 = critical (real API defect). '// throw exception' empty else present => point1 = critical (silent success). point3 result.set(info) overwrite verified = good. point6 getAllChannelNames single occurrence (def only) = good dead-code. point7 while(reader.ready()) verified = good (legit anti-pattern). point8 UpdateCommand SUCCESS-on-decline = good (overlaps human 'should not run if canceled'). points4 (logger needs a 'neither provided' message) and point5 (print vs println / unchecked response) are secondary nits = trivial x2. No fabrications (all files in change list). MISSED distinct human points v8 omitted: i18n missing (InstMgrListUpdates/PrepareRevert/PrepareUpdate), CLI command docs in command_resources.properties, 'cert-file' constant exists, redundant String.format, pom Beta1 outdated, per-handler javadoc. Count 4 missed (clustering i18n as 1, docs 1, cert-file-constant 1, String.format/redundancy 1). net = (4 + 2*2) - 4 = 8 - ... compute: good/crit/wrong/triv sum = 4*1 + 2*2 + 0 + 0 = 8; minus 4 missed = 4.",
+  "net": 4
+}

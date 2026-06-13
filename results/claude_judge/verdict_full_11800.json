@@ -1,0 +1,20 @@
+{
+  "pr": 11800,
+  "kind": "general",
+  "net": 0,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "Calendar TIME branch: withNano(calendar.get(MILLISECOND)*1_000_000) is correct millis->nanos, but uses appendAsTimestampWithMillis while the value already only has ms precision - fine; human prefers the simplified Instant.EPOCH form (already largely what is written).",
+    "appendLiteral: backslash escaping of ' and \\ and \\n is reasonable for Spanner; StringBuilder capacity literal.length()+2 underestimates worst case (every char escaped) - minor.",
+    "Calendar TIMESTAMP: OffsetDateTime built from calendar.getTimeZone() then re-formatted with jdbcTimeZone via appendAsTimestampWithMillis(...supportsTemporalLiteralOffset...); human asks why not pass calendar straight through and whether a 'Z' suffix is needed when jdbcTimeZone==null to force offset format.",
+    "TIME overloads inconsistent: TemporalAccessor/Date use appendAsTimestampWithNanos, Calendar uses appendAsTimestampWithMillis (acceptable given Calendar ms resolution).",
+    "appendDateTimeLiteral TIME branch for OffsetTime/LocalTime: if temporalAccessor is neither, only opening 'TIMESTAMP '' and closing '' are appended, yielding empty/invalid literal (no else/default guard)."
+  ],
+  "notes": "v8 is competent but soft. Good (+1 each): the appendLiteral backslash-vs-doubling/portability+capacity observation (line 574-595/578 collapsed as one substantive escaping point), and the Calendar TIME millis-vs-nanos overload-inconsistency point (672-684) which is real and overlaps the human's Calendar-TIME concern. The OffsetTime offset-rendering point (598-601), the isAssignableFrom==BigDecimal note (363-376), the currentTime->currentTimestamp note (602-603), and the StringBuilder-capacity nit are all either 'correct behavior, just noting' or restating - trivial/0. v8 MISSED the two substantive human points: (1) the Calendar TIMESTAMP simplification / pass-calendar-through + the 'Z' suffix needed when jdbcTimeZone==null to force offset format, and (2) the calendar.get vs getField + simplified Instant.EPOCH TIME construction. No fabrications; all cited code is in the diff. Net = good(2) + trivial(4*0) - missed(2) = 0."
+}

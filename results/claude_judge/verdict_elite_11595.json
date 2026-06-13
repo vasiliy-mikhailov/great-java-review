@@ -1,0 +1,25 @@
+{
+  "pr": 11595,
+  "kind": "general",
+  "net": -1,
+  "n_good": 5,
+  "n_critical": 0,
+  "n_wrong": 1,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 5,
+  "fabs": 1,
+  "own_review_points": [
+    "columnType() overrides many cases that the super implementation already handles or handles correctly with parameterization (char->'char(1)' loses $l, float, nvarchar, blob/clob) - human flags several of these as outright wrong because they break user parameterization.",
+    "NCLOB mapped to 'longvarchar'; should map to clob; LOCAL_DATE_TIME->timestamp2 mapping and TIMESTAMP/TIMESTAMP_UTC semantics likely wrong (timestamp2 is the real SQL timestamp, normalized-UTC candidate for TIMESTAMP_UTC).",
+    "registerColumnTypes() / DDL-type re-registrations (UUID, CHAR, VARBINARY, etc.) are unnecessary - controllable via columnType(); over-registration.",
+    "Mutable instance fields (dateType/stringType/.../functionRegistry) are unnecessary; values can be locals - design smell, thread-safety noise.",
+    "No MINIMUM_VERSION: default ctor passes null version and getMinimumSupportedVersion() not overridden - dialect has no defined minimum supported version.",
+    "Functions registered with '%' prefix (%exact, %external, %internal, %isnull, %ODBCIN, ...) - human doubts '%' is a valid HQL identifier start; many built-ins duplicate standard HQL functions.",
+    "Duplicate functionFactory calls: nowCurdateCurtime() (x2), yearMonthDay() (x2), weekQuarter() (x2); current_timestamp/$list* etc. may already be registered by super.",
+    "datetimeFormat() Replacer ordering: ss->SS before SS->FF2 corrupts seconds into FF2 (same ordering bug as the sibling PR).",
+    "supportsSubqueryOnMutatingTable() has no @Override and unclear callers.",
+    "LimitHandler.processSql relies on indexOf('select') string scanning - fragile; only overrides deprecated overload."
+  ],
+  "notes": "v8 gives a competent surface-level pass but largely misses the human's deep dialect critique. Good (+1 each): the duplicate functionFactory calls (nowCurdateCurtime/yearMonthDay/weekQuarter x2) - verifiably true in the diff; the missing modern processSql(...) parameter-marker overload for HB 7.1 (deprecated single overload) - grounded; the deprecated 3-arg render() in InterSystemsIRISLogFunction (vs 4-arg ReturnableType) - grounded; datediff returning stringType being odd (should be numeric) - reasonable; contributeTypes() re-registering TimestampJdbcType after super - plausible and overlaps the human 'already handled by super' theme. Trivial (0): the dateadd parameter-type 'mismatch' is itself confused (types ANY,NUMERIC,ANY actually match part,number,date); supportsSubqueryOnMutatingTable @Override nit (and v8 contradicts its sibling-PR claim about whether it overrides Dialect); determineColumnReferenceQualifier 'verify edge cases' is a pure hedge. WRONG/FAB (-1, fab=1): 'Missing dialect registration in CommunityDatabase/CommunityDialectSelector' - those files are not in this 5-file PR and the diff is complete; asserting the registration is absent over-reaches, and the human (who reviewed exhaustively) never raised it. MISSED (-1 each, 5): the columnType correctness cluster (char/float/nvarchar/blob-clob branches the human calls wrong); the unnecessary registerColumnTypes/DDL re-registration block; removable mutable fields; no MINIMUM_VERSION / getMinimumSupportedVersion; the '%'-prefixed function validity doubt. Net = good(5)+trivial(0)-wrong(1)-missed(5) = -1."
+}

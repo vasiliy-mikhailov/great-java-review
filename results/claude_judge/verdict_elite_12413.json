@@ -1,0 +1,18 @@
+{
+ "pr": 12413,
+ "kind": "test",
+ "net": -7,
+ "n_good": 0,
+ "n_critical": 0,
+ "n_wrong": 6,
+ "n_trivial": 3,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 6,
+ "own_review_points": [
+  "SemanticQueryBuilder safe-mode gate should also catch function('column'/'sql', ...) by function name, not just functionTemplate==null (human ref, line ~4609)",
+  "Property naming: hibernate.query.safe_mode_enabled vs the hibernate.query.hql.<x>_enabled convention (plausible but unverifiable from bundle)",
+  "whats-new.adoc: trailing blank lines before closing ---- delimiter"
+ ],
+ "notes": "v8 built its ENTIRE review on a false premise: 'the SafeMode feature/implementation/tests do not exist, this is a doc-only PR.' But the changed-file header explicitly lists the 10 implementation files (SemanticQueryBuilder.java, QuerySettings.java, SqmCreationOptions.java, HqlSafeModeTest.java, etc.) \u2014 they are simply not included in this bundle's diff body. Per rubric, asserting 'X is missing' when X is in the changed-file list is a fabrication. P1 (no SafeMode class anywhere), P2 (no tests exist \u2014 HqlSafeModeTest.java IS listed), P3 (only 1 file changed, impl absent), P5/P6 (no validation gate in visitJpaNonstandardFunction/visitColumnFunction \u2014 the human ref proves the safe-mode check exists at 4609), P7 (Dialect.java not even in changed-file list) are all fabrications/wrong (6). The human's actual point (extend the gate to cover function('column')) was missed. P4 naming nit and P8 formatting and P9 FunctionContributor-praise are trivial. A confidently-wrong review."
+}

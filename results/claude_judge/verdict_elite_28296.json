@@ -1,0 +1,20 @@
+{
+ "pr": 28296,
+ "kind": "test",
+ "net": 2,
+ "n_good": 2,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 4,
+ "n_unverifiable": 0,
+ "n_missed": 0,
+ "fabs": 0,
+ "own_review_points": [
+  "Read path multiplies HMS seconds by MICROSECONDS_PER_SECOND without multiplyExact (no overflow in practice for valid epochs)",
+  "Write uses floorDiv(min)/ceilDiv(max) so round-trip widens the [min,max] range -> conservative/correct for stats estimates",
+  "getTimestampEpochMicro truncates nanos->micros even for max (documented as acceptable for estimates)",
+  "Splitting TimestampType from TimestampWithTimeZoneType in getSupportedColumnStatistics is the correct boundary",
+  "Documented TODO (issue 28835): columnTypes resolves TIMESTAMP to millis ignoring session precision -- pre-existing, author-flagged"
+ ],
+ "notes": "Correct, low-severity PR; human ref's only point is a confirmation (product tests verify truncation), not a bug. V8 P1 (multiplyExact consistency) and P2 (floorDiv/ceilDiv vs plain truncation asymmetry note) are substantive minor observations = good. P3,P4,P5,P6 are correct but praise/restating = trivial. No wrongs, no fabs; all cited content within visible diff. The human's confirmation point is implicitly covered by V8's nanoseconds/floor-ceil verification, so no genuine miss. Modest positive."
+}

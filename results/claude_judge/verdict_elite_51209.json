@@ -1,0 +1,22 @@
+{
+  "pr": 51209,
+  "kind": "general",
+  "net": 7,
+  "n_good": 5,
+  "n_critical": 1,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 0,
+  "fabs": 0,
+  "own_review_points": [
+    "ValueRegistryProcessor (core) registers ServiceProviderBuildItem.allProvidersFromClassPath(Runtime.class.getName()) -- wrong class; should be RuntimeInfoProvider; SPI providers won't be registered for native image",
+    "ValueRegistryConfigSource.getValue: value.get(valueRegistry).toString() NPEs if RuntimeInfo.get() returns null",
+    "QuarkusTestExtensionState brute-force clone() does not propagate the new valueRegistry field (TODO acknowledges); cloned-across-classloader state gets null registry",
+    "@QuarkusIntegrationTest builds a local empty ValueRegistry (only ServiceLoader-populated); app runs in separate JVM so runtime values (HTTP port) are absent",
+    "@Deprecated(forRemoval) get(String) bridge method sits on the public ValueRegistry interface",
+    "ServiceLoader.load(RuntimeInfoProvider.class) in Builder uses TCCL; may miss providers in dev mode if TCCL not yet runtime CL",
+    "RuntimeKey.key(Class) uses Class.getName() (FQN) as key; collision risk only across identical-FQN classes (rare)"
+  ],
+  "notes": "Re-checked the FULL 33-file changed list: every file v8 cites (QuarkusTestExtensionState, QuarkusIntegrationTestExtension, registry/ValueRegistry, ValueRegistryParameterResolver) IS present -- the earlier '3 fabricated files' was a truncation artifact. NO fabrications. P5 (Runtime.class vs RuntimeInfoProvider in ServiceProviderBuildItem) is a genuine native-image SPI bug -> critical +2. Goods: clone() drops valueRegistry (+1), integration-test empty-registry semantics gap (+1), NPE in ConfigSource.getValue (+1), @Deprecated-on-public-interface (+1, grounded), ServiceLoader TCCL concern (+1). P4 RuntimeKey collision is speculative and the 'intKey has the same issue' sub-claim is wrong (intKey takes a String) -> trivial. P7 ordering, P9 'confirmed safe', P10 'intentional per design' -> trivial. Human's only point (vertx-http HttpServer SocketAddress API) is on a file not in this diff/out of scope -> not charged. Net +7."
+}

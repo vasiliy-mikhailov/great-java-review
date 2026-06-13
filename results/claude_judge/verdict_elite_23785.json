@@ -1,0 +1,21 @@
+{
+ "pr": 23785,
+ "kind": "general",
+ "net": 6,
+ "n_good": 4,
+ "n_critical": 1,
+ "n_wrong": 0,
+ "n_trivial": 1,
+ "n_unverifiable": 0,
+ "n_missed": 0,
+ "fabs": 0,
+ "own_review_points": [
+  "Validation makes systemTopicDefaultNumPartitions mandatory for PARTITIONED -> breaks existing stored namespace policies/CLI (back-compat)",
+  "BrokerService.getDefaultNumPartitions: getSystemTopicDefaultNumPartitions() returns nullable Integer; old policies lack the field -> NPE on unboxing for system topics",
+  "No CLI (CmdNamespaces) option for the new namespace-level override -> namespace feature unusable",
+  "Test sets systemTopicDefaultNumPartitions == defaultNumPartitions (both PARTITIONS) so independence is not actually verified",
+  "Human: default should be -1 (fall back to defaultNumPartitions) for back-compat; check value > 0",
+  "No symmetric NON_PARTITIONED validation rejecting systemTopicDefaultNumPartitions"
+ ],
+ "notes": "Strong review. P1 breaking-validation/back-compat = critical (matches human compat points). P2 NPE unboxing = good (aligns with human fallback suggestion). P3 NON_PARTITIONED symmetry, P4 missing CLI (matches human SUMMARY re pulsar-admin), P6 test-coverage gap all good/grounded. P5 doc wording = trivial. Human's -1-default/fallback nuance is effectively covered by P1/P2 recommendations, so no genuine miss. No wrongs/fabs."
+}

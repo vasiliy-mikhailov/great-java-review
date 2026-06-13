@@ -1,0 +1,20 @@
+{
+ "pr": 11678,
+ "kind": "test",
+ "net": 1,
+ "n_good": 3,
+ "n_critical": 0,
+ "n_wrong": 1,
+ "n_trivial": 2,
+ "n_unverifiable": 2,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "MappingSettings @settingDefault says TemporalTableStrategy.SINGLE_TABLE, but TemporalTableStrategy.AUTO javadoc states 'This is the default' \u2014 doc is wrong",
+  "MappingSettings javadoc typo: 'SUpplier' should be 'Supplier'",
+  "TemporalHelper.createHistoryTablePrimaryKey handles only RootClass and Collection with no else \u2014 any other Temporalized type silently gets no history-table PK",
+  "InFlightMetadataCollectorImpl.addTable: needless cosmetic ternary flip (name!=null?x:null -> name==null?null:x), pure diff churn",
+  "Human: with nullable row_end the 'as of' query needs an OR predicate (row_end>=t or row_end is null) which forces a BitmapOr plan; using a max-timestamp sentinel for active rows enables a direct index scan (significant perf impact)"
+ ],
+ "notes": "Huge PR (159 files, +10620) truncated at ~150k. Verified good: the @settingDefault SINGLE_TABLE-vs-AUTO doc mismatch (TemporalTableStrategy.AUTO explicitly 'This is the default'), the 'SUpplier' typo, and the missing else in createHistoryTablePrimaryKey. WRONG: P3 mischaracterizes OracleTemporalTableSupport.useTemporalRestriction \u2014 v8 invents a 'nested ternary' with a 'transaction ID supplier' branch that 'delegates to parent', but the visible code is a simple switch (HISTORY_TABLE -> getTemporalIdentifier()!=null; NATIVE -> false; default -> true), no supplier, no parent delegation. P7 (Temporalized.java) and P8 (UpdateCoordinatorHistory.java) cite files past the truncation marker -> unverifiable. P4 (currentTransactionIdentifier mutable state) is a weak, self-defeating thread-safety + doc nit -> trivial; P6 (cosmetic ternary) trivial. Missed the human's meaty nullable-row_end vs max-timestamp query-plan performance argument."
+}

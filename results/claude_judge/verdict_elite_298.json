@@ -1,0 +1,20 @@
+{
+  "pr": 298,
+  "kind": "general",
+  "n_good": 3,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 0,
+  "fabs": 0,
+  "own_review_points": [
+    "New SchemaGeneratorConfigCustomizer interface has no ordering/priority contract unlike sibling @All filter interfaces (ToolFilter etc.)",
+    "Jackson customizer enables RESPECT_JSONPROPERTY_ORDER/REQUIRED by default (@WithDefault true) \u2014 behavioral change once jackson module is on classpath",
+    "Docs index.adoc:568 has stray word 'server' and an unbalanced backtick on the module names",
+    "Victools module classes instantiated via new JacksonModule(...) etc. \u2014 possible missing ReflectiveClassBuildItem for native image (pre-existing surface, extended here)",
+    "Test base now disables all three schema-generator modules in defaultConfig() \u2014 addresses the human-reference review comment about swagger2"
+  ],
+  "notes": "Human ref's single point (add swagger2.enabled=false in McpServerTest) is ALREADY satisfied in the final diff (all three disabled at lines 46-48), so not a miss. v8 point1 (ordering doc gap) good/grounded. point2 (default-on Jackson options behavioral change) good. point3 (reflection/native) good and properly hedged as pre-existing. point4 docs: stray 'server' word + missing backtick both verified in index.adoc = good. point5 (test disables modules) is accurate but praise = trivial. point6 (constructSchemaGenerator CDI order) restates point1 with no new insight = trivial. point on summary = trivial. Solid, accurate, well-grounded review of a feature-add PR with low bug density; nothing fabricated. net=3.",
+  "net": 3
+}

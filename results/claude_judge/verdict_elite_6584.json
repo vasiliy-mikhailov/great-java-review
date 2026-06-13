@@ -1,0 +1,20 @@
+{
+  "pr": 6584,
+  "kind": "general",
+  "n_good": 3,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Corrector added to logging deployment MODULE attributes that use setStorageRuntime() (read-only runtime views) where a value corrector has no effect",
+    "Added ModuleIdentifierUtil import in those files becomes effectively unused if corrector never fires",
+    "ClassLoadingAttributeDefinitions: removing parseCanonicalModuleIdentifier(module) relies on corrector having canonicalized at write time \u2014 correct only for written (non-read-only, non-expression) attributes",
+    "setAllowExpression(true) attributes: corrector runs on unresolved ${...} expression strings (framework behavior, noted)",
+    "Human: deprecated JaasCustomSecurityRealmWrapper path \u2014 unclear what external input feeds the configuration object the corrector should guard"
+  ],
+  "notes": "v8 thesis (corrector is a no-op on read-only logging deployment MODULE attrs) is corroborated INSIDE the diff by the visible .setStorageRuntime() on those attributes (deployment.resources runtime views are registered read-only). The exact registerReadOnlyAttribute() line numbers v8 cites (84/144) are in unchanged code not shown, so the citation is uncheckable, but the conclusion is sound and the setStorageRuntime evidence is in-diff => not a fabrication. point1 = good, point2 = good (dead import corollary). point3 about HandlerResourceDefinition.java:7 / DeploymentPermissions import dead-code = part of same finding, trivial. point4 (expression handling note) = trivial/no-defect. point5 (parseCanonicalModuleIdentifier removal correct) = good, grounded. point6 (deprecated ExtensionResourceDefinition param harmless) = trivial. point7 (CommonAttributes constant style) = trivial. MISSED: human's only point \u2014 the deprecated JaasCustomSecurityRealmWrapper concern (whether/where the corrector should apply for that deprecated path's external input) \u2014 v8 didn't raise = 1 missed. net = 3 good - 1 missed = 2.",
+  "net": 2
+}

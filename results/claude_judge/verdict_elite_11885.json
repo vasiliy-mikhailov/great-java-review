@@ -1,0 +1,20 @@
+{
+ "pr": 11885,
+ "kind": "test",
+ "net": 2,
+ "n_good": 3,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 5,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "SpannerFormatFunction.render: switch(temporalType) on a null temporalType (getSqlTemporalType may return null) throws NPE \u2014 no null guard/default",
+  "var_pop/stddev_pop registered as E[X^2]-E[X]^2 emulation patterns: numerically unstable (catastrophic cancellation) and questionable if Spanner has native VAR_POP/STDDEV_POP",
+  "locate ternary pattern evaluates strpos(substr(?2,?3),?1) twice",
+  "right pattern substr(?1,-?2): negative-offset edge semantics when ?2 exceeds string length",
+  "Human: SpannerDialect could emulate local timestamps via custom JdbcType implementations (UTC shift on JVM side) instead of skipping the timezone tests"
+ ],
+ "notes": "Three substantive grounded points: the SpannerFormatFunction null-temporalType NPE gap (v8 mis-states it as 'IllegalArgumentException with null message' \u2014 a switch on a null enum NPEs \u2014 but the underlying defect is real), the var_pop/stddev_pop numerical-instability + emulation-vs-native concern (well reasoned, the PR explicitly registers the emulation), and the double-strpos in locate. The rest (SpannerTruncFunction default-case \u2014 v8 itself concedes null IS guarded to numeric, log comment, castPattern restating, EPOCH restating/praise, test-split @SkipForDialect suggestion) are trivial. Missed the human's custom-JdbcType design suggestion."
+}

@@ -1,0 +1,22 @@
+{
+ "pr": 25489,
+ "kind": "general",
+ "net": 6,
+ "n_good": 7,
+ "n_critical": 0,
+ "n_wrong": 1,
+ "n_trivial": 1,
+ "n_unverifiable": 0,
+ "n_missed": 0,
+ "fabs": 1,
+ "own_review_points": [
+  "Inconsistent Closeable vs AutoCloseable: Producer/QueueConsumer extend AutoCloseable; StreamConsumer/CheckpointConsumer extend Closeable (verified)",
+  "async receiveMulti returns CompletableFuture<List<Message>> losing Messages.lastId() (verified both async consumers)",
+  "receiverQueueSize on QueueConsumerBuilder but absent from StreamConsumerBuilder (verified)",
+  "ChunkingPolicy record lacks the static factory methods other config records provide (verified no static)",
+  "param-name maxMessages vs maxNumMessages inconsistency (verified)",
+  "PulsarClientException nested static final classes lack serialVersionUID / @SuppressWarnings(serial) (verified)",
+  "build.gradle.kts adds compileOnly protobuf/opentelemetry deps unlike v4 pure-API module (verified)"
+ ],
+ "notes": "Human = LGTM minor, so the depth baseline is my own. This is a pure interface-definition PR; API-consistency findings ARE the substance. Verified against the visible diff: P1 Closeable/AutoCloseable (good), P3 async-List-loses-lastId (good), P5 receiverQueueSize gap (good), P6 ChunkingPolicy factories (good), P7 param-name (good), P8 serialVersionUID (good), P9 compileOnly deps (good). TWO factual errors: P2 claims QueueConsumer is 'missing consumerName()' -- it explicitly declares 'String consumerName();' (false 'X is missing' = wrong + fab). P4 is actually correct: AsyncQueueConsumer has acknowledge(Message<T>)/negativeAcknowledge(Message<T>) overloads that sync QueueConsumer lacks (verified) = good. P10 PulsarClientProvider suggestion = trivial. Cited files are all within the visible window (truncation at end), so no unverifiable. Net strong despite the one false missing-method claim."
+}

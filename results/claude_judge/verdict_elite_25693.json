@@ -1,0 +1,22 @@
+{
+ "pr": 25693,
+ "kind": "general",
+ "net": 6,
+ "n_good": 7,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 1,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "GC orphan-cleanup race: forced deletion of /txn-op records at retention window before a slow/partitioned participant materializes -> silent loss of committed acks (human's BUG)",
+  "MetadataTransactionBuffer/PendingAckStore method tables omit many real interface methods (openTransactionBufferReader, purgeTxns, syncMaxReadPosition, commitTxn/abortTxn signatures)",
+  "MetadataStore lacks range-watch / partition-key co-location today; range-watch is the most invasive extension",
+  "Provider selection is a single global provider today, not per-topic-domain as the PIP assumes",
+  "ADD_PARTITION_TO_TXN as no-op vs 'no binary protocol changes' is underspecified (client routing)",
+  "Three-state header model drops COMMITTING/ABORTING transient states vs existing TxnStatus",
+  "ZK-backed degraded GC/timeout sweep performance risk"
+ ],
+ "notes": "Diff is only the .md file; V8's interface-signature points reference real Pulsar Java APIs not in-diff but are grounded, substantive design-review observations (not in-diff fabrications about THIS PR's code -> not charged as fabs). P1-P7 mostly good (signature mismatches, MetadataStore range-watch gap, provider-selection gap, ADD_PARTITION no-op, 3-state divergence, ZK risk, metrics gap). Solid depth. BUT V8 MISSED the human reference's only point and the single real correctness bug: the GC-vs-slow-participant race that loses committed acks. That is the most important issue -> 1 missed. No wrongs."
+}

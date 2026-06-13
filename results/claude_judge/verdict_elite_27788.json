@@ -1,0 +1,21 @@
+{
+  "pr": 27788,
+  "kind": "general",
+  "net": 2,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 1,
+  "n_trivial": 6,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Typos 'Delection vector' in DefaultDeletionVectorWriter and 'existing delection vectors' in IcebergMetadata",
+    "delete.contentOffset().orElseThrow()/contentSizeInBytes().orElseThrow() lack diagnostic messages for malformed DV delete files",
+    "DeletionVector.crc32 calls data.byteArray() which throws UnsupportedOperationException on non-array-backed slices; callers currently heap-backed only",
+    "DeletionVector deletedRows is a sparse RoaringBitmap[] indexed by pos>>>32, grown via Arrays.copyOf(key+1); huge/scattered high keys could bloat it (Map alternative)",
+    "DeleteManager: a DV present-but-unreadable propagates and does NOT fall back to position deletes -- but this is CORRECT per spec (DV replaces position deletes; failing the query is right, not data loss)",
+    "human/@dain: why are deletion vectors written from the coordinator? incurs reads of previous deletes / significant resources; could workers write them?"
+  ],
+  "notes": "Verified against the truncation marker (real content ends ~line 2940; nothing graded was past it). Goods: both typos confirmed (+1), missing orElseThrow messages confirmed (+1), crc32 byteArray()-on-direct-slice defensive note is correct Slice-API knowledge (+1), sparse-array/Map design note grounded (+1, weak). WRONG: P5 frames corrupted-DV-no-fallback as a 'data loss' correctness concern and recommends catching+falling back to position deletes -- but the code's own spec comment says position deletes are ignored when a DV exists, so propagating the failure is correct and falling back would itself be a bug -> -1. onlyElement(), TODO follow-up, MergeSink empty-path, SplitSource verify, V3 migration test = correct but confirmatory -> trivial. Missed the human's substantive design question on coordinator-side DV writing (writeDeletionVectors in finishWrite is visible) -> -1. No fabrications. Net +2."
+}

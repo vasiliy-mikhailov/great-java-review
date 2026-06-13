@@ -1,0 +1,19 @@
+{
+ "pr": 9352,
+ "kind": "general",
+ "net": 3,
+ "n_good": 3,
+ "n_critical": 1,
+ "n_wrong": 0,
+ "n_trivial": 2,
+ "n_unverifiable": 0,
+ "n_missed": 2,
+ "fabs": 0,
+ "own_review_points": [
+  "Caching.setDefaultClassLoader is JVM-global static; the get-old/set-new save in prepareForUse and restore in releaseFromUse is non-atomic and corrupts state under concurrent multi-SessionFactory init/close",
+  "preInitializedCacheManager is never nulled in releaseFromUse (cacheManager and oldJsr107CacheClassLoader are reset, it is not)",
+  "getServiceClassLoader uses getService (may return null) rather than requireService (human suggestion); workWithClassLoader(cl->cl) identity lambda is an odd getter use",
+  "Design (human): most JCacheRegionFactory changes exist only to keep tests passing; prefer changing tests to inject CACHE_MANAGER and deprecate/move JCacheHelper to test sources rather than using it in main"
+ ],
+ "notes": "Strong lead point: v8 correctly identifies the non-atomic save/restore of JVM-global Caching.setDefaultClassLoader as a concurrency hazard (critical) and aligns with the human's 'is it necessary to keep the old classloader' concern, going deeper. getCachingProvider(null) spec concern and the workWithClassLoader identity-lambda oddity are grounded good points; preInitializedCacheManager-not-cleared is verified. EhCache-comment rewording and the test-cleanup praise are trivial. Missed: the getService->requireService null suggestion and the overarching design critique (revert most main-code changes, deprecate JCacheHelper). Solid review."
+}

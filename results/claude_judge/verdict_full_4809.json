@@ -1,0 +1,20 @@
+{
+  "pr": 4809,
+  "kind": "general",
+  "n_good": 3,
+  "n_critical": 1,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "sendFile() failure path: responseComplete() commented out and LastHttpContent only written on success => responseInProgress never cleared on failure (real regression vs old unconditional listener)",
+    "hook2() called from submit() on producer threads but undocumented; subclass could assume consumer-thread like hook(); a test override does queue.add() from hook2",
+    "add() else-branch return logic (line 221): drain vs unwritable-mask signaling correctness (the human-reference nit)",
+    "testSendFilePipelined reduced n 4->2 with no explanatory comment \u2014 possible masked instability",
+    "Message-count water marks (16/8) replace per-stream byte accounting \u2014 semantic backpressure change for large bodies"
+  ],
+  "notes": "Deep MPSC lock-free queue PR. v8 point1 (sendFile failure path leaves responseInProgress uncleared) is a real, correctly-identified regression: verified the listener writes EMPTY_LAST_CONTENT only inside if(isSuccess) and conn.responseComplete() is commented out, while success path gets responseComplete via the new write() wrapper => failure path leaks. =critical. point2 (hook2 producer-thread / missing Javadoc) good and grounded (override exists in tests); minor attribution slip (the queue.add-in-hook2 is a different test than testOrdering) but core valid. point5 (water-mark byte-vs-count semantic change) good, grounded in removed writeWindow/writeOverflow fields. points 3,4,6,7 are 'consider/verify' hedges restating diff structure with no concrete defect = trivial(3 counted). MISSED: human-reference's specific add()-return-logic correctness nit at OutboundWriteQueue:221 (whether the else branch should mirror the proposed snippet) v8 did not address = 1 missed. No fabrications. net = (3+2) -1missed -0 ... good3+crit2=5, minus 1 missed = 4. Wait recompute: good/critical/wrong/trivial sum = 3*1 + 1*2 + 0 + 0 = 5; minus missed 1 = 4.",
+  "net": 4
+}

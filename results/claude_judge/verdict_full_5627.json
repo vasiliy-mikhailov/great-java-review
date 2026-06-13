@@ -1,0 +1,20 @@
+{
+  "pr": 5627,
+  "kind": "general",
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 5,
+  "n_unverifiable": 0,
+  "n_missed": 3,
+  "fabs": 0,
+  "own_review_points": [
+    "test='true' source folders with a release attr would be compiled into the main bundle's META-INF/versions/N rather than test output \u2014 no exclusion",
+    "DemoTest.testTychoMultiReleaseClasspathDemo only checks error-free log, doesn't assert version-specific classes landed in META-INF/versions \u2014 weak coverage",
+    "Design: the OSGi spec wants 'Multi-Release: true' manifest header as the primary trigger and should not require fixed source-folder names (human-ref design concern)",
+    "Attribute naming inconsistency: README uses 'multirelease' wording while the code reads attribute 'release'",
+    "getMultiReleaseVersion() correctly returns OptionalInt and swallows NumberFormatException (acceptable)"
+  ],
+  "notes": "v8 point1 (test='true' + release would route test sources into main versions output) is a genuine, non-obvious behavioral concern grounded in the streamed doCompile() change = good. point2 (demo test only verifies error-free log, no JAR-structure assertion) = good observation but mostly test-gap hedge -> count as good? It's a real test-coverage gap; however it's phrased as 'consider' and is secondary. I score point1 good and treat point2 as trivial (soft test nit) to stay strict. points 3,4,5,6 are 'consider/no issue/clean setup' restatements = trivial. NOTE point3 says method returns OptionalInt and is consistent \u2014 correct; the human ref asked to switch Integer->OptionalInt but the FINAL diff already uses OptionalInt, so human point is stale (not charged as missed). MISSED (real human design points v8 omitted): (a) Multi-Release manifest header must be the primary trigger / shouldn't require supplemental manifests or fixed folder names; (b) AbstractOsgiCompilerMojo:390 the existing manifest check should remain and classpath attrs checked inside the if-block; (c) 'release' vs 'multirelease' naming must be fixed across the PR (README). = 3 missed. PackagePluginMojo:392 human point references a file NOT in this diff -> not charged. net = 1 good -3 missed = -2.",
+  "net": -2
+}

@@ -1,0 +1,22 @@
+{
+ "pr": 11680,
+ "kind": "test",
+ "net": 4,
+ "n_good": 6,
+ "n_critical": 0,
+ "n_wrong": 1,
+ "n_trivial": 0,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "AbstractTransactSQLDialect registers JsonAsStringJdbcType.NVARCHAR_INSTANCE / XmlAsStringJdbcType.NVARCHAR_INSTANCE unconditionally, regardless of use_nationalized_character_data",
+  "jTDS AbstractMethodError fallback hardcodes StandardCharsets.UTF_8 for byte<->String \u2014 corrupts data if the Sybase DB uses a different encoding",
+  "jTDS/Sybase AbstractMethodError fallback paths are entirely untested (tests gate on SupportsNationalizedData, never the jTDS driver)",
+  "AbstractMethodError catch blocks are dead code for SQL Server's official Microsoft driver (base class serves both SQLServer and Sybase)",
+  "Array variants (JsonAsStringArrayJdbcType/XmlAsStringArrayJdbcType) get the jTDS fallback but no NVARCHAR_INSTANCE registration \u2014 coverage gap",
+  "PR description says 'Added a descriptor to DdlTypeRegistry' but the code uses JdbcTypeRegistry.addDescriptor",
+  "Human: formatting (spaces around parens and ternary ?/:) and collapsing the byte[]/wrap lines"
+ ],
+ "notes": "Six grounded good points: PR-description/registry mismatch (verified getJdbcTypeRegistry()), unconditional NVARCHAR registration, hardcoded-UTF_8 corruption risk, dead AbstractMethodError catch for the MS driver, untested jTDS fallback, and uncovered array variants. One WRONG (P4): v8 claims the base ResultSet.doExtract fallback still passes raw bytes while only the CallableStatement path converts to UTF-8 ('inconsistent') \u2014 but the diff shows the ResultSet path was ALSO converted to UTF-8 (NVarcharJdbcType), so they are consistent; the claim is refuted (not a fabrication about absent code, just a misread). Missed the human's formatting theme."
+}

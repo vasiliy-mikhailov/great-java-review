@@ -1,0 +1,21 @@
+{
+  "pr": 433,
+  "kind": "general",
+  "net": 3,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 2,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "XMLLanguageServer constructor calls store.addPropertyChangeListener(this) with no matching removePropertyChangeListener -> listener leak (mitigated by singleton)",
+    "static final lemminxDefinition resolved from LanguageServersRegistry at class-load may be null and propertyChange would NPE/silently no-op",
+    "Typo XML_PREFERENCES_CATAGLOGS should be CATALOGS",
+    "Leftover 'TODO Auto-generated method stub' in propertyChange",
+    "mergeCustomInitializationOptions uses raw Map types and unchecked casts",
+    "hardcoded GenericEditor id string"
+  ],
+  "notes": "Good grounded points: listener registered-but-never-removed (+1; minor citation slip — singleton is in MANIFEST.MF not plugin.xml:72), static lemminxDefinition possibly null at class-load (+1), CATAGLOGS typo (+1), leftover TODO stub (+1). Hardcoded editor-id is a low-value nit (trivial). Two points lean on files not in the diff: the claim that the IPropertyChangeListener+getActiveLanguageServers(null) pattern 'has no precedent in this codebase' is unverifiable here and is actually contradicted by the sibling YAMLLanguageServer which uses exactly this pattern -> scored unverifiable=0 (not charged as fab since out-of-window), and the getActiveLanguageServers(null) 'untested' claim cites TestTypeScript.java which isn't in the diff -> unverifiable=0. Human reference only had the Edit/Change naming nit, which v8 missed (-1)."
+}

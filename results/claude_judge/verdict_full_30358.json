@@ -1,0 +1,21 @@
+{
+  "pr": 30358,
+  "kind": "general",
+  "net": 3,
+  "n_good": 2,
+  "n_critical": 1,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "MissingWebServerFactoryBeanFailureAnalyzer extends AbstractFailureAnalyzer<ApplicationContextException> but unwraps cause.getCause(); since the thrown MissingWebServerFactoryBeanException IS an ApplicationContextException, findCause() matches it directly as `cause`, so cause.getCause() is null and analyze() always returns null -- the PR's own test should fail",
+    "Generic bound should be MissingWebServerFactoryBeanException (like PortInUseFailureAnalyzer) so the analyzer isn't invoked for every unrelated ApplicationContextException",
+    "Exception @since tags say 2.7.0 in javadoc but human wants '2.7' formatting (class and getter)",
+    "ACTION message is debatable: maintainer prefers non-prescriptive 'check dependencies / check web-application-type', not specific starter names",
+    "No end-to-end integration test through SpringApplication.run()/FailureAnalyzers; only isolated analyzer test",
+    "import-control adds allow for web.server.context -> org.springframework.context, consistent with existing pattern"
+  ],
+  "notes": "v8's lead 'Critical' (analyzer always returns null due to wrong generic + redundant getCause unwrap) is correct and serious -- findCause matches the typed exception directly, getCause()==null, analyze returns null; the PR's own analyzer test would fail. +2. P2 (broad type -> needless invocations) is a distinct valid efficiency point (+1). P5 (missing integration test) +1. P3 'fragile cause chain' restates/half-contradicts P1 -> trivial. P4 engages the same locus as human's action-message note but recommends prescriptive starter names, which the maintainer explicitly rejected -> trivial, not credited. P6/P7 restate/confirm -> trivial. Missed: @since 2.7 nit (human, 2 spots, one issue) -> -1. No fabrications."
+}

@@ -267,3 +267,84 @@ prompt-genome territory. The platform is now in place for that next phase: v7 ge
 at 57% of v5's cost with judged-equal quality, traces and per-call logs capture every
 investigation, and Claude grading with blind own-review provides a trustworthy fitness
 signal that Qwen self-judging never was.
+
+
+---
+
+## v8 elite baseline (depth≥3 eval, 56 PRs, full-diff Claude point-net)
+
+The eval set was rebuilt around quality: 56 PRs whose human reviews are depth≥3 (41
+general + 15 test), curated by Claude depth-scoring. v8 is a dockerized, faithful
+rebuild of v7 (same OH_V7 lean-subagent harness), generating one review per PR.
+
+**Result — v8 reproduces and slightly exceeds the v7-class quality, now on the harder
+elite set:**
+
+| group | n | mean net ± SE | good | crit | wrong | missed | fabs (PRs) |
+|---|---|---|---|---|---|---|---|
+| all | 56 | **+2.64 ± 0.38** | 210 | 19 | 26 | 75 | 16 (10) |
+| general | 41 | +3.10 ± 0.39 | 161 | 18 | 13 | 57 | 8 (7) |
+| test | 15 | +1.40 ± 0.82 | 49 | 1 | 13 | 18 | 8 (3) |
+| all, excl. 2 base_sha outliers | 54 | **+2.89 ± 0.34** | 210 | 19 | 19 | 74 | 9 (8) |
+| test, excl. outliers | 13 | +2.23 ± 0.63 | 49 | 1 | 6 | 17 | 1 (1) |
+
+46 of 56 PRs are net-positive, 2 zero, 8 negative; net distribution runs −7 to +9 with
+the bulk between +1 and +7. General reviews (+3.10) are stronger than test reviews
+(+1.40, or +2.23 once the outliers are removed) — v8 misreads test semantics more often
+(more `wrong` on test PRs).
+
+**Method and integrity notes.**
+- Judge is Claude, never Qwen, with a blind own-review first, then the point rubric
+  (good +1 / critical +2 / wrong −1 verify-first / trivial 0; −1 per point in
+  human∪own that v8 missed; fabrications counted separately).
+- Graders saw the complete PR diff (read-only `git diff base…pr-head`, up to a 150k cap
+  with an explicit truncation marker), not the dataset's ~7k truncated input. An earlier
+  truncated grading pass scored −0.65 purely because 79 points landed outside the 7k
+  window and were unverifiable; with the full diff that collapsed to ~4 unverifiable and
+  the score moved to its true positive range. Grading on partial context is the single
+  biggest measurement trap here.
+- Two empties (hibernate-orm#11844, Drifty#1121) were a harness extraction bug — the
+  finish review is nested under `action.message`, not top-level `message` — and were
+  recovered verbatim from their traces (fix applied). quarkus#42140 hit a real mid-run
+  malformed-tool-call error and was regenerated cleanly with the fixed harness.
+- Human references are thin (≤1 point for 32/56), so by operator decision we judge
+  as-is and the depth comparison rests on Claude's blind own-review. Read the miss rate
+  as "what v8 missed that Claude caught," not "vs the human."
+- hibernate-orm#12413 and spring-boot#33405 have a stale cached base_sha, so
+  `git diff base…pr-head` yields a degenerate 1-file diff that doesn't represent the
+  real PR. v8 and the judge both saw that thin diff, so the grades are internally fair,
+  but the instances don't test what we want — hence the "excl. outliers" row. 12413's
+  −7 (6 of the corpus's 16 fabrications) is the worst case and is an artifact of v8
+  reading the 1-file diff as "doc-only" while the header listed 10 files.
+
+**Failure analysis — misses dominate, fabrications are a narrow pattern.**
+- Misses: 75 total (~1.3/PR; 74 excl. outliers). This is the main residual. The deepest
+  correctness/design points are where v8 falls short — e.g. 11595 (5 missed dialect
+  points), 29042 and 6222 (4 each). v8 enumerates surface inconsistencies and dead-code
+  thoroughly but repeatedly misses the single deepest bug in a PR.
+- Fabrications: 9 in 8 PRs once the 12413/33405 outliers are removed (~1 each, ~15% of
+  PRs). They share one shape: a confident "critical / missing / not-registered" claim
+  that a grounding check refutes (297 null-path, 385 createRadioButton, 916 -fg flag,
+  11595/11740 "dialect not registered in CommunityDialectSelector", 25489 missing
+  method, 42140, 43787). These are absence/criticality over-reaches.
+
+**Why the misses happen (root cause, traced).** v8 under-investigates by prompt design,
+not by hitting any limit: ~3.8 delegations/PR (median 4), depth-2 sub-delegation fires
+in ~1/29 PRs, and the orchestrator stops voluntarily at ~5–9 steps, far under the
+`MAX_ORCH_STEPS=24` backstop. Three `ORCH_SYS` anchors cause it — changed-file code is
+reviewed directly and never delegated for verification, "most reviews need 0-3
+delegations / over-delegating bloats synthesis," and "write the review now." The
+hibernate-orm#11844 missed `getCheckCondition(String,String[])` unescaped-quotes bug is
+a clean example: that overload was never investigated; the orchestrator synthesized a
+point about all three overloads from a glance and over-generalized "they all escape."
+
+**v9 direction.** Stop limiting the model. Hand-write a relaxed `ORCH_SYS` first (let
+delegations scale to PR size, make changed-file correctness delegable including
+multi-instance checks like "verify all N overloads/call-sites," turn depth-2 recursion
+into a real trigger), keeping only the hard physical bounds. Switch the GEPA reward from
+the mimicry metric (0.85·Qwen-judge + 0.15·lexical vs a thin reference, which rewards
+matching the human and uses Qwen as judge) to v9's own goal — the Claude point-net
+quality used here. The secondary lever is a lightweight reality-check that asks "you
+called X missing/critical — does it actually hold?", aimed squarely at the
+absence/criticality fabrication pattern. Misses (74) outweigh fabrications (9), so depth
+is the primary thrust and the verify tool is the cheaper follow-on.

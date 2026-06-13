@@ -1,0 +1,23 @@
+{
+  "pr": 316,
+  "kind": "general",
+  "net": 7,
+  "n_good": 7,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 1,
+  "n_missed": 0,
+  "fabs": 0,
+  "own_review_points": [
+    "SchemaAssociation overrides equals() but not hashCode() while being stored in a Set -> contract violation / broken dedup",
+    "SchemaAssociationsPreferencePage.insertTableItems: contentTypeManager.getContentType(contentTypeId) may return null then contentType.getName() NPEs for stale/unknown ids",
+    "createContents() builds all widgets on parent but returns new Composite(parent, SWT.NONE) -> page shows an empty composite",
+    "YAMLLanguageServer getYamlConfigurationOptions keys the associations map by schema URL (associations.put(value, fileName)) so multiple fileNames / colliding URLs overwrite each other",
+    "SCHEMA_ASSOCIATIONS_PREFERENCE = \"wildwebdeveloper.yaml.schema\" now stores both JSON and YAML associations -> misleading key name",
+    "SchemaAssociationDialog content-type text parsing via split(\" \")[0] and split(\"[\\\\(\\\\)]\")[1] breaks if names contain parentheses",
+    "YAML loop calls contentType.getBaseType().equals(...) without null-checking getBaseType()",
+    "AddShemaGlobPatternDialog likely orphaned after YAMLSchemaPreferencePage deletion (not in diff)"
+  ],
+  "notes": "Strong, well-grounded review. Verified against diff: missing hashCode (+1), null content-type NPE (+1), createContents returning an empty composite (+1, real SWT bug), YAML schema-URL key collision (+1, real correctness bug), misleading preference key (+1), no YAML child content types registered (+1), fragile split-based parsing (+1). Column-width persistence is a low-value UX nit (trivial). The AddShemaGlobPatternDialog orphan claim is a reasonable inference but the file isn't in the diff and other callers can't be ruled out from the window -> unverifiable=0 (not charged as a fab since YAMLSchemaPreferencePage, its only visible referencer, is indeed deleted here). No fabrications, no factual errors. Human reference contains only an agreement comment, so no substantive misses."
+}

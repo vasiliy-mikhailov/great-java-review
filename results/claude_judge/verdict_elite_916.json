@@ -1,0 +1,23 @@
+{
+  "pr": 916,
+  "kind": "general",
+  "net": 6,
+  "n_good": 5,
+  "n_critical": 2,
+  "n_wrong": 1,
+  "n_trivial": 1,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 1,
+  "own_review_points": [
+    "exec case passes \"$FLUO_CONN_PROPS\" as first arg to FluoExec, but refactored FluoExec.java treats args[0] as appName -> broken command",
+    "setup_service uses app_lib=$lib/apps/$1 where $1 is '-a' (called as setup_service \"${@:2}\") -> creates apps/-a instead of apps/<app>",
+    "exec calls setup_service \"$2\" (='-a') instead of \"${@:2}\" so the regex won't find the app",
+    "-h help shortcut only checks $2, missed when -h appears after -a <app>",
+    "CommandUtil.verifyAppRunning logic inverted-fixed (if(applicationRunning) -> if(!applicationRunning)); FluoStatus second if -> else if also fixes a real prior bug",
+    "FluoWait.countNotifications/waitUntilFinished dropped @VisibleForTesting public to private -> may break existing tests",
+    "Many command classes duplicate -a/-D handling and the -d getter; could share an abstract base (human reviewer's point)",
+    "log4j switched from RollingFileAppender(DEBUG) to ConsoleAppender(INFO); oracle/worker no longer daemonize (nohup/pid removed)"
+  ],
+  "notes": "Two correctly-identified serious shell bugs: FluoExec wrong first arg (+2) and setup_service $1-vs-$app (+2). Good: -h only checks $2 (+1), exec setup_service \"$2\" inconsistency (+1), log4j file->console behavior change (+1), oracle/worker no-longer-daemonize (+1), and correctly confirming the FluoStatus else-if as a real bug fix (+1). FABRICATION: point #6 claims the PR description says oracle/worker support a '-fg' foreground option — there is no PR description here and '-fg'/'foreground' appears nowhere in the diff -> wrong (-1, fab). The app=$2 point has a stale rationale (it cites SERVICE_OPTS/FLUO_LOG_ID which this PR actually deletes from fluo-env.sh) -> trivial. Missed the human reviewer's shared-abstract-class dedup point and the FluoWait visibility-reduction test-break risk. Overall a sharp, mostly-grounded review."
+}

@@ -1,0 +1,21 @@
+{
+ "pr": 25915,
+ "kind": "general",
+ "net": 3,
+ "n_good": 5,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 2,
+ "n_unverifiable": 0,
+ "n_missed": 2,
+ "fabs": 0,
+ "own_review_points": [
+  "NonPersistentTopic idle-disconnect path still uses terminate() (->Terminated, unrecoverable: startProducer is no-op from Terminated and terminate() doesn't remove from map) -> replication permanently broken once idle (human's main BUG); non-persistent path untested",
+  "brokerReplicationInactiveThresholdSeconds is @FieldContext(dynamic=true) but the checkInactiveReplication scheduler is created only at startup -> cannot be enabled dynamically; also thresh<=0 disable only honored at startup (human point)",
+  "NonPersistentReplicator.sendMessage sets latestPublishTime but it is never consumed there -> dead tracking",
+  "Removed cursor.rewind() on producer (re)start and removed disableReplicatorRead() on disconnect -- relies on backlog==0 invariant",
+  "New replicateEntries retry self-schedules every 100ms while Disconnecting/Starting -- unbounded retry / lag risk",
+  "Tests: Chinese-language comments, Thread.sleep(100_000) with 240s timeout, commented-out assertions, subclass tests disabled"
+ ],
+ "notes": "V8 P1 (dead latestPublishTime in NonPersistentReplicator), P3 (Chinese comments), P4 (Thread.sleep(100_000)/commented-out asserts), P6 (100ms retry lag), P7 (dynamic=true but scheduler only at startup -- matches human) all good/grounded. P2 (rewind/disableReplicatorRead removed; suggest invariant assert) = good. P5 (state vs STATE_UPDATER) = trivial nit (field is volatile, V8 admits it's safe). P8 (disabled subclass tests) = good but minor; counted in P-set. MISSED the two biggest things: (a) human's NonPersistentTopic terminate()-is-unrecoverable correctness bug (V8 only noted the harmless dead-code latestPublishTime, not that the NP path can never reconnect), and (b) human's disable-via-dynamic-config evaluating true for all replicators / dynamic config not truly dynamic suggestion to set dynamic=false (V8 P7 partially overlaps the scheduler half but not the 'set to 0 disables -> condition true for all' semantic). Two real misses."
+}

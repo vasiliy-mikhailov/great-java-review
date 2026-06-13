@@ -1,0 +1,20 @@
+{
+  "pr": 6913,
+  "kind": "general",
+  "net": 1,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "RuntimeConfigSetupBuildStep logger initialized as Logger.getLogger(ReflectiveHierarchyStep.class) - copy-paste; warnings mis-attributed to the wrong class.",
+    "ExtensionLoader: the BOOTSTRAP-or-RUN_TIME static-recorder guard throws 'Bytecode recorder is static but an injected config object is declared as run time', but it now also fires for BOOTSTRAP; sibling messages were upgraded to use the phase name (e.g. line 103 'phase + ...').",
+    "RunTimeConfigurationGenerator C_INSTANCE static field is set in createBootstrapConfig and read from other generated methods/threads; it is marked ACC_VOLATILE here for safe publication (the human's sole point - already reflected at line 459).",
+    "C_READ_CONFIG descriptor extended with List.class; empty bootstrap case must pass Collections.emptyList() - handled in RuntimeConfigSetupBuildStep.",
+    "Bootstrap config builder uses configBuilder(false,false) (no ServiceLoader discovery) - converters must come through the generated converterSetup path."
+  ],
+  "notes": "v8 reviews a large (35-file) Quarkus BOOTSTRAP-config-phase PR competently. Good (+1 each): the RuntimeConfigSetupBuildStep logger copy-paste (Logger.getLogger(ReflectiveHierarchyStep.class)) - verifiably true in the diff and a real defect; the ExtensionLoader misleading 'declared as run time' error message that now also fires for BOOTSTRAP while sibling messages were improved to use the phase name - grounded and substantive. Trivial (0): the C_READ_CONFIG 'verify emptyList is passed (looks correct)' point self-resolves; the writing-extensions.adoc note is honestly flagged '(not in PR)' and is a soft release-time doc suggestion, not a PR defect (no fabrication); the ConfigUtils configBuilder(false,false) point also self-resolves ('appears correct'). MISSED (-1): the human's only point - making the C_INSTANCE static field ACC_VOLATILE for safe cross-thread publication (a concurrency/memory-visibility concern). No fabrications; all cited PR files are in the 35-file changeset, no truncation. Net = good(2)-missed(1) = 1."
+}

@@ -1,0 +1,21 @@
+{
+  "pr": 5401,
+  "kind": "general",
+  "n_good": 0,
+  "n_critical": 5,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "@Named(T) in TargetArtifactRepositoryLayout \u2014 corrupted/truncated constant, should be @Named(TargetArtifactRepositoryLayout.ID); will not compile",
+    "@Named(T) in TargetRepositoryConnectorFactory \u2014 same, will not compile",
+    "@Named(A) in BundleArtifactBaselineComparator \u2014 should be @Named(ArtifactType.TYPE_ECLIPSE_PLUGIN), missing import; will not compile",
+    "@Named(A) in FeatureBaselineComparator \u2014 should be @Named(ArtifactType.TYPE_ECLIPSE_FEATURE); will not compile",
+    "@Named(D) in DefaultBuildTimestampProvider \u2014 should be @Named(DefaultBuildTimestampProvider.ROLE_HINT); will not compile",
+    "Large mechanical Plexus->JSR330 migration (287 files); risk of role-hint map injection semantics differing under Sisu (pre-existing TODO in TychoRepositoryTransport)"
+  ],
+  "notes": "DIFF IS TRUNCATED at ~150k (marker present). v8 found 5 distinct corrupted @Named(T/A/D) annotations \u2014 all VERIFIED in the visible diff: original @Component(...hint=X.ID) became @Named(T) etc., where T/A/D are not constants/imports => guaranteed compile failures. These match the human reference's headline (compilation failures) though the human cited 3 DIFFERENT files (TargetPlatformRepository/TychoReactorReader/DefaultMavenContext) that are NOT in the visible diff (likely past truncation). Each of v8's 5 is a serious correctly-identified compile bug with the exact fix = critical x5. points 6,7,8 ('no issue'/pre-existing TODO praise) = trivial x3. MISSED: the human's specific 3 compile-error loci (TychoConstants, ROLE_HINT in TychoReactorReader, FrameworkFinder) are a distinct cluster v8 didn't surface; counted as 1 missed (mitigated \u2014 those files are plausibly beyond the truncation marker, and v8 nailed the same defect category with 5 concrete instances). No fabrications (all cited files in changed-file list). net = 5*2 -1 = 9.",
+  "net": 9
+}

@@ -1,0 +1,20 @@
+{
+ "pr": 11991,
+ "kind": "test",
+ "net": 3,
+ "n_good": 4,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 4,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "registerArrayFunctions() calls arrayPrepend/arrayAppend/arrayReplace factory versions that are then overwritten by the Spanner-specific direct registrations in initializeFunctionRegistry \u2014 redundant",
+  "needsArrayCasting(BasicType) is duplicated verbatim across the 3 new array function classes (and existing ones) \u2014 extract to DdlTypeHelper",
+  "SpannerPostgreSQLTableExporter.isHistoryOrAuditedTable uses == reference equality on Table objects \u2014 relies on metadata identity guarantees",
+  "array_remove_index coalesce(t.idx != ?, true) preserves NULL-index rows (defensive since unnest-with-ordinality never yields null idx)",
+  "Human: SpannerPostgreSQLJsonArrayFunction could wrap in jsonb_array_elements in FROM and re-aggregate with string_agg, then cast to jsonb"
+ ],
+ "notes": "Four grounded good points: the redundant factory registrations overwritten by direct Spanner registrations, the verbatim needsArrayCasting duplication (DRY), the == reference-equality on Table in isHistoryOrAuditedTable, and the array_remove_index null-index handling reading. Weaker/trivial: the array_includes_nullable 'confirm EXCEPT' hedge, the docker_db.sh -gt praise, the VAR_SAMP float8 'verify' hedge, the ArrayTrimTest skip-reason suggestion. Missed the human's json_array alternative-implementation suggestion. Solid, deeper than the one-line human ref."
+}

@@ -1,0 +1,21 @@
+{
+  "pr": 11391,
+  "kind": "general",
+  "net": -1,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 1,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "HSQLArraySortFunction literal path emits sort_array(expr desc nulls first) - depends on HSQLDB sort_array supporting the ASC/DESC NULLS FIRST/LAST suffix (it does, per HSQLDB docs, so likely fine, but a fair verification point).",
+    "H2 and PostgreSQL emulation expression-paths use the same 3-term ORDER BY (null-ordering + desc CASE + asc CASE); HSQL uses an identical null-ordering term - human asks whether H2/PG could adopt the simpler HSQL-style form (minor refactor).",
+    "Oracle generated *_sort/*_reverse PL/SQL functions are marked deterministic, consistent with sibling *_fill/*_trim/*_slice generated functions; table(arr)/multiset is a collection unnest, not dynamic SQL, and the sort is deterministic - so deterministic is appropriate.",
+    "PostgreSQLArraySortEmulation needsArrayCasting only casts string element types, mirroring PostgreSQLArrayTrimEmulation - consistent.",
+    "ArraySortTest covers literal and (true,false) parameter paths; an ascending-nulls-first (false,true) expression-path case would broaden coverage.",
+    "H2 emulation bounded by maximumArraySize (system_range 1..N) - documented existing limitation."
+  ],
+  "notes": "Large, well-built array_sort/array_reverse PR; the human reference is just two minor 'could you simplify H2/PG like HSQL?' questions. Good (+1 each): the HSQL sort_array ASC/DESC NULLS suffix verification (grounded in the literal-path code, legitimate even though HSQLDB happens to support it); the concrete ArraySortTest coverage suggestion for the (false,true) expression path. WRONG (-1): the Oracle 'deterministic' point rests on the factual claim that the generated functions 'execute dynamic SQL via table(arr)' - table(arr)/multiset over a known UDT array is not dynamic SQL, the sort function is genuinely deterministic, and every sibling generated function (_fill/_trim/_slice/_reverse) already carries deterministic, so recommending its removal is refutable against the diff. Trivial (0): the ArrayReverseEmulation javadoc-wording nit; needsArrayCasting 'worth confirming' (follows existing pattern, no finding); H2 maximumArraySize note (self-labeled acceptable); collectionSort array-to-Collection 'verify mapping exists' hedge. MISSED (-1 each): the human's two simplification questions for H2ArraySortFunction:115 and PostgreSQLArraySortEmulation:97 (minor, but they are the entire human reference). No fabrications; all 29 changed files present, no truncation. Net = good(2)-wrong(1)-missed(2) = -1."
+}

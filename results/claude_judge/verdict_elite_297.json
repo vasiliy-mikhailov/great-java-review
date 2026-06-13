@@ -1,0 +1,21 @@
+{
+  "pr": 297,
+  "kind": "general",
+  "net": 1,
+  "n_good": 5,
+  "n_critical": 0,
+  "n_wrong": 2,
+  "n_trivial": 0,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 2,
+  "own_review_points": [
+    "getXMLExtensionJars resolves jar path relative to the CONTRIBUTING bundle (getContributor().getName()) which is correct, but javadoc claims paths are relative to plugin root - needs clarification; human reviewer suspects most resolutions will be erroneous",
+    "new XMLExtensionRegistry() on every getExtensionJarPaths() call registers a registry change listener that is never removed -> listener leak",
+    "extensions HashMap/HashSet and outOfSync boolean are accessed by the registry-change listener thread and the LS thread without synchronization -> data race",
+    ".endsWith(.jar) filter on getValue() (the path) could be simplified",
+    "FileLocator.find failure path logs but drops the offending plugin id / path",
+    "schema .exsd example section and PR description use the wrong fully-qualified id XMLExtensions instead of xmllsExtension"
+  ],
+  "notes": "v8 leads with a FABRICATED critical: it claims extension.getAttribute(path) reads the <extension> parent and returns null so no jars load. In Eclipse, getConfigurationElementsFor(pointId) returns the <jar> CHILD elements, which DO carry the path attribute, so the code works - wrong (-1, fab). Point #4 says RELEASE_NOTES.md shows the wrong id XMLExtensions, but the added RELEASE_NOTES content actually uses the correct xmllsExtension; the wrong id lives in the PR description and the .exsd example - wrong (-1, fab). Good points: listener leak (+1), thread-safety (+1), .exsd example wrong-id (+1), empty doc blocks (+1), lost log context (+1). Missed the human reviewer's CENTRAL point - jar path resolution being relative to the contributing plugin/erroneous - and the .jar-filter simplification. Net mildly positive but undermined by a flashy false critical."
+}

@@ -1,0 +1,20 @@
+{
+ "pr": 25445,
+ "kind": "test",
+ "net": 2,
+ "n_good": 3,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 6,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "testOrderingAfterReconnects: replacing the run-check-sleep-loop with Awaitility.untilAsserted changes semantics (only need limit not exceeded repeatedly; pauseTime=100ms) -- human's main point at 2285/2291",
+  "Removing the random Thread.sleep(0-4ms) in messageListener (1222) removes the delay that originally triggered the race the test targets",
+  "Removed Thread.sleep(2000) after consumerWillBeClose.close() without sync replacement could race",
+  "Reducing receive timeouts to 200-500ms for negative assertions is generally fine",
+  "send()->sendAsync()+flush() conversion preserves persistence semantics"
+ ],
+ "notes": "V8 P1 (2148 sleep removal race) and P2 (remaining sleeps in testOrderingAfterReconnects) are reasonable/grounded = good; P7 (500ms slow consumer adequacy) = good. But P2 frames the four pauseTime sleeps as something to convert to Awaitility -- the OPPOSITE of the human's actual point (Awaitility there CHANGES the logic and should be reverted to the loop). V8 did not make the human's core 2285/2291 'Awaitility changes intention' point nor the 1222 random-delay point. P3-P6,P8,P9 are restating/praise = trivial. Missed = the 2285/2291 Awaitility-changes-logic point (human's central concern); 1222 also missed but counted as one miss-cluster. Net modest positive."
+}

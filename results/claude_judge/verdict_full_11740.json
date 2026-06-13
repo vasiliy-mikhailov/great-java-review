@@ -1,0 +1,22 @@
+{
+  "pr": 11740,
+  "kind": "general",
+  "net": 5,
+  "n_good": 4,
+  "n_critical": 1,
+  "n_wrong": 1,
+  "n_trivial": 2,
+  "n_unverifiable": 0,
+  "n_missed": 0,
+  "fabs": 1,
+  "own_review_points": [
+    "datetimeFormat() Replacer applies replacements sequentially: ss->SS runs before the fractional-second SS->FF2/SSSSSS->FF6 rules, so the seconds 'SS' gets re-matched and corrupted into 'FF2' (and fractional patterns are mangled). Real ordering bug in format translation.",
+    "getFractionalSecondPrecisionInNanos() returns 1_000L with comment 'default to nanoseconds for now', but 1_000 nanos = 1 microsecond - value/comment mismatch.",
+    "supportsSubqueryOnMutatingTable() lacks @Override though it appears to override Dialect (all sibling overrides annotated).",
+    "defaultScrollMode() override just returns super.defaultScrollMode() - dead/pointless override.",
+    "supportsFetchClause(ROWS_ONLY)=true while the LimitHandler emits TOP ?/%ROWOFFSET; potential inconsistency if IRIS lacks native FETCH FIRST.",
+    "concat_pipeOperator() registered twice (lines 164 and 208 with different patterns) - second overrides first; redundant/likely-unintended.",
+    "Human's only substantive note: getResultSet(CallableStatement) override is unused (not called) but harmless - keep it. PR was approved (squash & rebase)."
+  ],
+  "notes": "Strong technical review of a large new-dialect PR where the human reference is essentially an approval with one non-blocking note. Critical (+2): the datetimeFormat() replacement-ordering bug - v8's worked example for 'ssssss' is slightly imprecise but the mechanism (fractional-second rules must precede ss->SS) and the corruption are genuinely real and well-explained. Good (+1 each): getFractionalSecondPrecisionInNanos comment/value mismatch (microsecond vs nanosecond) - correct; missing @Override on supportsSubqueryOnMutatingTable - correct (the method indeed has no annotation while peers do); pointless defaultScrollMode override - correct; supportsFetchClause-vs-LimitHandler inconsistency - thoughtful and grounded. Trivial (0): make datetimeFormat package-private (style nit), and the 'confirm backslash integer division' point (soft, and \\ is in fact valid Cache/IRIS ObjectScript integer division). WRONG/FAB (-1, fab=1): 'Missing dialect registration in CommunityDatabase/CommunityDialectSelector ... blocks the dialect from being usable' - those files are NOT in this PR's 5-file changeset and the diff is complete (not truncated); asserting as fact that registration is absent/unusable over-reaches beyond the diff. Missed: none material (human approved; my extra concat-duplicate note is minor). Net = critical(2)+good(4)-wrong(1)-missed(0) = 5."
+}

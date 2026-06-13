@@ -1,0 +1,21 @@
+{
+  "pr": 1121,
+  "kind": "general",
+  "net": 4,
+  "n_good": 5,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "ALWAYS_AUTO_PASTE preference dropped: old isAutoPaste() returned checkbox || alwaysAutoPaste(); new returns only the checkbox and alwaysAutoPaste() is removed -> behavior regression",
+    "Folders persistence format changed (LinkedList serialized as bare array; readFolders parses String[].class) and JsonSyntaxException is only logged -> old saved folder lists silently lost",
+    "Commented-out Jobs-manipulation blocks ('no effect') reflect a real design limitation: JobService.getJobs() returns a fresh object each call so mutations are dropped",
+    "SettingsAsPreferencesEditor.flush() is invoked only from setDriftyUpdateAvailable(); other setters never flush explicitly",
+    "isAutoPaste() persistence disconnect: Settings toggle stores guiAutoPasteEnabled but the runtime check ignores it",
+    "Environment.initializeEnvironment() removed 'msgBroker = Environment.getMessageBroker();' then immediately calls msgBroker.msgLogInfo(...) -> potential NPE if msgBroker isn't otherwise initialized first"
+  ],
+  "notes": "Well-grounded review of a large (~100k, untruncated) refactor. Verified: ALWAYS_AUTO_PASTE removal/isAutoPaste regression (+1), Folders serialization-format break with silent data loss (+1), commented-out dead Jobs code tied to JobService.getJobs() returning a fresh object (+1, real design limitation), flush() only on one setter (+1; minor caveat — Java Preferences also flushes at JVM exit), isAutoPaste persistence disconnect (+1). The 'exports data' note is a verify-intent nit (trivial). Missed the removed msgBroker initialization in Environment.initializeEnvironment() which is a plausible NPE. Human reference is just a confirmation comment, so no other concrete misses. No fabrications."
+}

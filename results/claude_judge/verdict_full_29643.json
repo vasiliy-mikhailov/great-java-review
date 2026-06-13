@@ -1,0 +1,21 @@
+{
+  "pr": 29643,
+  "kind": "general",
+  "net": 1,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 6,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "EqualityDeleteIndex correctly guards non-thread-safe FlatHash with ReadWriteLock (write on insertPage, read on filterPage); volatile estimatedMemoryUsage read lock-free is fine",
+    "EXPECTED_SIZE=1024 initial FlatHash capacity is small for 1M-key upsert workloads; auto-resizes but first resizes costly",
+    "new SPI ConnectorContext.getBlocksHashFactory() default throws UnsupportedOperationException; could be @Unstable like getFunctionBundleFactory",
+    "Positions is a justified copy of SelectedPositions (iceberg has trino-main test-scope only), same pattern as PageSplitterUtil",
+    "TestIcebergLegacyEqualityDeletes ~340 lines duplicate the suite at flag=false; parameterize when flag removed",
+    "human: Positions.filter could iterate a range rather than a list (cheap perf nit)"
+  ],
+  "notes": "This v8 review is mostly accurate but low-insight: many points are 'no action needed' confirmations of a sound design. Credited goods: EXPECTED_SIZE perf note (+1) and the actionable @Unstable SPI suggestion (+1). Thread-safety, fallback-path, Positions-copy, allOf-composition, unused-factory, test-dup are correct but confirmatory -> trivial. Missed human's range-vs-list iteration nit -> -1. No wrongs, no fabrications. Net +1."
+}

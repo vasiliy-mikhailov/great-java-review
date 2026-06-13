@@ -1,0 +1,21 @@
+{
+ "pr": 8829,
+ "kind": "test",
+ "net": 5,
+ "n_good": 4,
+ "n_critical": 1,
+ "n_wrong": 0,
+ "n_trivial": 2,
+ "n_unverifiable": 0,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "Real test bug: delayBeforeTrailersHttp2() calls trailers(HTTP_2) instead of delayBeforeTrailers(HTTP_2) \u2014 the HTTP/2 trailers-delay path is never exercised",
+  "New BufferedSource.skipAll() overload has no timeout (unlike Source.skipAll(duration,unit)) \u2014 Response.trailers() can block indefinitely on a large unread body",
+  "TRAILERS_RESPONSE_BODY_TRUNCATED sentinel uses a fake header (OkHttp-Response-Body: Truncated) as an internal marker \u2014 design smell",
+  "trailers() now throws IOException (was IllegalStateException 'too early') on truncated body \u2014 behavioral change",
+  "Http2ExchangeCodec.isResponseComplete returns false when stream is null; semantics worth a comment",
+  "Human nit: readTrailersAfterEarlyEofAndClose test name is over-differentiated / misleading"
+ ],
+ "notes": "Excellent lead catch: the delayBeforeTrailersHttp2 copy-paste bug (calls trailers() not delayBeforeTrailers()) is a genuine, verifiable test defect that silently un-tests the HTTP/2 delay path \u2014 critical. skipAll-no-timeout, the sentinel-header design smell, the IllegalStateException->IOException behavioral/doc change, and the nullable-stream isResponseComplete note are all grounded good points. body-discard restatement and the @Disabled-tests comment ask are trivial. Missed only the human's lone test-name nit. Much deeper than the human reference."
+}

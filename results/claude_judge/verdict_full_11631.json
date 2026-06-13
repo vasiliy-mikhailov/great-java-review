@@ -1,0 +1,21 @@
+{
+  "pr": 11631,
+  "kind": "general",
+  "net": 2,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "hasTargetTableCorrelation (AbstractSqlAstTranslator:6193) relies on CorrelationChecker.hasCorrelation(MutationStatement,..) which DOES check update assignments; but human flags the SqlAstNode-overload path / SET-clause correlations could be missed depending on traversal entry - a subtle correctness concern about correlation detection in the SET clause.",
+    "hasCorrelatedSubquery(Statement,String) and hasNestedCorrelation(Statement) added to AbstractSqlAstTranslator appear unused (dead scaffolding).",
+    "NestedOrTargetTableCorrelationVisitor uses currentLevelAliases!=null as an implicit in-subquery guard and keeps a separate targetAlias field - duplicates state already in the parent; intent not self-documenting (human: drop the field, use currentLevelAliases!=null).",
+    "NestedCorrelationChecker.visitQuerySpec restores currentAliases via removeAll(previousLevelAliases) inside a null-guard; human flags a potential missing/duplicate null-check subtlety here.",
+    "Both MariaDB translators (core + legacy) carry near-identical renderDeleteClause/renderUpdateClause/usesSingleTableDml/needsDmlSubqueryWrapper - large duplication, candidate for shared superclass.",
+    "Test renamed MySQLDmlSubqueryTest->DmlSelfReferencingSubqueryTest and removes @SkipForDialect MariaDB guards, adds nested-correlated-subquery-in-SET test - good coverage of the new path."
+  ],
+  "notes": "Solid, grounded review of a tricky AST-walker PR. Good (+1 each): (1) hasCorrelatedSubquery dead/unused method (6181-6183) - plausible and matches new-code reality; (2) currentLevelAliases!=null implicit subquery guard (NestedOrTargetTableCorrelationVisitor 59-61) - directly overlaps human point at line 26; (3) duplication across the two MariaDB translators - real design issue; (4) CorrelationChecker inSubquery-always-true analysis - correct, substantive reasoning about the unused SqlAstNode overload. Trivial (0): the Statement-extends-SqlAstNode 'verify nothing relies on instanceof exclusion' point is a soft hedge with no concrete finding. MISSED (-1 each): the human's strongest correctness point - hasTargetTableCorrelation possibly missing SET-clause-only correlations (6193) - and the NestedCorrelationChecker:63 null-check concern. No fabrications; grep/dead-code claim is consistent with the diff. Net = good(4) + trivial(0) - missed(2) = 2."
+}

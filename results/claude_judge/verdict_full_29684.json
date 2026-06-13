@@ -1,0 +1,21 @@
+{
+  "pr": 29684,
+  "kind": "general",
+  "net": 0,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 2,
+  "n_trivial": 4,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "ParquetFooterCache.get declares throws IOException but no implementation throws it; MetadataReader catches IOException|RuntimeException around it (dead checked exception)",
+    "put() comment 'do not replace existing value' is fine: cache.get(key, loader) is load-if-absent, not replace -- so NOT a bug",
+    "readFooterBytes now returns completeFooterSize (magic+postscript redundant for cache); minor cache-size inflation",
+    "MemoryParquetFooterCache put guard footerBytes.length()>maxSizeInBytes is redundant given the weigher, fast-path only",
+    "human: could add the same length>maxSizeInBytes short-circuit to the lookup/get path",
+    "human: footer caching could be folded into the existing filesystem cache rather than a new in-memory cache"
+  ],
+  "notes": "P1 claims cache.get(key,loader) WILL replace an existing value -- false; Guava Cache.get-with-loader returns existing value, only loads on miss; the in-code comment is correct -> wrong -1. P3 claims the NoOp enum 'explicitly declares invalidate' -- false; the enum declares only get/put and relies on the interface default -> wrong -1. Valid goods: throws-IOException-unused (+1), magic-prefix cache inflation (+1), invalidate-swallows-on-IOException-from-get defensive note (+1), encrypted-footer test gap (+1). P5/P6/P9/P10 are confirmations/non-actionable -> trivial. Missed both human points (lookup-side guard; fold into FS cache) -> -2. Net 0."
+}

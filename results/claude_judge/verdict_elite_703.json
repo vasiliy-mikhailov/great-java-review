@@ -1,0 +1,21 @@
+{
+  "pr": 703,
+  "kind": "general",
+  "net": 6,
+  "n_good": 6,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 0,
+  "n_missed": 0,
+  "fabs": 0,
+  "own_review_points": [
+    "McpTracingInstrumenter reads mcpConfig.servers().get(McpServer.DEFAULT).tracingEnabled() once at construction -> no per-server granularity and no runtime toggling (@Singleton)",
+    "BatchAssert.doSend returns null with '// todo handle otel in batches' -> client batch tracing unimplemented",
+    "Validation-failure span hardcodes 'Schema validation failed' instead of the actual validator message",
+    "injectMcpOtelContext impl always injects Context.current() regardless of whether a span was started/tracing enabled",
+    "OTel scope activated on the event loop may not propagate to worker-thread @Tool execution (nested user spans become independent)",
+    "FeatureManagerBase resolves McpTracing eagerly via Arc.container().select in constructor (verified safe — app-scoped deps only)"
+  ],
+  "notes": "Diff is truncated (~113k chars past the marker) but all cited files and most code are within the visible window and verified: per-server/construction-time enabled flag on McpTracingInstrumenter (+1 and +1 for the distinct runtime-toggle concern), batch doSend todo (+1), hardcoded 'Schema validation failed' (+1), unconditional injectMcpOtelContext (+1). Worker-thread scope-propagation concern is a sound, substantive OTel/Vert.x design point on a changed file (FeatureManagerBase) (+1), though the exact executeBlocking site sits outside the shown hunks. The Arc.container().select note is self-described as 'safe/verified' -> trivial. No fabrications and no false 'missing' claims (it correctly respects the truncation). Human reference is only a maintainer discussion comment, so no concrete misses. Excellent depth on a hard, large PR."
+}

@@ -1,0 +1,21 @@
+{
+ "pr": 6642,
+ "kind": "general",
+ "net": 3,
+ "n_good": 4,
+ "n_critical": 0,
+ "n_wrong": 0,
+ "n_trivial": 1,
+ "n_unverifiable": 2,
+ "n_missed": 1,
+ "fabs": 0,
+ "own_review_points": [
+  "Lifecycle.java isStopped() javadoc is a copy-paste error: '@return true, if this object is started' (says 'started' for the stopped predicate)",
+  "BlockingLifecycle.NONE returns false for BOTH isStarted() and isStopped(), so the started-xor-stopped invariant can be violated",
+  "Lifecycle default isStopped()=!isStarted() reports stopped during STARTING/STOPPING states; real impls override it, default is semantically wrong",
+  "ServiceValueRegistry.capture: ServiceInstaller.BlockingBuilder.of(dependency) already calls .requires(dependency) internally, so the explicit .requires(dependency) is redundant (verified against of(ServiceDependency) factory)",
+  "BlockingLifecycle.compose: stop() only fires on STARTED->STOPPING; a service stopped while STARTING is in-flight may not be stopped (minor race)",
+  "Human nit: RequestControllerSubsystemTestCase could use BlockingBuilder.<T>of(supplier).provides(...).build() instead of map(Function.identity()) to avoid building DefaultBlockingBuilder twice"
+ ],
+ "notes": "Large PR (28 files) truncated at ~150k. v8's two headline points (CapabilityServiceInstaller DefaultBlockingBuilder default-mode regression ON_DEMAND->PASSIVE, and lost blocking() instrumentation method) cite the subsystem-module CapabilityServiceInstaller.java DEFINITION, which is past the truncation marker (only caller usages are visible) \u2014 scored unverifiable=0 (plausible and detailed, but cannot confirm). Verified good points: the Lifecycle isStopped javadoc copy-paste error, the BlockingLifecycle.NONE invariant oddity, the default-isStopped semantic issue, and \u2014 the best catch \u2014 the redundant .requires(dependency) (confirmed of(ServiceDependency) does of(provider).requires(dependency)). The warnf log nit is trivial. Missed the human's optional builder nit."
+}

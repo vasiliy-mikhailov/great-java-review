@@ -1,0 +1,22 @@
+{
+  "pr": 1018,
+  "kind": "general",
+  "net": 5,
+  "n_good": 6,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 2,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "PR title/description claim CSV support + commons-csv/commons-lang3 deps, but this diff adds only --json; no --csv flag, no CSV code, and the (only) changed pom.xml adds no such dependency",
+    "Default (non-json) scanFluo output changed from 'row family:qualifier:visibility\\tvalue' to space-separated fields -> breaks consumers parsing the old format",
+    "scanAccumulo error handling changed from print-to-stderr + System.exit(-1) to throw new RuntimeException(e)",
+    "scanAccumulo ignores exportAsJson (generateJson only invoked from scanFluo); JSON unsupported in --raw mode",
+    "Gson .setVersion(1.0) is a no-op when serializing a plain Map (only affects @Since-annotated fields)",
+    "No tests added for the new JSON path or the output-format change",
+    "checkScanOptions only guards --raw vs --json; broader sanity checks (delimiter length, dependent options) absent (human point)"
+  ],
+  "notes": "Solid, grounded review of an in-window (untruncated) diff. CSV-claimed-but-unimplemented is real for this snapshot — no --csv, no charAt delimiter code, commons-csv absent from the changed pom (the 'investigated all 11 poms' phrasing overstates since only the root pom is in the diff, but the defect itself is grounded) (+1). Output-format break (+1), scanAccumulo error-handling regression (+1), exportAsJson ignored in accumulo (+1), Gson setVersion no-op (+1, sharp), missing tests (+1). LinkedHashMap-reuse is self-described as 'technically correct' and the wrong-flag-name point is confused/non-actionable -> trivial. Most human-reference points target a later version that did add CSV or files outside this diff (api/FluoConfiguration, core/pom) -> largely out of window; charged one miss for the broader sanity-check breadth. No fabrications or factual errors."
+}

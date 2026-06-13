@@ -1,0 +1,22 @@
+{
+  "pr": 5209,
+  "kind": "general",
+  "net": 3,
+  "n_good": 5,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 2,
+  "n_unverifiable": 1,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "In-place edit + xzCompress=true (default): modifyRepositoryMetadata calls xzCompress(repository, outputLocation) with outputLocation==null, and xzCompress() does outputLocation.toAbsolutePath() -> NPE",
+    "@Parameter repository lacks required=true -> createDescriptor NPEs on null repository.getUrl()",
+    "modification consumer always sets PROP_COMPRESSED regardless of in-place vs new repository",
+    "Uses internal equinox APIs (SimpleArtifactRepositoryFactory/SimpleMetadataRepositoryFactory/SimpleArtifactRepository) that may change between releases",
+    "Typo 'modifable' in the not-modifiable error message",
+    "assertNoError is public static but only called internally -> could be private",
+    "When kind is null both artifact and metadata repositories are loaded for the same location, which may fail for single-kind repos (relates to human's null-as-both note)"
+  ],
+  "notes": "Diff is untruncated (4 files). Good grounded points: missing required=true on the repository param (+1), unconditional PROP_COMPRESSED overwrite (+1), reliance on internal equinox APIs (+1, real), 'modifable' typo (+1), over-broad public assertNoError (+1). The @Inject-vs-@Component convention point cites AssembleRepositoryMojo/FixArtifactsMetadataMojo not in the diff and its 'DI resolution issues' framing is speculative (@Inject works under Sisu) -> unverifiable=0. The lambda-parameter shadowing and the addInstallableUnits 'verify' note are low-value -> trivial. MISSED two notable items: (1) the in-place + xzCompress NPE (outputLocation null) — the most serious correctness bug here, and (2) the human reviewer's central point about null/absence of kind meaning 'both' and removal of the explicit 'both' literal. No fabrications or factual errors."
+}
