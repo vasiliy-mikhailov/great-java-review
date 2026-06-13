@@ -1,0 +1,738 @@
+[
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11844,
+  "test_depth": 14,
+  "substantive": 50,
+  "agree": true,
+  "best": "Multiple ILike test skips are wrong: instead of @SkipForDialect the dialect should return false from supportsCaseInsensitiveLike() so the built-in emulation runs and the tests still pass \u2014 the skip masks a fixable dialect gap."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11945,
+  "test_depth": 11,
+  "substantive": 40,
+  "agree": true,
+  "best": "Numerous tests were skipped/gated with reasons that don't hold - e.g. many 'updates a primary key' or 'requires functional dependency analysis' justifications are false, LockTest's timeout 0 actually means nowait (SupportNoWait), and several need a new SupportsTableWithoutPrimaryKey feature check instead of blanket skips."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12070,
+  "test_depth": 6,
+  "substantive": 25,
+  "agree": true,
+  "best": "Several @SkipForDialect/feature gates are mis-justified - e.g. CustomGeneratorTests actually requires pooled sequences (SupportsPooledSequences) and ManyToManyGroupByOrderByTest may be hitting a real wrong-SQL bug rather than needing a skip."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 43787,
+  "test_depth": 4,
+  "substantive": 5,
+  "agree": true,
+  "best": "Renaming the env vars in tests silently drops coverage of the still-supported POSTGRESQL_USER / POSTGRESQL_DB keys; the old test cases must be kept and new ones added alongside so both legacy and new variable names stay covered."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11678,
+  "test_depth": 3,
+  "substantive": 22,
+  "agree": true,
+  "best": "Extract a shared base test class so the same entity mappings and assertions run across all temporal-table strategies, ensuring coverage parity rather than divergent per-strategy duplicates."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11885,
+  "test_depth": 3,
+  "substantive": 9,
+  "agree": true,
+  "best": "Rather than @SkipForDialect for var_pop, use @RequiresDialectFeature with definesFunction(dialect,\"var_pop\") so the skip tracks actual dialect capability instead of being hard-coded."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12413,
+  "test_depth": 3,
+  "substantive": 8,
+  "agree": true,
+  "best": "Missing test cases for function('column', e.name), function('sql', 'SELECT 1'), and criteriaBuilder.function('sql', ...) leave the unsafe-function branches uncovered."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11991,
+  "test_depth": 3,
+  "substantive": 6,
+  "agree": true,
+  "best": "JsonArrayUnnestTest implicitly depends on json_table, so it should be gated by @RequiresDialectFeature(SupportsJsonTable) rather than the current ad-hoc gating."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 33405,
+  "test_depth": 3,
+  "substantive": 5,
+  "agree": true,
+  "best": "The OutputCapture tests don't exercise both streams, so getOut/getErr/getAll aren't actually verified to isolate System.out from System.err; each test should emit on both streams and assert the correct partitioning."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11680,
+  "test_depth": 3,
+  "substantive": 5,
+  "agree": true,
+  "best": "Consolidates the nationalized-JSON test cases into one dialect-feature-gated test (@RequiresDialectFeature SupportsNationalizedData) and removes the redundant Sybase test class, ensuring the single test runs across all databases."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28296,
+  "test_depth": 3,
+  "substantive": 4,
+  "agree": true,
+  "best": "Tests assert fractional-second timestamp values even though the code truncates to seconds, so they exercise the file-metastore path rather than the truncation behavior under test."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8829,
+  "test_depth": 3,
+  "substantive": 4,
+  "agree": true,
+  "best": "TrailersTest must defend against the race where the client concludes there are no trailers simply because none have arrived yet, and flags an assertion that 'totally doesn't work'."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25445,
+  "test_depth": 3,
+  "substantive": 3,
+  "agree": true,
+  "best": "The removed Thread.sleep calls were load-bearing \u2014 they triggered the race conditions that reproduced real production bugs, so deleting them silently destroys regression coverage."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28811,
+  "test_depth": 3,
+  "substantive": 3,
+  "agree": true,
+  "best": "Every test uses 20 distinct values, so the PR's one real behavioral change \u2014 removing MAX_DICTIONARY_SIZE=8096 \u2014 has no coverage; add a >8096-distinct-value test with a non-matching predicate that prunes the row group."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 934,
+  "test_depth": 2,
+  "substantive": 8,
+  "agree": true,
+  "best": "Add tests for the new precondition/error branches (negative offset, negative length, offset+length > bytes.length) using JUnit's expected exception, since those branches are otherwise untested."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 42725,
+  "test_depth": 2,
+  "substantive": 5,
+  "agree": true,
+  "best": "The added isNotNull assertions are redundant since a null would surface as an NPE on the next line, and the getBean(Class) case can never return null (it throws NoSuchBeanDefinitionException), so the guard is meaningless."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28549,
+  "test_depth": 2,
+  "substantive": 5,
+  "agree": true,
+  "best": "Asks whether any test has filenames lying between the conservative prefix lower bound and the real startingFrom value \u2014 the exact edge case the emulated/native cursor logic must get right."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 46007,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The resolver tests largely re-test the underlying SpEL support and could be reduced to a single valid and single invalid expression rather than exhaustively exercising SpEL."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 35874,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test modifications were made to accommodate a flawed implementation (wrapping a single delegate in DelegatingOAuth2TokenValidator); fixing the production code to return the defaultValidator means the original tests should pass unchanged, so the test edits should be reverted rather than kept."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 1083,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Tests mutate shared state (e.g. system properties) that should be restored in an @AfterClass to avoid leaking into other tests."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6004,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The noRequestTimeout parameter is unused in the method \u2014 it should be applied at line 122 or removed; also timeouts should go through TimeoutUtil.adjust() for slower CI, consistently across all timeouts not just one."
+ },
+ {
+  "repo": "sevntu-checkstyle/sevntu.checkstyle",
+  "pr": 480,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Missing test: a 'Logger' from a non-slf4j package in imports should produce no violation, so the check must process imports to know which short name is actually used."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12117,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "A SupportsJsonValueErrorBehavior feature check was introduced but the JsonValueTest/JsonQueryTest still use a hardcoded skip instead of the new check."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 7588,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Notes the existing RouteFailureTest coverage may be overly pessimistic and that the fix may now route to a good host \u2014 reframing what the parameterized tests actually assert."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 7563,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Suspects test flakiness from fast-fallback raciness and suggests pinning timeouts (MAX_VALUE/0) to de-flake the multi-route assertions."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28583,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The behavior change isn't specific to OPTIMIZE, so don't test via ALTER TABLE EXECUTE OPTIMIZE \u2014 verify the predicate pushdown with normal read-query pushdown tests instead, and split the mixed test method."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 27835,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The ORC nano-timestamp reader is exercised solely through Iceberg tests; add independent coverage in the ORC module (AbstractTestOrcReader) so the format support is tested at its own layer."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 30002,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Deleting AbstractCacheAutoConfigurationTests and the Hazelcast change in the Hibernate 2nd-level-cache test are unrelated to reinstating EhCache 3 and should be left minimal."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8209,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "Missing a forking-process integration test in CacheLockTest to confirm the file-system lock actually works across processes, not just within one JVM."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 21498,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "The injected test client leaks threads because it is never closed; override closeAsync/shutdown like PulsarTestClient does."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 1043,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Read/write through the Fluo API (not just Accumulo) so the test catches Fluo call failures after remove(), and additionally verify emptiness with a raw Accumulo scanner."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 884,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Items are collected into Sets but the Person/value type has no equals/hashCode, so the set-based assertions compare by identity and don't actually validate stream contents; also some streams are collected but never asserted on."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6498,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Replace Thread.sleep(2000) with branched ServerReload handling for the sec-mgr-enabled (server stops) vs disabled (reload succeeds) cases to make post-reload server state deterministic."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12129,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Many tests were given @RequiresDialectFeature(SupportsConcurrentTransactions) yet contain no concurrent transactions - the feature requirement looks wrong (possibly only TableGenerator-driven)."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11954,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "The threaded SelectLockingInDifferentThreadsTest can be rewritten as deterministic nested inTransaction blocks to test a specific interleaving without real threads, removing flakiness."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 36560,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Non-Quarkus tests get a SmallRyeConfig from the builder and assert against it, so registering it into the factory (and the set/release dance) is unnecessary."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 29206,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "TestIcebergSplitSource:172 should assert stats are gathered when regionKey is in the static dynamicFilterColumns set with an empty per-batch predicate, covering the DF-resolves-late regression."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 46984,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The new ignoreMigrationPatternsWhenEmpty test would pass even without the production change because the property default was not aligned with Flyway, so the test does not actually guard the fix."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 42277,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The new private-constructor binding tests duplicate existing @Autowired/value-object coverage and, if the non-member case is wanted, it belongs in DefaultBindConstructorProviderTests where the ignoring logic actually lives."
+ },
+ {
+  "repo": "eclipse-vertx/vert.x",
+  "pr": 4490,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The JMH benchmark should return the consumed count (or use a Handler field) so the JIT/JMH does not dead-code-eliminate the listener invocations."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25628,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test guards a likely non-exploitable path since PackageName.get already validates input, questioning the premise of the test/fix; and tests should avoid reflection, using @VisibleForTesting package-private access instead."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 30833,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "Renaming the bean method to openTelemetry() is needed so @ConditionalOnBean(OpenTelemetry.class) is satisfied and the test then actually exercises @ConditionalOnMissingBean."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 9101,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "getAndQueryRedirectToCachedResultIndependently doesn't set .cacheUrlOverride, so it isn't actually testing that GET and QUERY are cached independently."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 32214,
+  "test_depth": 1,
+  "substantive": 16,
+  "agree": true,
+  "best": "Questions why a user configuration class in OpenTelemetryConfigurationsMicrometerConfigurationTests enables one of Boot's own configuration-properties classes."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 26919,
+  "test_depth": 1,
+  "substantive": 9,
+  "agree": true,
+  "best": "Reducing the benchmark row count cuts input down to roughly a single 8K page, so the JMH benchmark no longer measures realistic multi-page serde behavior."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 1120,
+  "test_depth": 1,
+  "substantive": 7,
+  "agree": true,
+  "best": "Snapshot has multiple get methods routed through different scanners (scanner vs batch scanner), so the auth test should exercise all of them, not just one path."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28997,
+  "test_depth": 1,
+  "substantive": 7,
+  "agree": true,
+  "best": "Switching the test from $partitions to $files keeps it green but stops covering issue #12920 \u2014 $partitions FOR VERSION is now silently expanded at HEAD instead of throwing."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 40189,
+  "test_depth": 1,
+  "substantive": 6,
+  "agree": true,
+  "best": "The single parameterized transactions-properties test would read more clearly as four separately named methods delegating to a common helper so each expectation is explicit."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8993,
+  "test_depth": 1,
+  "substantive": 6,
+  "agree": true,
+  "best": "Because the interceptor now changes where decompression happens, DuplexTest is adversely impacted and its remaining assertions may no longer mean what they did."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 969,
+  "test_depth": 1,
+  "substantive": 5,
+  "agree": true,
+  "best": "The new test belongs as an integration test extending ITBaseImpl running against a real Fluo instance, not as a plain unit test that can't exercise the async path."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6562,
+  "test_depth": 1,
+  "substantive": 5,
+  "agree": true,
+  "best": "High-level installation-manager command tests should be integration tests (in manualmode/domain InstallationManagerIntegrationTestCase), not unit tests \u2014 unit tests are reserved for management resource operations."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 28475,
+  "test_depth": 1,
+  "substantive": 5,
+  "agree": true,
+  "best": "The mock endpoint registered in ConfigurationPropertiesReportEndpointAutoConfigurationTests is not needed for the test."
+ },
+ {
+  "repo": "eclipse-tycho/tycho",
+  "pr": 5971,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "Replace the mock-based logging test with a real Jetty/JDK-server integration test, since mocking here only locks in fragile internal behavior."
+ },
+ {
+  "repo": "eclipse-tycho/tycho",
+  "pr": 5995,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "Questions how a newer Equinox could be consumed from the local maven repo instead of the target platform, challenging whether the repro test actually exercises the bug."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11357,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "Odd that JsonMappingTests passes on MySQL without double-backslash quoting yet JsonJavaTimeMappingTests requires it \u2014 flags a likely escaping inconsistency in the test expectation."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6388,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "On Windows without PowerShell the if-block is skipped so the test passes green while never asserting launchCommand; add a dedicated @Test that asserts the WFCORE-5917 verification assumption."
+ },
+ {
+  "repo": "eclipse-tycho/tycho",
+  "pr": 1090,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "Folding the new assertions into the existing test case would let it drop the version-pinned maven.config that must be edited on every release."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11828,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test should also cover the join fetch case to confirm the MultipleBagFetchException avoidance yields the desired semantics there too."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 9269,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test should actually initialize the children collections and assert their contents to confirm the registered subselect fetches work, not just that they are registered."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8970,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "For upgrade requests HttpUpgradesTest should expect a Content-Length: 0 header but zero request-body events emitted, rather than reordered RequestBodyStart events."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 38703,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "A test should assert that the new max-sessions default stays in sync with InMemoryWebSessionStore's default so the metadata default cannot silently drift from the framework value."
+ },
+ {
+  "repo": "apache/flink",
+  "pr": 26895,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Request a test proving the lambda syntax fails at SQL validation rather than only at runtime."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 53699,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "The new GeneratedServiceProviderBuildItemTest is unnecessary since the functionality is already well covered elsewhere."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6199,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "This snapshot-save test should likely be excluded from the Bootable JAR test set since saving a snapshot is not a valid operation in a Bootable JAR."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 49703,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Notices the change of expected exception type (DeploymentException -> DefinitionException) plus added @Retention breaks the DoubleScopedStereotypeTestCase."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11104,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "The new test artificially exercises resolveDirtyAttributeIndexes via internal-only calls; existing behavioral tests already cover the method and should be extended instead."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 13599,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "No write-path test exists for nanosecond TIMESTAMP WITH TIME ZONE; a parquet writer test in AbstractTestParquetReader plus a TestHiveCompatibility case are needed to truly cover the change."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 30033,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Many tests redundantly override the same property values that already come from application.properties, so those per-test overrides can be removed."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 7452,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Asks whether the test's containsExactlyElementsOf assertion is order-insensitive \u2014 the crux of a PR whose whole point is cipher-suite ordering."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28795,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "The projectedFieldIds metric should be tested through normal query execution (split-source metrics surface in scan operator metrics) or in TestIcebergSplitSource, rather than a dedicated split-manager test."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8234,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Notes the DnsOverHttps test's `path` field actually holds path+query and confirms the override test verifies the correct cache URL is used."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 47180,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The dedicated ProxyAuthenticationExceptionTests adds no value for a trivial RuntimeException subclass and should be removed."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 39399,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The 'exposed' vs 'hidden' nested fields in the serialization test are named as if they differ, but the assertions show identical visibility, so the test names mislead about what is actually being verified."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 49343,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The forced-logging-system test is more complicated than necessary; a simple isInstanceOf assertion suffices, plus add a parallel JUL case."
+ },
+ {
+  "repo": "sevntu-checkstyle/sevntu.checkstyle",
+  "pr": 720,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The new test input line forces an extra generic import that cascaded into large expected-result line/column shifts; suggests reworking the example to keep the test stable."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11943,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "Questions whether CompositePersonWithPartialConstraints should actually have 3 unique constraints (the two explicit ones plus the composite natural-id one), challenging the assertEquals on constraint count."
+ },
+ {
+  "repo": "smallrye/smallrye-config",
+  "pr": 938,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test should add more levels of nesting to actually verify the validation path is assembled correctly across nested mappings."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12244,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "SQLServerDateDiffTest is synthetic and only asserts emitted SQL strings; a @RequiresDialect test running real datediff queries would actually verify the behavior."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 10429,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test is synthetic and instantiates Hibernate internal classes (non-portable); a real-world reproducer of the case-insensitive bug would guard against regressions."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12173,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test imports/uses the wrong exception type (should be jakarta.persistence.RollbackException) for the scenario it claims to verify."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 30705,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "Points out the CopyOnWriteArrayList change to the test listener is unnecessary because within those two tests events are only ever delivered on the main thread."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 8289,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "Asks why BasicLoomTest uses a MockServer testcontainer instead of the project's own MockWebServer for the pinning test."
+ },
+ {
+  "repo": "eclipse-vertx/vert.x",
+  "pr": 4920,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Use JUnit Assume to conditionally skip the virtual-thread test rather than a manual guard."
+ },
+ {
+  "repo": "eclipse-tycho/tycho",
+  "pr": 3221,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Avoid modifying the shared createVerifier; duplicate into mirror and non-mirror test variants instead."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25590,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "The explicit Awaitility pollInterval (100ms) and timeout (10s) are redundant since they already match Awaitility's defaults."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25309,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Pass a NOOP ProducerMetrics built from InstrumentProvider.NOOP instead of null in the tests to avoid fragile null usage."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 49662,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "The new boundary tests add little since the exceeding-depth exception case is already covered by existing tests."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6741,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "The proposed test reuse of ScriptTestCase only passes due to test execution order: its @BeforeClass ServerConfigurator.configure() expects a fully started server, but -v/-h never start one, so a dedicated parameterized test class is needed."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11461,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "The index-validation test fails on Oracle because the generated index name (IDX...) cannot be matched against the person_name index on the same column."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 29249,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Audit the existing remove_orphan_files tests in BaseIcebergConnectorTest for redundancy and move internal-logic coverage into these unit tests, leaving the query-runner tests to verify only the SQL interface."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 32399,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Flags that the assertion/test changes at lines 169-245 are unrelated to the actual TracingAwareMeterObservationHandler wrapping and should be split out."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 9109,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "RequestBodyTest.testSha256 can drop the assertOnPath/filesystem plumbing and just use \"Hello\".toRequestBody()."
+ }
+]

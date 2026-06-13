@@ -1,0 +1,178 @@
+[
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 46007,
+  "test_depth": 0,
+  "substantive": 3,
+  "agree": true,
+  "best": "none (only test point is a SpelTagValueExpressionResolverTest -> Tests naming nit)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 46007,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The resolver tests largely re-test the underlying SpEL support and could be reduced to a single valid and single invalid expression rather than exhaustively exercising SpEL."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 48870,
+  "test_depth": 0,
+  "substantive": 3,
+  "agree": true,
+  "best": "none (the test point is a bare 'add a test for a read feature' request)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 48825,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none (test points are a javadoc-verbosity nit and a withBean simplification)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 47289,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "none (only test point is a request to add class javadoc)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 47180,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The dedicated ProxyAuthenticationExceptionTests adds no value for a trivial RuntimeException subclass and should be removed."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 46984,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The new ignoreMigrationPatternsWhenEmpty test would pass even without the production change because the property default was not aligned with Flyway, so the test does not actually guard the fix."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 43787,
+  "test_depth": 4,
+  "substantive": 5,
+  "agree": true,
+  "best": "Renaming the env vars in tests silently drops coverage of the still-supported POSTGRESQL_USER / POSTGRESQL_DB keys; the old test cases must be kept and new ones added alongside so both legacy and new variable names stay covered."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 42725,
+  "test_depth": 2,
+  "substantive": 5,
+  "agree": true,
+  "best": "The added isNotNull assertions are redundant since a null would surface as an NPE on the next line, and the getBean(Class) case can never return null (it throws NoSuchBeanDefinitionException), so the guard is meaningless."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 41910,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none (test point is removing an unrelated/out-of-scope test change)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 42277,
+  "test_depth": 2,
+  "substantive": 2,
+  "agree": true,
+  "best": "The new private-constructor binding tests duplicate existing @Autowired/value-object coverage and, if the non-member case is wanted, it belongs in DefaultBindConstructorProviderTests where the ignoring logic actually lives."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 41511,
+  "test_depth": 0,
+  "substantive": 3,
+  "agree": true,
+  "best": "none (only test point is a method-name nit)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 40986,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none (test point is a longer-method-name naming preference)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 40974,
+  "test_depth": 0,
+  "substantive": 1,
+  "agree": true,
+  "best": "none (all 14 points are the same CsrfConfigurer::disable readability style note)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 34763,
+  "test_depth": 0,
+  "substantive": 9,
+  "agree": true,
+  "best": "none (the only test-config point about logback-test.xml is a product/UX concern, not a unit-test quality finding)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 40189,
+  "test_depth": 1,
+  "substantive": 6,
+  "agree": true,
+  "best": "The single parameterized transactions-properties test would read more clearly as four separately named methods delegating to a common helper so each expectation is explicit."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 39049,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none (test-file points are just 'no point deprecating test code')"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 39399,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The 'exposed' vs 'hidden' nested fields in the serialization test are named as if they differ, but the assertions show identical visibility, so the test names mislead about what is actually being verified."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 38703,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "A test should assert that the new max-sessions default stays in sync with InMemoryWebSessionStore's default so the metadata default cannot silently drift from the framework value."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 36509,
+  "test_depth": 0,
+  "substantive": 3,
+  "agree": true,
+  "best": "none (Collectors.toSet() points in tests are trivial simplification nits)"
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 35874,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test modifications were made to accommodate a flawed implementation (wrapping a single delegate in DelegatingOAuth2TokenValidator); fixing the production code to return the defaultValidator means the original tests should pass unchanged, so the test edits should be reverted rather than kept."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 33405,
+  "test_depth": 3,
+  "substantive": 5,
+  "agree": true,
+  "best": "The OutputCapture tests don't exercise both streams, so getOut/getErr/getAll aren't actually verified to isolate System.out from System.err; each test should emit on both streams and assert the correct partitioning."
+ }
+]

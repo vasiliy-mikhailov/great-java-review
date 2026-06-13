@@ -1,0 +1,178 @@
+[
+ {
+  "repo": "trinodb/trino",
+  "pr": 28296,
+  "test_depth": 3,
+  "substantive": 4,
+  "agree": true,
+  "best": "Tests assert fractional-second timestamp values even though the code truncates to seconds, so they exercise the file-metastore path rather than the truncation behavior under test."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28371,
+  "test_depth": 0,
+  "substantive": 1,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 28008,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 27343,
+  "test_depth": 0,
+  "substantive": 11,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 13599,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "No write-path test exists for nanosecond TIMESTAMP WITH TIME ZONE; a parquet writer test in AbstractTestParquetReader plus a TestHiveCompatibility case are needed to truly cover the change."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 13599,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 26919,
+  "test_depth": 1,
+  "substantive": 9,
+  "agree": true,
+  "best": "Reducing the benchmark row count cuts input down to roughly a single 8K page, so the JMH benchmark no longer measures realistic multi-page serde behavior."
+ },
+ {
+  "repo": "eclipse-tycho/tycho",
+  "pr": 1090,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "Folding the new assertions into the existing test case would let it drop the version-pinned maven.config that must be edited on every release."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 30033,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Many tests redundantly override the same property values that already come from application.properties, so those per-test overrides can be removed."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 36560,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Non-Quarkus tests get a SmallRyeConfig from the builder and assert against it, so registering it into the factory (and the set/release dance) is unnecessary."
+ },
+ {
+  "repo": "smallrye/smallrye-config",
+  "pr": 938,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test should add more levels of nesting to actually verify the validation path is assembled correctly across nested mappings."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12413,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "A test should exercise HibernateCriteriaBuilder.sql() directly, not only through the function() meta-function, since the Criteria path is separately implemented."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12413,
+  "test_depth": 3,
+  "substantive": 8,
+  "agree": true,
+  "best": "Missing test cases for function('column', e.name), function('sql', 'SELECT 1'), and criteriaBuilder.function('sql', ...) leave the unsafe-function branches uncovered."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12413,
+  "test_depth": 1,
+  "substantive": 9,
+  "agree": true,
+  "best": "The safe-mode tests only cover failure cases; positive tests using function() with a known function name are needed to confirm safe usage still works."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12244,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "SQLServerDateDiffTest is synthetic and only asserts emitted SQL strings; a @RequiresDialect test running real datediff queries would actually verify the behavior."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12130,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11828,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test should also cover the join fetch case to confirm the MultipleBagFetchException avoidance yields the desired semantics there too."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11834,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "none"
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11104,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "The new test artificially exercises resolveDirtyAttributeIndexes via internal-only calls; existing behavioral tests already cover the method and should be extended instead."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 10429,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test is synthetic and instantiates Hibernate internal classes (non-portable); a real-world reproducer of the case-insensitive bug would guard against regressions."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 9269,
+  "test_depth": 1,
+  "substantive": 4,
+  "agree": true,
+  "best": "The test should actually initialize the children collections and assert their contents to confirm the registered subselect fetches work, not just that they are registered."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12173,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "The test imports/uses the wrong exception type (should be jakarta.persistence.RollbackException) for the scenario it claims to verify."
+ }
+]
