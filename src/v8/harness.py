@@ -484,8 +484,11 @@ def oh_review_delegate(repo_dir, pr_input, profile="qwen", max_steps=MAX_ORCH_ST
             if getattr(a, "tool_name", None) == "finish":
                 try:
                     d = a.model_dump()
+                    msg = d.get("message")
+                    if msg is None:          # finish tool nests its message under "action"
+                        msg = (d.get("action") or {}).get("message")
                     finish_text = (_to_text(d.get("thought")) + "\n"
-                                   + _to_text(d.get("message")))
+                                   + _to_text(msg))
                 except Exception:  # noqa: BLE001
                     pass
                 break
