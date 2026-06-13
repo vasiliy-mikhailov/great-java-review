@@ -23,9 +23,9 @@ from v8 import pr_diff_tool  # noqa: E402
 from v8.repo import base_sha, ensure_repo  # noqa: E402
 import dataset as ds  # noqa: E402
 
-PRS = "results/threeway_prs.json"
-OUT = "results/threeway_v8.json"
-TRACE_DIR = "results/traces_v8"
+PRS = os.environ.get("V8_PRS", "results/threeway_prs.json")
+OUT = os.environ.get("V8_OUT", "results/threeway_v8.json")
+TRACE_DIR = os.environ.get("V8_TRACE_DIR", "results/traces_v8")
 BASE = "results/threeway.json"
 V2 = "results/threeway_v2.json"
 V3 = "results/threeway_v7.json"
