@@ -16,19 +16,19 @@ import dataset as ds  # noqa: E402
 
 GIANT = {"JetBrains/intellij-community", "eclipse-platform/eclipse.platform.swt"}
 FROZEN = "results/threeway_prs.json"   # the 37 reproduction PRs — kept as-is
-TESTPATH = re.compile(r"(/src/test/|/test/java/|Test[s]?\.java|IT\.java|[A-Za-z]+Test\b|"
-                      r"@Test|junit|assertThat|assertEquals|mock\(|Mockito)", re.I)
-TESTREV = re.compile(r"\b(test|assert|mock|stub|coverage|junit|@Test|testcase|"
-                     r"edge case|fixture|parameteriz)\b", re.I)
+# STRONG signal: the human review ANCHORS a point to a test file ([path:line] in POINTS).
+# A keyword mention of "test" is NOT enough — that lets in PRs where the human reviewed
+# production code and merely touched test files. We want reviews that review the tests.
+TESTANCHOR = re.compile(r"\[[^\]]*(src/test/|/test/java/|[A-Za-z0-9_]+Test[s]?\.(java|scala|kt)"
+                        r"|[A-Za-z0-9_]+IT\.java)[^\]]*\]")
 
 
 def qualifies(x):
-    inp = x.get("input", "") or ""
     rev = x.get("reference_review", "") or ""
-    L = len(inp); hum = len(rev.strip())
+    L = len(x.get("input", "") or ""); hum = len(rev.strip())
     return (x["repo"] not in GIANT and 1500 <= L <= 60000 and hum >= 120
             and (x.get("n_points") or 0) >= 2
-            and TESTPATH.search(inp) and len(TESTREV.findall(rev)) >= 1)
+            and TESTANCHOR.search(rev) is not None)
 
 
 def main():
