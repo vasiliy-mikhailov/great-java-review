@@ -86,6 +86,9 @@ _V4 = bool(os.environ.get("OH_V4"))
 _V5 = bool(os.environ.get("OH_V5"))
 _V6 = bool(os.environ.get("OH_V6"))
 _V7 = bool(os.environ.get("OH_V7"))
+_V9 = bool(os.environ.get("OH_V9"))   # v9: relaxed orchestrator (no artificial limits on investigation)
+if _V9:
+    _V7 = True              # v9 builds on v7's lean context + tools
 if _V7:
     _V6 = True              # v7 includes the v6 PR tools
 if _V6:
@@ -315,6 +318,21 @@ the repo yet; review the change, read SURROUNDING/base code for context. Use `gr
 task tool (subagent_type="code-explorer"). No shell, never edit files. Return a concise grounded
 finding (VERDICT + path/File.java:line + 1-3 sentences). Do NOT write a full review."""
 
+# v9: relaxed investigator. The soft "may delegate" becomes a real trigger, and the
+# "concise / 1-3 sentences" limiter is dropped so a multi-instance area is covered in full.
+INVESTIGATOR_SYS_V9 = """You investigate ONE area of a Java pull request. The PR's PROPOSED CHANGE
+(diff) is at the end of this prompt — the repo is at the BASE commit so added code is NOT in the
+repo yet; review the change and read SURROUNDING/base code for context with `grep`/`glob`/`file_editor`.
+When your area has MULTIPLE instances to check — several overloads, call-sites, branches, or files —
+or a sub-question needs its own focused lookup, delegate it to the `code-explorer` subagent via the
+task tool (subagent_type="code-explorer") and check ALL instances rather than generalizing from one.
+Cover every instance in your assignment, then CONCLUDE and return — use a focused set of lookups
+(and code-explorer only for genuinely separate sub-questions), not an open-ended exploration; once
+you have checked the instances you were asked about, stop and report. Do not re-open areas you have
+already checked or widen beyond your assigned area. No shell, never edit files. Return a grounded
+finding: VERDICT + path/File.java:line + the specific evidence, covering every instance you were
+asked about. Do NOT write a full review."""
+
 
 _CURRENT_PR = {"input": ""}   # set per rollout; subagent factories read it at spawn time
 _SUBAGENTS_READY = False
@@ -378,7 +396,8 @@ def _register_subagents():
 
     def investigator_factory(llm):               # depth-2: read + sub-delegate, NO PTY
         sl = _sub_llm(llm)
-        return Agent(llm=sl, tools=read_tools + task_spec, system_prompt=_with_pr(INVESTIGATOR_SYS),
+        return Agent(llm=sl, tools=read_tools + task_spec,
+                     system_prompt=_with_pr(INVESTIGATOR_SYS_V9 if _V9 else INVESTIGATOR_SYS),
                      condenser=_condenser(sl))
 
     register_agent_if_absent("code-explorer", code_explorer_factory,
@@ -417,6 +436,49 @@ POINTS:
 The <review>...</review> block MUST contain the full review text (not a statement that
 you are about to write it)."""
 
+# v9: relaxed orchestrator. Removes the anchors that caused v8's depth misses — the
+# "0-3 delegations / over-delegating bloats", the "review changed files directly, don't
+# delegate them", and the "write the review now" early-stop. Investigation scales to the
+# PR; changed-file correctness (esp. multi-instance checks) is delegable; verify before
+# asserting absence/criticality. Only the hard physical bounds remain (vLLM ceiling, the
+# MAX_ORCH_STEPS backstop). The output format is unchanged.
+ORCH_SYS_V9 = """You are a senior Java code reviewer acting as an ORCHESTRATOR. The PR's diff
+AND the FULL CONTENT of the changed files (at base commit) are ALREADY in your context. You have
+NO file tools yourself; you investigate by delegating via the task tool to subagents that read the repo.
+
+Your goal is the most thorough, correct review this PR warrants — find every substantive,
+non-obvious issue a strong reviewer would raise, and VERIFY each against the actual code before
+asserting it. There is no fixed budget on the number of investigations: investigate as much as the
+PR needs. A large or subtle PR may warrant many delegations; a small one only a few. Scale your
+effort to the PR — do not stop early to save calls, and do not pad a simple PR.
+
+Delegate to check anything you cannot verify from your own context alone, including:
+- CHANGED-FILE correctness: when a changed method/class has multiple overloads, branches, call-sites,
+  or sibling files, delegate a check across ALL of them (e.g. "verify every getX overload escapes its
+  input", "find all callers of the changed signature and confirm they pass the new argument") rather
+  than generalizing from a single example;
+- SURROUNDING/base code: callers, existing conventions, whether a helper already exists, thread-safety,
+  prior behavior.
+Before you assert that something is missing, broken, untested, or critical, delegate a check that
+confirms it against the code — unconfirmed absence/criticality claims are the main error to avoid.
+
+Subagent types:
+- subagent_type="investigator" for a substantial area that may need several lookups or its own sub-delegation.
+- subagent_type="code-explorer" for a single focused lookup.
+
+Keep investigating until the substantial claims are verified and nothing material is left to check.
+Then combine the findings with your own reading and write the COMPLETE review — do not announce it,
+write it. Wrap it in <review></review> tags as the message of your finish action, in EXACTLY this
+format, then stop:
+<review>
+SUMMARY:
+<one short paragraph>
+POINTS:
+- [path/File.java:line] <specific, actionable, verified point>
+</review>
+The <review>...</review> block MUST contain the full review text (not a statement that you are
+about to write it)."""
+
 
 def mr_code_review(repo_dir, pr_input, profile="qwen"):
     """MR + code (NO tools): a single LLM call with the diff AND the FULL changed-file
@@ -451,7 +513,8 @@ def oh_review_delegate(repo_dir, pr_input, profile="qwen", max_steps=MAX_ORCH_ST
     all_tools = get_default_tools(enable_browser=False, enable_sub_agents=True)
     orch_tools = [t for t in all_tools
                   if getattr(t, "name", None) in ("task_tool_set", "task_tracker")]
-    orch_sys = (policy or ORCH_SYS) + (_V5_ORCH_GUIDE if _V5 else "")
+    _base_orch = ORCH_SYS_V9 if _V9 else ORCH_SYS
+    orch_sys = (policy or _base_orch) + (_V5_ORCH_GUIDE if _V5 else "")
     agent = Agent(llm=llm, tools=orch_tools, system_prompt=orch_sys,
                   condenser=_condenser(llm))
 
