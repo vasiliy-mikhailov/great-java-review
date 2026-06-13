@@ -112,6 +112,14 @@
   "best": "Every test uses 20 distinct values, so the PR's one real behavioral change \u2014 removing MAX_DICTIONARY_SIZE=8096 \u2014 has no coverage; add a >8096-distinct-value test with a non-matching predicate that prunes the row group."
  },
  {
+  "repo": "apache/pulsar",
+  "pr": 25694,
+  "test_depth": 3,
+  "substantive": 3,
+  "agree": true,
+  "best": "Removing PortManager makes these tests flaky: after a socket is closed the kernel can immediately hand the same port to another process before re-bind, so these specific tests still need the lock-and-reserve allocation that port 0 cannot provide."
+ },
+ {
   "repo": "apache/accumulo-fluo",
   "pr": 934,
   "test_depth": 2,
@@ -232,6 +240,14 @@
   "best": "Missing a forking-process integration test in CacheLockTest to confirm the file-system lock actually works across processes, not just within one JVM."
  },
  {
+  "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+  "pr": 146,
+  "test_depth": 2,
+  "substantive": 4,
+  "agree": true,
+  "best": "TestLanguageServers.java:280 re-setting the document with identical content only fires an event without actually changing state, so the test should start from a clean file and then mutate to genuinely verify markers appear."
+ },
+ {
   "repo": "apache/pulsar",
   "pr": 21498,
   "test_depth": 2,
@@ -296,6 +312,14 @@
   "best": "TestIcebergSplitSource:172 should assert stats are gathered when regionKey is in the static dynamicFilterColumns set with an empty per-batch predicate, covering the DF-resolves-late regression."
  },
  {
+  "repo": "quarkusio/quarkus",
+  "pr": 53066,
+  "test_depth": 2,
+  "substantive": 3,
+  "agree": true,
+  "best": "Asks for a test that verifies no vector type/function contributors are missing (mirroring the spatial ClassNamesTest), catching a real coverage gap where the contributor lists could silently drift."
+ },
+ {
   "repo": "spring-projects/spring-boot",
   "pr": 46984,
   "test_depth": 2,
@@ -358,6 +382,14 @@
   "substantive": 9,
   "agree": true,
   "best": "Reducing the benchmark row count cuts input down to roughly a single 8K page, so the JMH benchmark no longer measures realistic multi-page serde behavior."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 7849,
+  "test_depth": 1,
+  "substantive": 8,
+  "agree": true,
+  "best": "AllValuesConfig.java:33 changing Optional to OptionalLong silently removes the only coverage that exercises the plain Optional config path."
  },
  {
   "repo": "apache/accumulo-fluo",
@@ -568,6 +600,14 @@
   "best": "Notes the DnsOverHttps test's `path` field actually holds path+query and confirms the override test verifies the correct cache URL is used."
  },
  {
+  "repo": "trinodb/trino",
+  "pr": 28259,
+  "test_depth": 1,
+  "substantive": 3,
+  "agree": true,
+  "best": "Notes that testTrinoReadingSparkCompressedData's SET statements are now no-ops, so the product test no longer exercises what it claims and may be pointless to keep."
+ },
+ {
   "repo": "spring-projects/spring-boot",
   "pr": 47180,
   "test_depth": 1,
@@ -656,6 +696,30 @@
   "best": "Asks why BasicLoomTest uses a MockServer testcontainer instead of the project's own MockWebServer for the pinning test."
  },
  {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6017,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "Spots that the refactored runner now changes the AssumptionViolatedException path (previously super.run ran; the new control flow gates it on setupException) and asks about JUnit-runner side effects."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 841,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "Requests copyTo tests where end <= start; partially overlaps the existing testCopyToArgsReversed/testCopyToNothing but flags an edge-case coverage boundary worth nailing down."
+ },
+ {
+  "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+  "pr": 130,
+  "test_depth": 1,
+  "substantive": 2,
+  "agree": true,
+  "best": "TestLanguageServers.java:178 needing to grow the timeout exposes that the catalog fetch is a synchronous blocker on the init path and should be async, the timeout bump is masking a real design problem rather than a slow test."
+ },
+ {
   "repo": "eclipse-vertx/vert.x",
   "pr": 4920,
   "test_depth": 1,
@@ -734,5 +798,13 @@
   "substantive": 1,
   "agree": true,
   "best": "RequestBodyTest.testSha256 can drop the assertOnPath/filesystem plumbing and just use \"Hello\".toRequestBody()."
+ },
+ {
+  "repo": "square/okhttp",
+  "pr": 7135,
+  "test_depth": 1,
+  "substantive": 1,
+  "agree": true,
+  "best": "Questioning whether the right fix is changing the URL rather than flipping the expected assertion from 200 to 404 touches test-correctness, but the reviewer immediately concedes 'this is fine.'"
  }
 ]
