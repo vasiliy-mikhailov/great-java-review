@@ -1,0 +1,110 @@
+[
+ {
+  "repo": "eclipse-platform/eclipse.platform.swt",
+  "pr": 2935,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Reviewer reasons about where validation belongs: the null/linear-scaling/100%-data checks can stay in the existing caller because the new InputStream caller by construction never violates them, plus flags a possible behavioral regression from dropping loadByZoom()."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 29042,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Deep domain critique: CRAC checkpoint will break anything holding sockets, the Optional<Boolean> tri-state default is an anti-pattern, manualInitialize already runs STATIC_INIT so the extra wiring is suspect, and the resource read needs try-with-resources."
+ },
+ {
+  "repo": "sevntu-checkstyle/sevntu.checkstyle",
+  "pr": 565,
+  "depth": 1,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "Mostly project-process nits (coverage, module group, indentation, missing javadoc); the one non-obvious technical smell is the while(true)+self-suppression in the new check."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 40725,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Spots a real logic bug: containsAnyCreatedScopeKeys returns false when local only holds the special REQUEST_SCOPED_LOCAL_KEY (not in the keys list), plus a misleading method name and a probing question about using ContextLocalImpl instances directly as storage keys."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 22799,
+  "depth": 2,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "The LightProto buffer-lifecycle catch is the standout: String properties are lazily resolved from the input buffer, so releasing it before the parsed instance is done causes use-after-free; the addComponent(true,..) suggestions are valid but more idiom-level."
+ },
+ {
+  "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+  "pr": 385,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "Radio selection must be restored in initializeFrom() or the persisted URL/file choice is lost, the NON-NLS-marked literal should actually be translated (misuse of NON-NLS), and several redundant param.put/setter calls are questioned."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 9352,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Reviewer challenges the whole approach: the pre-init CacheManager / saved-classloader machinery exists only to keep tests passing and should be replaced by swapping the classloader at lookup time (or fixing the tests), deprecating JCacheHelper rather than calling it from production."
+ },
+ {
+  "repo": "eclipse-vertx/vert.x",
+  "pr": 5677,
+  "depth": 1,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "Four of five points are 'revert this unrelated import/whitespace change'; the substantive one is the Unpooled.wrappedBuffer concern about Netty refcount cost and Vertx's known-allocator checks, but it is largely the reviewer thinking aloud rather than a confirmed defect in the diff."
+ },
+ {
+  "repo": "eclipse-platform/eclipse.platform.swt",
+  "pr": 3168,
+  "depth": 2,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Catches that the PR silently removes selection-highlight-gradient (color gradient) support which is unrelated to the stated 'remove curved tabs' intent and should be a separate PR; the deprecation-tag and dead-method points are minor."
+ },
+ {
+  "repo": "eclipse-platform/eclipse.platform.swt",
+  "pr": 2483,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "Reviewer recognizes the change mixes three intended incremental steps (listener vs direct calls) inconsistently and pinpoints specific spots that should still be direct handleDPIChange calls or shouldn't add a listener yet, beyond the redundant cast/signature nits."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 49838,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "API-design depth: the getAlias-then-pass-back-in method should be removed, assertContainsAlias should become assertContainsAliases checking all aliases, and the custom JksKey subclass is unnecessary since the change belongs on the base Key class; the rest are @since/formatting nits."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 11224,
+  "depth": 2,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Argues the build-time enable flag is unjustified given negligible cost (should always be on) and that non-standard levels like java.util.logging WARNING should be mapped by integer value to the standard counters for accuracy; the several missing-final notes are correct but minor."
+ }
+]

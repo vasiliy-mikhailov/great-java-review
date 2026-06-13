@@ -1,0 +1,110 @@
+[
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 12191,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Reviewer caught non-obvious correctness/exception-safety issues (restore value in a finally block, LocalDateTime.now() nanosecond/resolution inconsistency, ALL_REVISIONS restoration design) that a blind read of a truncated 14k-line diff would miss but readily agree with."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25538,
+  "depth": 5,
+  "test_depth": 0,
+  "substantive": 7,
+  "agree": true,
+  "best": "Strong API-design review: replace the includeSecret boolean with a TokenEndpointAuthMethod enum carried in the request, add an explicit auth_method parameter enabling validation, and refactor FlowBase to a createHttpClient hook to avoid two HttpClient instances - all non-obvious and well-justified."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 29684,
+  "depth": 7,
+  "test_depth": 0,
+  "substantive": 9,
+  "agree": true,
+  "best": "Excellent depth: caching the parsed footer rather than raw bytes, moving the config out of Iceberg into ParquetReaderConfig, using getAffinityKey to route splits for cache hits, plugging cache memory into getMemoryUsage, and the genuine bug of dropping options as Optional.empty() - many insights I would not have reached blind."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 25755,
+  "depth": 5,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "Substantive logic findings: the precedence order (session > table > catalog), the catalog-config default still applying when unset, and the sharp design objection to a compression_level table property supported only for AVRO when ORC/Parquet writers don't implement it."
+ },
+ {
+  "repo": "eclipse-platform/eclipse.platform.swt",
+  "pr": 2795,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Reviewer caught a likely regression - removal of the init() handle initialization in the copy constructor's IMAGE_DISABLE/IMAGE_GRAY path - plus unused added parameters and a duplicated gray/disablement application, all non-obvious correctness concerns."
+ },
+ {
+  "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+  "pr": 297,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "The key non-obvious finding is that the extension jar path is resolved relative to the wrong bundle (the host bundle rather than the contributing plugin), which would produce erroneous paths in most cases; plus the path.separator portability point."
+ },
+ {
+  "repo": "eclipse-wildwebdeveloper/wildwebdeveloper",
+  "pr": 316,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Eclipse domain insight: child content-types inherit the base type's file associations so the new explicit associations are redundant, and reading plugin.xml directly should be replaced by querying Platform.getContentTypeManager() so user/plugin customizations flow through."
+ },
+ {
+  "repo": "eclipse-vertx/vert.x",
+  "pr": 4809,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Concurrency-expert review: the warning about integer overflow under high concurrent accumulated writes (use long), the AtomicIntegerFieldUpdater suggestion, and especially the drain-race question between the compareAndSet and the subsequent incrementAndGet are non-obvious correctness/perf points."
+ },
+ {
+  "repo": "eclipse-platform/eclipse.platform.swt",
+  "pr": 2404,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 4,
+  "agree": true,
+  "best": "Amid many rename nits, the substantive points are real: the cache keyed only on targetZoom may need to key on the full ZoomContext, and the GC should likely receive nativeZoom rather than the zoom currently forwarded - both genuine correctness questions."
+ },
+ {
+  "repo": "agroal/agroal",
+  "pr": 133,
+  "depth": 2,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "Sharp concurrency catch: using tryTransfer (which fails when no consumer is waiting) instead of offer can drop a returned connection so a consumer that blocks just after the failed transfer waits forever - a real liveness bug, repeated across the analogous sites."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11595,
+  "depth": 9,
+  "test_depth": 0,
+  "substantive": 22,
+  "agree": true,
+  "best": "Deep Hibernate-dialect knowledge: numerous registrations and columnType branches are redundant because the super dialect already handles them, the '%' function-name likely isn't a valid Java identifier start, and timestamp should map to TIMESTAMP_UTC - domain insights a blind reviewer could not derive without knowing base-dialect behavior."
+ },
+ {
+  "repo": "wildfly/wildfly-core",
+  "pr": 6222,
+  "depth": 5,
+  "test_depth": 0,
+  "substantive": 7,
+  "agree": true,
+  "best": "Good substantive coverage: multiple console-printing sites bypass i18n and should log/throw properly, the second CLI operation runs even when the import is canceled (a correctness bug), and both operations re-send the same file attachment redundantly."
+ }
+]

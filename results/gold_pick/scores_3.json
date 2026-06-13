@@ -1,0 +1,128 @@
+[
+  {
+    "repo": "apache/pulsar",
+    "pr": 25693,
+    "depth": 4,
+    "test_depth": 0,
+    "substantive": 4,
+    "agree": true,
+    "best": "Asks whether op/txn records can be GC'd before the data they describe, reasoning that without commit/abort info a new reader cannot decide which entries to skip — a non-obvious consumer-consistency dependency."
+  },
+  {
+    "repo": "eclipse-platform/eclipse.platform.swt",
+    "pr": 2863,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Questions whether DISABLED_INHERITED, which is only used in a setter, actually expresses 'inherit to children' vs 'has inherited' — a real API-semantics flaw in the new enum, while the rest are Javadoc-wording nits."
+  },
+  {
+    "repo": "apache/pulsar",
+    "pr": 23386,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Flags Boolean vs boolean and the resulting NPE risk when unboxing a null preventLogging flag; the remaining points are naming/wording preferences (and the reviewer missed the static mutable anonymizerType field)."
+  },
+  {
+    "repo": "apache/pulsar",
+    "pr": 23785,
+    "depth": 4,
+    "test_depth": 0,
+    "substantive": 4,
+    "agree": true,
+    "best": "Catches that defaulting systemTopicDefaultNumPartitions to 1 breaks backward compatibility for existing deployments and proposes a -1 sentinel that falls back to defaultNumPartitions, plus a missing > 0 validation check."
+  },
+  {
+    "repo": "apache/accumulo-fluo",
+    "pr": 928,
+    "depth": 2,
+    "test_depth": 0,
+    "substantive": 2,
+    "agree": true,
+    "best": "Spots leftover Git merge-conflict markers (<<<<<<< / ======= / >>>>>>>) committed in the file and explains how to resolve them — a build-breaking issue easy to miss in a large doc-only diff."
+  },
+  {
+    "repo": "eclipse-platform/eclipse.platform.swt",
+    "pr": 1638,
+    "depth": 3,
+    "test_depth": 0,
+    "substantive": 3,
+    "agree": true,
+    "best": "Argues the SVG-vs-raster stream sniffing (mark/reset or PushbackInputStream) belongs in FileFormat.load rather than ImageLoader/JSVGRasterizer, and separately notices the latest update accidentally dropped the Linux/Mac implementations."
+  },
+  {
+    "repo": "eclipse-tycho/tycho",
+    "pr": 5209,
+    "depth": 4,
+    "test_depth": 0,
+    "substantive": 4,
+    "agree": true,
+    "best": "Warns that JSR-330 injection does not work reliably on concrete classes and needs an interface, and that the mojo should take a Repository (not a String URL) so ID-based proxy/auth/mirroring works."
+  },
+  {
+    "repo": "quarkusio/quarkus",
+    "pr": 35989,
+    "depth": 4,
+    "test_depth": 0,
+    "substantive": 4,
+    "agree": true,
+    "best": "Repeatedly pushes to replace CDI.current().select(OpenTelemetry.class) with a proper Instance<OpenTelemetry> injection point / constructor parameter — a real Quarkus/Arc anti-pattern — and flags a redundant pom dependency."
+  },
+  {
+    "repo": "trinodb/trino",
+    "pr": 27586,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Pushes back on adding a separate branchy plus branchless code path, arguing the maintainability cost outweighs the gain on the rare many-nulls path; the rest are redundant-else and rename nits."
+  },
+  {
+    "repo": "eclipse-platform/eclipse.platform.swt",
+    "pr": 1063,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Raises that applying the new GC.create helper in places with large reformatting will damage git-blame history, which SWT relies on — a non-obvious project-specific maintainability concern."
+  },
+  {
+    "repo": "SaptarshiSarkar12/Drifty",
+    "pr": 1121,
+    "depth": 4,
+    "test_depth": 0,
+    "substantive": 4,
+    "agree": true,
+    "best": "Identifies a behavioral regression — removing the job-list-add code broke instant job-list updates — and that the catch block rethrows RuntimeException without chaining the original cause, losing the stack trace."
+  },
+  {
+    "repo": "eclipse-platform/eclipse.platform.swt",
+    "pr": 2390,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Notes the new CursorHandleProvider inner classes should be static to prevent accidental access to the outer Cursor instance; the remaining points are formatting/ordering/rename style nits."
+  },
+  {
+    "repo": "netty/netty",
+    "pr": 15764,
+    "depth": 1,
+    "test_depth": 0,
+    "substantive": 1,
+    "agree": true,
+    "best": "Flags an unsure >>> vs >> signed/unsigned-shift correctness question in RefCnt; most other points are self-authored leftover/TODO notes rather than independent review findings."
+  },
+  {
+    "repo": "quarkusio/quarkus",
+    "pr": 42140,
+    "depth": 3,
+    "test_depth": 0,
+    "substantive": 3,
+    "agree": true,
+    "best": "Gives the correct SmallRyeConfigBuilder recipe (setAddDefaultSources(false).addSystemSources().withSources(inFileSystem...)) and points out the builder's own classloader must be used — concrete correctness fixes for the native config builder."
+  }
+]

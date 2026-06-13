@@ -1,0 +1,101 @@
+[
+ {
+  "repo": "trinodb/trino",
+  "pr": 27788,
+  "depth": 7,
+  "test_depth": 0,
+  "substantive": 9,
+  "agree": true,
+  "best": "Strong reuse/leak review: two unclosed FileIO resource leaks, missing withPartition, and several correct nudges to reuse Iceberg ContentFileUtil helpers (referencedDataFileLocation, isFileScoped, isDV) and fileSizeInBytes that I would plausibly miss blind."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 975,
+  "depth": 1,
+  "test_depth": 0,
+  "substantive": 3,
+  "agree": true,
+  "best": "Mostly simplification/inlining nits on a Guava-to-CompletableFuture refactor; the only non-obvious point is suggesting a type parameter on the callback interface to drop the unchecked Iterator<Result> cast."
+ },
+ {
+  "repo": "quarkusio/quarkus",
+  "pr": 17450,
+  "depth": 2,
+  "test_depth": 0,
+  "substantive": 2,
+  "agree": true,
+  "best": "The beginDispatch/try-ordering catch is a genuinely non-obvious correctness point (endDispatch must not run if beginDispatch threw), plus the chained suggestion to pass null and let the EQE default handler apply rather than plumb a handler through."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 1018,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "Architectural depth: argues the scan config options don't belong in the Java API surface and that fluo-core should not depend on commons-csv (push it behind a Function passed from fluo-command), plus combined-option sanity checks."
+ },
+ {
+  "repo": "quarkiverse/quarkus-mcp-server",
+  "pr": 298,
+  "depth": 5,
+  "test_depth": 0,
+  "substantive": 7,
+  "agree": true,
+  "best": "Solid API-boundary review: flags leaking an internal runtime package and SchemaGeneratorConfigBuilder as public API, collapsing two useless CDI beans into ToolManagerImpl, @Dependent scoping, and using runtime dependencies instead of indexing."
+ },
+ {
+  "repo": "spring-projects/spring-boot",
+  "pr": 30358,
+  "depth": 6,
+  "test_depth": 0,
+  "substantive": 9,
+  "agree": true,
+  "best": "Best catch is that the indicator-class-based failure analysis is broken (spring-webmvc/webflux present with no embedded server still triggers the missing-factory failure), backed by sound advice on the exception hierarchy, constructor message ownership, removing the unused cause constructor, and package tangle."
+ },
+ {
+  "repo": "trinodb/trino",
+  "pr": 29643,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "Asks the right semantic question about switching from Iceberg StructLikeWrapper hashing/comparison to Trino's internal hash/comparators, plus narrowing the exposed FlatHashStrategy SPI and flattening the AND filter tree."
+ },
+ {
+  "repo": "apache/accumulo-fluo",
+  "pr": 767,
+  "depth": 0,
+  "test_depth": 0,
+  "substantive": 0,
+  "agree": false,
+  "best": "The diff is empty (0 changed files), so none of the MetricsReporter API design points can be verified against the diff under the correctness criterion."
+ },
+ {
+  "repo": "apache/pulsar",
+  "pr": 25489,
+  "depth": 3,
+  "test_depth": 0,
+  "substantive": 5,
+  "agree": true,
+  "best": "API-design depth on a new client surface: auth factory and transaction creation should be async because they involve IO, and protobuf Schema should bind to com.google.protobuf.Message rather than the generated GeneratedMessageV3."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11631,
+  "depth": 5,
+  "test_depth": 0,
+  "substantive": 9,
+  "agree": true,
+  "best": "Catches that the correlation visitor misses table-reference joins (a real correctness gap), and pushes a dedicated checker class with an exception-based early exit (and fillInStackTrace override) plus moving hasCorrelatedSubquery into AbstractSqlAstTranslator."
+ },
+ {
+  "repo": "hibernate/hibernate-orm",
+  "pr": 11800,
+  "depth": 4,
+  "test_depth": 0,
+  "substantive": 6,
+  "agree": true,
+  "best": "Subtle datetime-literal correctness: spotting the need to force an offset (append 'Z' when jdbcTimeZone is null), questioning the calendar transformation, and the UTC-offset fixes on the LocalTime/OffsetTime timestamp paths."
+ }
+]
