@@ -26,13 +26,17 @@ tool = [{"type": "function", "function": {"name": "add_suspicion",
             "severity": {"type": "string"}, "confidence": {"type": "number"}},
             "required": ["claim", "location", "severity", "confidence"]}}}]
 
-for tb in [1024, 4096]:
+# Matrix: isolate the reasoning_effort x thinking_token_budget interaction at the vLLM level.
+for re, tb in [(None, None), (None, 2048), ("high", 2048), ("high", None)]:
+    extra = {"chat_template_kwargs": {"enable_thinking": True}}
+    if tb is not None:
+        extra["thinking_token_budget"] = tb
+    kw = dict(model=model, api_base=base, api_key=key, messages=msgs, tools=tool,
+              tool_choice="auto", max_tokens=14000, temperature=0, extra_body=extra)
+    if re is not None:
+        kw["reasoning_effort"] = re
     t0 = time.time()
-    r = litellm.completion(model=model, api_base=base, api_key=key, messages=msgs, tools=tool,
-                           tool_choice="auto", max_tokens=14000, temperature=0,
-                           extra_body={"chat_template_kwargs": {"enable_thinking": True},
-                                       "thinking_token_budget": tb})
+    r = litellm.completion(**kw)
     m = r.choices[0].message
-    print(f"thinking_token_budget={tb} t={time.time()-t0:.0f}s finish={r.choices[0].finish_reason} "
-          f"tool_calls={len(m.tool_calls or [])} reasoning_chars={len(getattr(m,'reasoning_content',None) or '')} "
-          f"content={repr((m.content or '')[:60])}")
+    print(f"reasoning_effort={re} budget={tb} t={time.time()-t0:.0f}s finish={r.choices[0].finish_reason} "
+          f"tool_calls={len(m.tool_calls or [])} reasoning_chars={len(getattr(m,'reasoning_content',None) or '')}")
