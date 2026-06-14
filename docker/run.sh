@@ -7,7 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; [ -f .env ] && . ./.env; set +a   # QWEN_API_KEY / QWEN_BASE_URL
-docker run --rm \
+NAME="${HARNESS_NAME:-review-harness-run}"
+docker rm -f "$NAME" >/dev/null 2>&1 || true   # clear a stale container so re-runs are clean
+docker run --rm --name "$NAME" \
   -e QWEN_API_KEY -e QWEN_BASE_URL -e OPENHANDS_SUPPRESS_BANNER=1 \
   -e SANDBOX_SSH_HOST="" \
   -v "$PWD":/work -w /work \

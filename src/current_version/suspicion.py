@@ -403,8 +403,12 @@ def run(repo, pr, conf_floor=0.4):
     if files:
         pi = re.sub(r'Changed files \((\d+)\):[^\n]*',
                     lambda m: f"Changed files ({m.group(1)}): " + ", ".join(files), pi, count=1)
+    tag = repo.replace('/', '__') + '__' + str(pr)
+    os.makedirs("results/reasoning", exist_ok=True)
+    os.environ["REASONING_LOG"] = f"results/reasoning/{tag}.log"
+    open(os.environ["REASONING_LOG"], "w").close()   # truncate per run; logs each agent turn's thinking
     os.makedirs("results/probes", exist_ok=True)
-    _sandbox.start(repo, pr, log_path=f"results/probes/{repo.replace('/', '__')}__{pr}.log")
+    _sandbox.start(repo, pr, log_path=f"results/probes/{tag}.log")
     try:
         review, sus = run_suspicion_review(d, pi, conf_floor=conf_floor)
     finally:

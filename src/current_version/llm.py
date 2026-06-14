@@ -49,22 +49,55 @@ from openhands.sdk import LLM  # noqa: E402
 _NOOP_TOKEN = lambda _chunk: None  # noqa: E731
 
 
+def _log_turn(usage_id, resp):
+    """Append this LLM turn's REASONING + content + tool calls to $REASONING_LOG, so the
+    model's thinking is visible (Qwen needs thinking ON; with the fixed vLLM the thought
+    lands in reasoning_content and `content` is often empty — invisible without this)."""
+    path = os.environ.get("REASONING_LOG")
+    if not path:
+        return
+    try:
+        msg = resp.choices[0].message
+        rc = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+        content = getattr(msg, "content", None)
+        tcs = getattr(msg, "tool_calls", None) or []
+        with open(path, "a") as f:
+            f.write(f"\n===== turn [{usage_id}] =====\n")
+            if rc:
+                f.write("[thinking]\n" + str(rc).strip() + "\n")
+            if content:
+                f.write("[content]\n" + str(content).strip() + "\n")
+            for t in tcs:
+                fn = getattr(getattr(t, "function", None), "name", None)
+                args = getattr(getattr(t, "function", None), "arguments", None)
+                f.write(f"[tool_call] {fn}({str(args)[:600]})\n")
+            if not (rc or content or tcs):
+                f.write("[empty turn]\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class StreamingLLM(LLM):
     """stream=True turns httpx's read-timeout into a byte-gap heartbeat (P8/P14). But
     OpenHands raises if stream=True and on_token is None, and two call sites hit the
     shared llm: the agent loop passes on_token=None EXPLICITLY (so `setdefault` would
     not fix it — need `is None`), the condenser passes it ABSENT. Inject a no-op for
-    both, sync + async (the condenser uses acompletion)."""
+    both, sync + async (the condenser uses acompletion). Also logs each turn's thinking
+    to $REASONING_LOG when set (observability — see _log_turn)."""
 
     def completion(self, *a, **kw):
         if kw.get("on_token") is None:
             kw["on_token"] = _NOOP_TOKEN
-        return super().completion(*a, **kw)
+        resp = super().completion(*a, **kw)
+        _log_turn(self.usage_id, resp)
+        return resp
 
     async def acompletion(self, *a, **kw):
         if kw.get("on_token") is None:
             kw["on_token"] = _NOOP_TOKEN
-        return await super().acompletion(*a, **kw)
+        resp = await super().acompletion(*a, **kw)
+        _log_turn(self.usage_id, resp)
+        return resp
 
 
 def _llm(profile: str = "qwen"):
