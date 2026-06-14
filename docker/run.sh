@@ -11,7 +11,7 @@ NAME="${HARNESS_NAME:-review-harness-run}"
 docker rm -f "$NAME" >/dev/null 2>&1 || true   # clear a stale container so re-runs are clean
 docker run --rm --name "$NAME" \
   -e QWEN_API_KEY -e QWEN_BASE_URL -e OPENHANDS_SUPPRESS_BANNER=1 \
-  -e SANDBOX_SSH_HOST="" -e OH_MAX_OUT -e SANDBOX_NETWORK \
+  -e SANDBOX_SSH_HOST="" -e OH_MAX_OUT -e OH_STREAM -e SANDBOX_NETWORK \
   -v "$PWD":/work -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v oh-m2-cache:/root/.m2 -v oh-gradle-cache:/root/.gradle \

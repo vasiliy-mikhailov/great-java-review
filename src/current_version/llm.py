@@ -148,7 +148,10 @@ def _llm(profile: str = "qwen"):
         # has gone silent for this long (vllm under concurrent load accepts the call
         # then stops streaming) so num_retries can re-issue it instead of hanging forever.
         timeout=c.get("request_timeout_s", 180),
-        stream=True,
+        # stream toggle (OH_STREAM=0 to disable). stream=True was added for the Caddy idle-close
+        # on long generations, but it appears to drop tool_calls in OpenHands' aggregation; with
+        # native tools working, turns are short (think->call->return) so non-stream may be fine.
+        stream=os.environ.get("OH_STREAM", "1") == "1",
         max_output_tokens=131072,
         litellm_extra_body={"chat_template_kwargs":
                             {"enable_thinking": c.get("enable_thinking", True)}},
