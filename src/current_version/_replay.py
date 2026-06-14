@@ -26,19 +26,19 @@ tool = [{"type": "function", "function": {"name": "add_suspicion",
             "severity": {"type": "string"}, "confidence": {"type": "number"}},
             "required": ["claim", "location", "severity", "confidence"]}}}]
 
-# Decisive: budget held at 2048, vary ONLY streaming. Does stream=True break budget enforcement?
-from litellm import stream_chunk_builder
+# prefix x drop_params: which combo preserves thinking_token_budget? finish=tool_calls => budget
+# enforced (model acted at ~2048 thinking); finish=length => budget dropped (ruminated to cap).
 extra = {"chat_template_kwargs": {"enable_thinking": True}, "thinking_token_budget": 2048}
-for streaming in [False, True]:
-    kw = dict(model=model, api_base=base, api_key=key, messages=msgs, tools=tool,
-              tool_choice="auto", max_tokens=14000, temperature=0, extra_body=extra)
-    t0 = time.time()
-    if not streaming:
-        r = litellm.completion(stream=False, **kw)
-        m = r.choices[0].message; finish = r.choices[0].finish_reason
-    else:
-        chunks = list(litellm.completion(stream=True, **kw))
-        f = stream_chunk_builder(chunks, messages=msgs)
-        m = f.choices[0].message; finish = f.choices[0].finish_reason
-    print(f"stream={streaming} budget=2048 t={time.time()-t0:.0f}s finish={finish} "
-          f"tool_calls={len(m.tool_calls or [])} reasoning_chars={len(getattr(m,'reasoning_content',None) or '')}")
+for prefix in ["hosted_vllm/", "openai/"]:
+    for dp in [True, False]:
+        t0 = time.time()
+        try:
+            r = litellm.completion(model=prefix + c["model"], api_base=base, api_key=key,
+                                   messages=msgs, tools=tool, tool_choice="auto", max_tokens=4000,
+                                   temperature=0, drop_params=dp, extra_body=extra)
+            m = r.choices[0].message
+            print(f"prefix={prefix} drop_params={dp} t={time.time()-t0:.0f}s "
+                  f"finish={r.choices[0].finish_reason} tool_calls={len(m.tool_calls or [])} "
+                  f"reasoning_chars={len(getattr(m,'reasoning_content',None) or '')}")
+        except Exception as e:
+            print(f"prefix={prefix} drop_params={dp} ERROR {type(e).__name__}: {str(e)[:90]}")
