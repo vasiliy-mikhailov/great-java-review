@@ -1,0 +1,98 @@
+{
+  "pr": 801,
+  "own_review": [
+    {
+      "file": ".github/workflows/docker-publish.yml (GUI Gluon setup step, ~L92)",
+      "issue": "gluonhq/setup-graalvm GUI step hardcodes arch:'amd64'. Docker executables are released only for amd64, so this is unnecessary now (human's point); also inconsistent with build.yml which passes x86_64/aarch64.",
+      "severity": "minor"
+    },
+    {
+      "file": ".github/workflows/build.yml & docker-publish.yml",
+      "issue": "gluonhq/setup-graalvm@master is an unpinned mutable branch ref (vs graalvm/setup-graalvm@v1 used for CLI). Non-reproducible builds / supply-chain risk; pin to a tag or SHA.",
+      "severity": "medium"
+    },
+    {
+      "file": "GUI/src/main/resources/META-INF/native-image/",
+      "issue": "New reachability-metadata.json added but legacy reflect-config.json (14406B) and jni-config.json (6031B) NOT removed (verified present at BASE). GraalVM auto-discovers and merges all META-INF/native-image configs, so reflection/JNI metadata now exists in two formats and the legacy copies will drift stale.",
+      "severity": "medium"
+    },
+    {
+      "file": "GUI/src/main/resources/META-INF/native-image/resource-config.json (bundles)",
+      "issue": "Root locale \"\" dropped from bundles for QuantumMessagesBundle, XMLEntities and controls (was [\"\",\"en-US\",\"und\"], now [\"en-US\",\"und\"]). Verified by diffing base vs new. Low real impact but a genuine change to default-locale fallback.",
+      "severity": "low"
+    },
+    {
+      "file": "GUI/src/main/resources/META-INF/native-image/resource-config.json (globs)",
+      "issue": "The new globs section is an INCOMPLETE mirror of resources.includes: DriftyMainLight.png, SplashLight.png and the frags DrawRoundRect_Color/Blend_SRC_IN/LinearConvolveShadow_20/LinearConvolveShadow_4 appear in includes but not in globs. Verified by parsing the new JSON: HARMLESS at runtime because the includes section retains every one of these entries and GraalVM merges includes+globs. It is only an internal inconsistency, not a dropped resource. FillRoundRect_Color.frag is present (in both sections).",
+      "severity": "minor"
+    },
+    {
+      "file": "CLI/src/main/resources/META-INF/native-image/resource-config.json",
+      "issue": "Unchanged by PR but still references icudt72b only; the GUI config added icudt74b for JDK23. CLI native config not updated to the JDK23 ICU data version.",
+      "severity": "minor"
+    },
+    {
+      "file": "pom.xml + per-module poms",
+      "issue": "Parent pom defines both maven.compiler.source/target properties AND a maven-compiler-plugin with explicit <source>/<target>; each module repeats the properties. Redundant duplication.",
+      "severity": "trivial"
+    },
+    {
+      "file": "JavaFX / EA version + docs",
+      "issue": "JavaFX left on an EA build while moving to stable Java 23; project docs still reference Java 21 / GraalVM 21 (PR checklist leaves docs box unchecked).",
+      "severity": "minor"
+    },
+    {
+      "file": "FABRICATION-WATCH note",
+      "issue": "The headline 'shader files dropped during reformat' alarm is FALSE. All shaders (DrawRoundRect_Color, Blend_SRC_IN, LinearConvolveShadow_20, LinearConvolveShadow_4, FillRoundRect_Color) are present in resource-config.json's includes section in the NEW file. Any claim that they are absent/will fail at runtime is a fabrication driven by reading only the globs section.",
+      "severity": "info"
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"claim": "4 shader frags dropped during reformat, absent from BOTH includes and globs -> rendering crashes", "grade": -1, "reason": "FABRICATION. Verified: all 4 frags are present in the new file's resources.includes section; only globs omits some of them. 'absent from both sections' is verifiably false and is framed as a critical runtime risk."},
+        {"claim": "Default locale \"\" removed from bundles (QuantumMessagesBundle/XMLEntities/controls)", "grade": 1, "reason": "Verified true by diffing base vs new bundles."},
+        {"claim": "SplashLight.png in includes but missing from globs", "grade": 1, "reason": "Factually correct about the globs omission (most accurate of the resource-config observations). 'won't be bundled' conclusion is overstated but the observation is real."},
+        {"claim": "gluonhq/setup-graalvm@master unpinned in build.yml + docker-publish.yml", "grade": 1, "reason": "Verified; matches own review."},
+        {"claim": "Windows profile overrides gluonfx to 1.0.23, so Windows GUI not on upgraded 1.0.25 despite PR claim of fixing all 3 OS", "grade": 1, "reason": "Verified in GUI/pom.xml profile; valid PR-claim-vs-reality point."},
+        {"claim": "Legacy reflect-config.json + jni-config.json not cleaned up; GraalVM merges both", "grade": 1, "reason": "Verified both exist at base; valid duplication concern."},
+        {"claim": "CodeQL/Formatter use Oracle JDK 23; verify OpenRewrite (mvn rewrite:run) compat", "grade": 1, "reason": "Verified workflows use distribution oracle + rewrite:run; mild but valid."},
+        {"claim": "Redundant per-module maven.compiler.source/target vs parent compiler plugin", "grade": 1, "reason": "Verified redundancy; mechanism description slightly imprecise but observation valid."}
+      ],
+      "missed": [
+        "docker-publish.yml arch:'amd64' unnecessary (human's only point)",
+        "JavaFX EA-version concern (own review)"
+      ],
+      "exceeds": [
+        "Identified the bundles root-locale drop and the Windows 1.0.23 override, both genuine and verified"
+      ],
+      "net": 4
+    },
+    "v8": {
+      "points": [
+        {"claim": "DriftyMainLight.png + SplashLight.png missing from globs -> light theme/splash will fail to load at runtime", "grade": -1, "reason": "Globs omission is real, but the asserted runtime failure is FALSE: both are present in resources.includes and GraalVM merges includes+globs. Framed as a regression that does not exist."},
+        {"claim": "4 shader frags removed from globs; loader classes retained but resources absent -> NPE/MissingResourceException", "grade": -1, "reason": "Loader classes (DrawRoundRect_Color_Loader, PPSBlend_SRC_INPeer) do exist in reachability-metadata, but the frags are present in resources.includes, so 'resources absent -> NPE at runtime' is a fabrication. The strongest-stated point is wrong."},
+        {"claim": "CLI resource-config.json still on icudt72b, not updated to icudt74b for JDK23", "grade": 1, "reason": "Verified: CLI config (unchanged) references icudt72b; real JDK23 ICU inconsistency on a relevant file. Failure-mechanism wording is muddled but the finding is legitimate and unique."},
+        {"claim": "CLI native-maven-plugin stuck at 0.10.4 across all 4 profiles, predates Java 23", "grade": 1, "reason": "Verified version in CLI/pom.xml (4 occurrences of 0.10.4); valid compatibility concern."},
+        {"claim": "Windows profile hardcodes 1.0.23 as property value vs base property; suggest separate windows property", "grade": 1, "reason": "Verified; valid minor consistency/cleanliness point."},
+        {"claim": "macos-13/macos-14 runners + arch selection correct, no issues observed", "grade": 0, "reason": "Non-finding (trivial); macos-13 does not even appear in the diff."},
+        {"claim": "Docs still list Java 21 / GraalVM 21; PR docs checklist box should be checked", "grade": 1, "reason": "Matches own review docs-stale point; valid."}
+      ],
+      "missed": [
+        "docker-publish.yml arch:'amd64' unnecessary (human's only point)",
+        "gluonhq/setup-graalvm@master unpinned (own review)",
+        "Legacy reflect-config.json + jni-config.json not cleaned up (own review)",
+        "bundles root locale \"\" dropped (own review)"
+      ],
+      "exceeds": [
+        "Unique catches the others missed: CLI icudt72b not bumped to icudt74b, and CLI native-maven-plugin 0.10.4 not assessed for Java 23"
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {
+    "v7": 1,
+    "v8": 2
+  },
+  "qualitative": "v8 (docker rebuild of the v7 harness) regressed in quality on PR #801. v7's headline 'shader dropped' point is a single fabrication (the frags are present in resources.includes; only globs omits them), but its other seven points are all verified-good, including the bundles root-locale drop, the @master pin, the legacy reflect/jni duplication, and the Windows 1.0.23 override. v8 trades those solid CI/config catches for two confidently-wrong resource-config 'will fail at runtime' claims that ignore the includes section, doubling the absence fabrications to two. v8's redeeming, genuinely-unique finds are the unchanged CLI config still on icudt72b and the CLI native-maven-plugin frozen at 0.10.4, which v7 missed entirely. Net: v7 stays close to the ground-truth review while v8 drifts into hallucinated runtime regressions, so v8 is the weaker run despite a couple of original observations."
+}

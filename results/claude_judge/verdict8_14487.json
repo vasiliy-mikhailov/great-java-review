@@ -1,0 +1,92 @@
+{
+  "pr": 14487,
+  "own_review": [
+    {
+      "severity": "critical",
+      "loc": "transport-classes-io_uring/src/main/java/io/netty/channel/uring/IoUringFileRegion.java:50-58",
+      "finding": "spliceToPipe truncates long->int: `int len = (int)(count() - transferred())` and `int offset = (int)(position() + transferred())`, plus the `int transferred` field. DefaultFileRegion uses long position/count; files >2GB silently truncate the splice length/offset and overflow the cumulative counter, corrupting transfers."
+    },
+    {
+      "severity": "critical",
+      "loc": "transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:scheduleWriteSingle",
+      "finding": "On `fileRegion.open()` IOException the method calls handleWriteError(e) and `return 0`. The caller scheduleWrite() in AbstractIoUringChannel.java:329-332 immediately does `assert numOutstandingWrites > 0`, which fires on this path (and in release builds returns 0 = no write scheduled while the region sits in the outbound buffer)."
+    },
+    {
+      "severity": "major",
+      "loc": "transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:writeComplete0 splice block",
+      "finding": "ECANCELED regression: the inserted IoUringFileRegion branch computes `res >= 0 ? res : ioResult(\"io_uring splice\", res)`, which throws for res == ERRNO_ECANCELED_NEGATIVE instead of silently returning true the way the ByteBuf path does (line 375). Outstanding splice writes cancelled during close raise a spurious error/handleWriteError."
+    },
+    {
+      "severity": "minor",
+      "loc": "transport-native-io_uring/src/test/java/io/netty/channel/uring/IoUringFileRegionTest.java",
+      "finding": "testSendFile has no `@BeforeAll assumeTrue(IoUring.isAvailable())` guard, unlike sibling IoUringFileTest and IoUringSocketFileRegionTest. On hosts without io_uring it fails hard instead of being skipped."
+    },
+    {
+      "severity": "minor",
+      "loc": "transport-classes-io_uring/src/main/java/io/netty/channel/uring/IoUringIoOps.java:public constructor",
+      "finding": "A new `int spliceFdIn` parameter is inserted into the public IoUringIoOps(...) constructor, a binary/source-compatibility break for any external caller of this public final class."
+    },
+    {
+      "severity": "minor",
+      "loc": "transport-classes-io_uring/src/main/java/io/netty/channel/uring/AbstractIoUringStreamChannel.java:filterOutboundMessage",
+      "finding": "(human ref) filtering on DefaultFileRegion only matters when splice is supported; gating/short-circuiting on IORING_SPLICE_SUPPORTED is the right structure (already partially present via isIOUringSpliceSupported())."
+    }
+  ],
+  "traps_disproved": [
+    "pipe-FD leak: outbound-buffer safeRelease -> release() -> closePipeIfNeeded prevents it",
+    "validateFileRegion-skipped / result==0 retry: the result==0 && count()>0 check is a phase-agnostic file-truncation (EOF) validation; socket-full yields negative EAGAIN, not 0",
+    "open()-leak 'release fileRegion explicitly': suggested fix double-releases"
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"claim": "int transferred overflow >2GB", "grade": "+2", "reason": "critical, real"},
+        {"claim": "int len cast truncation in spliceToPipe", "grade": "+1", "reason": "real, additional facet of the truncation critical"},
+        {"claim": "filterOutboundMessage DefaultFileRegion concrete vs interface -> unclear error", "grade": "+1", "reason": "valid design/quality point, confirmed by supportsCustomFileRegion()=false"},
+        {"claim": "release fileRegion on open() failure to avoid leak", "grade": "-1", "reason": "disproved open()-leak trap; fix double-releases"},
+        {"claim": "missing retry for 0-result splice-to-socket / pipeLen>0", "grade": "-1", "reason": "disproved trap; result==0 is phase-agnostic EOF validation"},
+        {"claim": "larger pipe buffer (F_SETPIPE_SZ) consideration", "grade": "0", "reason": "speculative perf, no bug"}
+      ],
+      "missed": [
+        "scheduleWriteSingle returns 0 vs caller assert numOutstandingWrites>0",
+        "ECANCELED regression on splice writeComplete",
+        "missing assumeTrue(IoUring.isAvailable()) guard in testSendFile",
+        "public IoUringIoOps constructor API break",
+        "human: IORING_SPLICE_SUPPORTED gating in filterOutboundMessage"
+      ],
+      "points_sum": 2,
+      "missed_penalty": -5,
+      "net": -3
+    },
+    "v8": {
+      "points": [
+        {"claim": "result==0 && count()>0 leaves pipeLen stale / wrong phase", "grade": "-1", "reason": "disproved trap; hedged but still a wrong concern"},
+        {"claim": "SPLICE_F_MOVE only for second splice", "grade": "0", "reason": "speculative micro-perf, no bug"},
+        {"claim": "data short field repurposed - add comment", "grade": "0", "reason": "no bug, cosmetic"},
+        {"claim": "handleResult returns 0 for SPLICE_TO_PIPE - add comment", "grade": "0", "reason": "correct-but-subtle, no action"},
+        {"claim": "JNI field access verified correct", "grade": "0", "reason": "affirmation"},
+        {"claim": "SQE_SPLICE_FD_IN=44 offset verified correct", "grade": "0", "reason": "affirmation"},
+        {"claim": "filterOutboundMessage rejection consistent with test", "grade": "0", "reason": "affirmation"},
+        {"claim": "non-blocking pipe / blocking socket - no issue", "grade": "0", "reason": "affirmation"},
+        {"claim": "release() pipe cleanup correct - no leak", "grade": "0", "reason": "affirmation (correctly avoids leak trap, but no finding)"},
+        {"claim": "transferred/transfered() typo matches interface - no action", "grade": "0", "reason": "affirmation"}
+      ],
+      "missed": [
+        "critical >2GB long->int truncation in spliceToPipe + int transferred overflow",
+        "scheduleWriteSingle returns 0 vs caller assert numOutstandingWrites>0",
+        "ECANCELED regression on splice writeComplete",
+        "missing assumeTrue(IoUring.isAvailable()) guard in testSendFile",
+        "public IoUringIoOps constructor API break",
+        "human: IORING_SPLICE_SUPPORTED gating in filterOutboundMessage"
+      ],
+      "points_sum": -1,
+      "missed_penalty": -6,
+      "net": -7
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 1
+  },
+  "qualitative": "v7 is the materially stronger review: it caught the critical >2GB truncation/overflow as its lead finding and raised one valid design point (concrete DefaultFileRegion vs FileRegion interface), but it stepped on two of the three known traps (open()-leak release suggestion that double-releases, and the result==0 'retry' concern) and missed the four other real defects (scheduleWriteSingle->0 vs the assert, ECANCELED regression, missing test guard, public constructor API break) plus the human's splice-gating point. v8 is a docker rebuild of v7 yet regressed badly: it found ZERO real bugs, devolving into a checklist of 'verified correct / no issue' affirmations, repeated the result==0 trap (hedged), and crucially missed the critical truncation that v7 had. v8's blanket SUMMARY assurance of 'good error handling and resource cleanup' is an absence fabrication given the broken ECANCELED and open()-failure error paths. Net: v7 -3, v8 -7."
+}

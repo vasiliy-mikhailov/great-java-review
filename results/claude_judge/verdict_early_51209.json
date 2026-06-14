@@ -1,0 +1,20 @@
+{
+  "pr": 51209,
+  "kind": "general",
+  "net": -4,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 3,
+  "n_trivial": 2,
+  "n_unverifiable": 5,
+  "n_missed": 1,
+  "fabs": 3,
+  "own_review_points": [
+    "ExtensionLoader's ValueRegistry ObjectLoader assumes the recorder body is always StartupTask.deploy(StartupContext) and reads getMethodParam(0) as a StartupContext — the inline comment 'is it always like this?' flags this assumption; verify it holds for both static-init and runtime-init phases",
+    "ValueRegistryConfigSource.getValue calls value.get(valueRegistry).toString() with no null guard — a RuntimeInfo whose get() returns null would NPE the config source",
+    "ValueRegistryProcessor SPI registration: confirm it registers RuntimeInfoProvider providers (not java.lang.Runtime) so ServiceLoader discovery works in native image",
+    "RuntimeKey.key(Class) keyed on Class.getName() risks collisions/overwrites across modules sharing a FQN; a value can only be registered once per run, so a silent clash is a real hazard",
+    "ValueRegistry created in Application constructor before doStart, so only ServiceLoader-discovered providers populate it at that point; recorder-registered values must arrive later via StartupContext — verify ordering"
+  ],
+  "notes": "v8 fabricates three points (1, 2, 7) against files that are NOT in this PR at all — test-framework/junit/QuarkusTestExtensionState.java, QuarkusIntegrationTestExtension.java, and ValueRegistryParameterResolver.java appear nowhere in the 33 changed files; the detailed clone()/supportsParameter claims are invented, each a dangerous fabrication. The remaining points reference real PR files but their bodies are outside the truncated diff, so they are unverifiable and scored 0. The genuinely-shown ExtensionLoader StartupContext assumption is only confirmed/praised, not flagged as a finding, and the review misses the human-reference API-shape concern. The high fabrication count makes this the worst review in the batch."
+}

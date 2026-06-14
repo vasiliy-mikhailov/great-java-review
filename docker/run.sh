@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the v8 harness inside the container. Repo tree + results mounted; Qwen creds passed.
-# Usage: docker/run.sh python -u src/v8/runner.py 37   (or any cmd; default = image smoke)
+# Usage: docker/run.sh python -u src/current_version/runner.py 37   (or any cmd; default = image smoke)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; [ -f .env ] && . ./.env; set +a   # QWEN_API_KEY / QWEN_BASE_URL

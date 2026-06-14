@@ -1,0 +1,67 @@
+{
+  "pr": 6015,
+  "own_review": [
+    {
+      "loc": "testsuite/shared/.../DomainLifecycleUtil.java setTimeout() javadoc",
+      "severity": "real",
+      "point": "The setTimeout() javadoc (carried over from the old reload() javadoc) says the timeout is 'in milliseconds'. It is actually SECONDS: the value flows unchanged into startupTimeout, which awaitServers/awaitHostController treat as seconds (deadline = start + timeout * 1000; and getStartupTimeoutInSeconds() feeds the same parameter). The PR perpetuates this doc error into the new ReloadParameters.setTimeout javadoc. e.g. setTimeout(300L) means 300 seconds, not 300ms."
+    },
+    {
+      "loc": "DomainLifecycleUtil.java reload(String,ReloadParameters)",
+      "severity": "real-but-low-impact",
+      "point": "Null/default semantic equivalence. BASE left admin-only/restart-servers unset when null; PR always sets them from primitive defaults (adminOnly=false, restartServers=true, waitForServers=true). This is behaviorally EQUIVALENT: server-side default for admin-only is FALSE (ProcessReloadHandler.ADMIN_ONLY setDefaultValue(FALSE)) and for restart-servers is TRUE (HostProcessReloadHandler RESTART_SERVERS setDefaultValue(TRUE)); waitForServers null was treated as true client-side. So the 'always set' change does NOT alter behavior. Worth a note only because the equivalence is non-obvious. The reload(String host) overload is KEPT (delegates to new ReloadParameters()), not removed."
+    },
+    {
+      "loc": "DomainLifecycleUtil.java ReloadParameters setter javadocs",
+      "severity": "real (human's point)",
+      "point": "Javadoc ambiguity/completeness: the setter javadocs (and original method javadocs) only document the {@code true} case and do not describe what null/false mean or their differences. Human suggests using primitives to remove the null/false ambiguity (noting restart-servers default is true so callers would need review to preserve semantics) and says the javadoc needs fixing regardless. The builder partially helps (primitives used for the three booleans) but the doc completeness gap remains; timeout stays nullable."
+    },
+    {
+      "loc": "ReadOnlyModeTestCase.java:72,79; HostReloadProxyTestCase.java:95",
+      "severity": "informational",
+      "point": "Out-of-PR callers of reload(String host) exist; verified present at BASE. Since the default change is semantically equivalent (see above), they are not actually affected, but the migration is incomplete for consistency."
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"text": "restartServers always-set null->true behavioral change", "grade": 1, "note": "real null->always-set observation (matches semantic-equivalence item); overstates risk ('could affect tests') but flags the genuine subtle change"},
+        {"text": "external callers ReadOnlyModeTestCase/HostReloadProxyTestCase not updated", "grade": 1, "note": "verified accurate, exact lines correct; legitimate completeness observation"},
+        {"text": "AdminOnlyMode:104 silent restartServers=true", "grade": 0, "note": "correct it's implicit, but 'now incorrect if intent was don't restart' is wrong (BASE null==server-default true); hedged suggestion"},
+        {"text": "AdminOnlyMode:174 same implicit default", "grade": 0, "note": "near-duplicate of prior; trivial"},
+        {"text": "HostLifecycle reloadPrimary implicit default", "grade": 0, "note": "speculative 'consider setRestartServers(false)'; no evidence servers shouldn't restart"},
+        {"text": "reloadAdminOnly not migrated (consistency)", "grade": 0, "note": "accurate but trivial nit"},
+        {"text": "inconsistent nullability timeout Long", "grade": 0, "note": "pragmatic; suggested javadoc note already partly present; trivial"}
+      ],
+      "good": 2,
+      "critical": 0,
+      "wrong": 0,
+      "trivial": 5,
+      "missed": 2,
+      "missed_note": "missed timeout ms-vs-seconds doc error and the human's javadoc-completeness point (describe null/false cases)",
+      "net": 0
+    },
+    "v8": {
+      "points": [
+        {"text": "restartServers default true behavioral change", "grade": 1, "note": "same real observation, better framed ('existing callers appear unaffected')"},
+        {"text": "package-private fields no getters", "grade": 0, "note": "test-utility nit; trivial"},
+        {"text": "reloadAdminOnly uses builder restartServers null->true", "grade": 0, "note": "raises 'could be change if WildFly default differs' — answerable and moot (default is true); hedged, not a fabrication"},
+        {"text": "AdminOnlyMode:174 inconsistent waitForServers", "grade": 0, "note": "hedged, ends 'this works'; trivial"},
+        {"text": "consider @Immutable/final ReloadParameters", "grade": 0, "note": "speculative design nit"},
+        {"text": "duplicate variable naming 'parameters'", "grade": 0, "note": "explicitly says it's consistent; non-issue"}
+      ],
+      "good": 1,
+      "critical": 0,
+      "wrong": 0,
+      "trivial": 5,
+      "missed": 2,
+      "missed_note": "missed timeout ms-vs-seconds doc error and the human's javadoc-completeness point; also did not flag the out-of-PR callers v7 found",
+      "net": -1
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 0
+  },
+  "qualitative": "Both versions correctly identify the one substantive code observation — that the builder now always sets restart-servers/admin-only where BASE left them null — and neither fabricates a removal of the reload(String host) overload (it is kept as a delegate). However, neither checked the server-side attribute defaults, so both overstate this as a risky 'behavioral change' when it is in fact semantically equivalent (admin-only default FALSE, restart-servers default TRUE, waitForServers null==true). The remaining points are largely hedged stylistic/consistency nits about implicit defaults restated per call site. Critically, both MISS the two highest-value items: (1) the timeout javadoc ms-vs-seconds error that the PR carries into the new setTimeout() javadoc (the value is seconds, not milliseconds), and (2) the human's actual concern — the javadocs are incomplete/ambiguous because they never describe null/false semantics, plus the primitives-vs-null design discussion. v7 edges out v8 by also flagging the genuine out-of-PR callers (ReadOnlyModeTestCase, HostReloadProxyTestCase), verified accurate, giving it two 'good' findings vs v8's one. v8 (the docker rebuild of v7) drifted toward weaker design nits (@Immutable, getters, variable naming) and dropped the external-caller finding, netting lower. No fabrications in either."
+}

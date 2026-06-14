@@ -1,0 +1,19 @@
+{
+  "pr": 298,
+  "kind": "general",
+  "net": 0,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 4,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Build-time auto-detection via getRuntimeDependencies() only sees runtime deps; an optional victools module pulled transitively as compile-only may be missed (visible in JsonSchemaGeneratorProcessor)",
+    "Optional victools module classes likely need ReflectiveClassBuildItem registration for native image when present",
+    "New @All List customizer interface has no documented priority/ordering contract unlike sibling filter interfaces",
+    "Test classpath now carries optional victools modules; base test config must disable them to avoid affecting existing tests (matches human ref)"
+  ],
+  "notes": "Most of v8's points target files outside the truncated diff (the customizer interface, Jackson customizer line 44, index.adoc, ToolManagerImpl) so they are unverifiable rather than wrong. The McpServerTest point aligns with the human reference but v8 frames it as praise rather than flagging the missing swagger2.enabled=false specifically. Reasonable, on-domain review but largely ungrounded in the visible diff."
+}

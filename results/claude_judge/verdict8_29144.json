@@ -1,0 +1,57 @@
+{
+  "pr": 29144,
+  "own_review": [
+    {
+      "severity": "critical",
+      "loc": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java:1338",
+      "point": "getFileScanPartitionSpec uses requireNonNull(spec, ...) to enforce the spec-is-present invariant. Since the spec is guaranteed to exist in table.specs() (table.specs() retains historical specs, and the existing specsById.get(deleteFile.specId()) lookup at IcebergSplitSource:361 already relies on this same invariant), the correct idiom is checkState (IllegalStateException) to assert and return, not requireNonNull (which throws NPE — wrong exception type for a missing map entry). Matches human point #2."
+    },
+    {
+      "severity": "good",
+      "loc": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/IcebergUtil.java:1335",
+      "point": "fileScanTask.file() / the file argument cannot be null in this path, so the defensive treatment around it is unnecessary. Matches human point #1."
+    },
+    {
+      "severity": "context",
+      "loc": "verification",
+      "point": "Caller migration is complete and grounded: at BASE the single-arg createStructLikeWrapper(FileScanTask) has exactly 3 callers (IcebergSplitSource:416, IcebergMetadata:942, PartitionsTable:181) and getPartitionKeys(FileScanTask) has 1 caller (IcebergSplitSource:464) — all migrated by the diff, leaving zero callers of both deleted methods. specsById is pre-existing in IcebergSplitSource (field decl line 178, assigned icebergTable.specs() at line 221, already used at 361); PR reuses it. requireNonNull is imported (line 205). file().specId() avoids the JSON-parsing spec() call. table.specs() retains historical specs so the lookup is safe for old-spec files."
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"grade": "trivial", "score": 0, "note": "P1 grammar doesn't->don't: correct but pure nitpick, no substance."},
+        {"grade": "wrong", "score": -1, "note": "P2 claims getFileScanPartitionSpec lookup could be moved inside the !partitionDomain.isAll() block. WRONG: partitionSpec is also used unconditionally at getPartitionKeys(fileScanTask.partition(), partitionSpec) which always executes (post-PR equivalent of line 464). Cannot be hoisted into the conditional."},
+        {"grade": "wrong", "score": -1, "note": "P3 affirmatively endorses requireNonNull as appropriate, 'No change needed' — directly contradicts the human's main ask to use checkState for the guaranteed-present invariant. Wrong recommendation."},
+        {"grade": "trivial", "score": 0, "note": "P4 createStructLikeWrapper signature/caller verification — correct but a no-issue confirmation."},
+        {"grade": "trivial", "score": 0, "note": "P5 getPartitionKeys overload-removal-safe — correct verification, no actionable finding."}
+      ],
+      "missed": [
+        {"score": -1, "note": "Human #2 / own critical: use checkState instead of requireNonNull (v7 explicitly argued against this)."},
+        {"score": -1, "note": "Human #1 / own: file cannot be null, drop the check."}
+      ],
+      "net": -4
+    },
+    "v8": {
+      "points": [
+        {"grade": "wrong", "score": -1, "note": "P1 endorses requireNonNull as appropriate with good error message — contradicts human's checkState ask. Wrong recommendation."},
+        {"grade": "trivial", "score": 0, "note": "P2 specsById final/initialized-once consistency — correct verification, no actionable issue."},
+        {"grade": "trivial", "score": 0, "note": "P3 getPartitionBlockValues signature propagation — correct verification."},
+        {"grade": "trivial", "score": 0, "note": "P4 getPartitionKeys overload removal — correct verification."},
+        {"grade": "trivial", "score": 0, "note": "P5 createStructLikeWrapper propagation — correct verification."},
+        {"grade": "trivial", "score": 0, "note": "P6 specsById hoisted outside loop — correct verification."},
+        {"grade": "good", "score": 1, "note": "P7 TableChangesSplitSource:154,172 task.spec() on AddedRowsScanTask/DeletedDataFileScanTask — VERIFIED grounded: both calls exist, both extend BaseContentScanTask, same JSON-parse cost class. Genuinely useful out-of-scope follow-up."}
+      ],
+      "missed": [
+        {"score": -1, "note": "Human #2 / own critical: use checkState instead of requireNonNull (v8 argued against it)."},
+        {"score": -1, "note": "Human #1 / own: file cannot be null, drop the check."}
+      ],
+      "net": -2
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 0
+  },
+  "qualitative": "Both versions completely whiffed on the human's actual asks. The human raised exactly two points, both on the new getFileScanPartitionSpec helper: drop the unnecessary file-null treatment, and replace requireNonNull with checkState for the guaranteed-present invariant. Neither v7 nor v8 surfaced either — and worse, both AFFIRMATIVELY DEFENDED requireNonNull as the right choice ('appropriate', 'No change needed'), so they didn't merely miss the fix, they argued against it. v7 additionally fabricated a refactor suggestion (move the lookup inside the isAll() conditional) that is provably wrong because partitionSpec is consumed unconditionally by the getPartitionKeys call below. v7 fills its remaining slots with a grammar nitpick and two no-issue caller-migration confirmations. v8 is the stronger of the two on net: it avoids v7's wrong hoist suggestion, and its lone substantive find — that TableChangesSplitSource still makes the same expensive task.spec() JSON-parse calls — is fully grounded and a legitimately useful follow-up that the human did not mention (an exceeds-human contribution, though purely out of scope). But v8 pads heavily with six correct-but-trivial verification notes. No absence-based fabrications in either: every completeness claim about caller migration ('all 4 callers updated', 'no external callers', 'only caller is in this file') was independently verified true against BASE, and v8's TableChangesSplitSource claim is real. Net: both negative, v8 (-2) clearly ahead of v7 (-4), driven by v7's wrong hoist claim and the genuine TableChangesSplitSource good find unique to v8."
+}

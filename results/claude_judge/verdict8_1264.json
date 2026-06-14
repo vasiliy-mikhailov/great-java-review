@@ -1,0 +1,66 @@
+{
+  "pr": 1264,
+  "own_review": [
+    {
+      "severity": "critical",
+      "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java",
+      "point": "ThreadLocal leak: IS_FIRST.set(false) runs unconditionally, but IS_FIRST.remove() sits inside the `if (subFolders != null)` block AFTER the scanning loop. If dir.listFiles() returns null (I/O error, permission denied, broken symlink) OR if any iteration of the loop throws, remove() is skipped and IS_FIRST stays false on that pooled thread. Because the Mapping is a reused singleton, every subsequent aggregator directory visited on that thread then takes the else branch and is silently never scanned for nested modules. Fix: try { ... } finally { IS_FIRST.remove(); }."
+    },
+    {
+      "severity": "critical",
+      "file": "tycho-extras/tycho-pomless/pom.xml",
+      "point": "Dependency bumped to polyglot-common 0.4.9-SNAPSHOT, an unreleased version that depends on upstream takari/polyglot-maven PR #242. The PR cannot be built/merged reproducibly until that release exists (SNAPSHOT merge-blocker, acknowledged in the PR description itself)."
+    },
+    {
+      "severity": "minor",
+      "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoFeatureMapping.java",
+      "point": "getPriority() override returning +1 is value-redundant: AbstractXMLTychoMapping (the parent) already returns 1. The added explanatory comment has documentation value, but the numeric override changes no behaviour."
+    },
+    {
+      "severity": "note",
+      "file": "tycho-extras/tycho-pomless/src/main/java/org/eclipse/tycho/pomless/TychoAggregatorMapping.java",
+      "point": "Mechanism verification: the IS_FIRST ThreadLocal DOES work. getPrimaryArtifact on the first folder sets false, then locatePomReference re-enters this same singleton's getPrimaryArtifact per subfolder while the flag is still false (remove() happens only after the loop), so nested aggregator dirs correctly hit the else/skip branch. Claims that the else branch is unreachable or that get() always returns true are false."
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"label": "IS_FIRST broken, else branch unreachable, get() always true, test fails", "grade": -1, "reason": "fabrication: remove() runs after the loop, so during nested re-entry get() returns false and the else/skip branch executes; the test passes"},
+        {"label": "IS_FIRST per-thread -> parallel -T builds duplicate-scan", "grade": -1, "reason": "fabrication: the flag gates intra-call re-entrancy, not cross-thread dedup; per-thread state is correct and safe"},
+        {"label": "redundant Feature getPriority()=+1 equals base AbstractXMLTychoMapping=1", "grade": 1, "reason": "verified correct; valid (low-value) redundant-code point"},
+        {"label": "removing base getPriority() breaks contract for future subclasses", "grade": 0, "reason": "speculative, no defect in actual code; all concrete classes compile (Bundle gets +2, XML subclasses inherit 1)"},
+        {"label": "Path.of(location).endsWith nit / unnecessary allocation", "grade": 0, "reason": "trivial nit, also undervalues the segment-aware correctness improvement"},
+        {"label": "clean maven.config property removal", "grade": 0, "reason": "trivial confirmation, no issue"}
+      ],
+      "missed": [
+        "ThreadLocal leak (own critical)",
+        "polyglot 0.4.9-SNAPSHOT merge blocker",
+        "human: feature.xml accept() / .xml extension priority root-cause"
+      ],
+      "net": -4
+    },
+    "v8": {
+      "points": [
+        {"label": "IS_FIRST.remove() unreachable on error paths -> ThreadLocal corruption, with try/finally fix", "grade": 2, "reason": "matches own critical exactly; correct root cause and fix"},
+        {"label": "IS_FIRST conflates 'first call' vs 'root aggregator'; ordering/multiple-root concern", "grade": 1, "reason": "genuine design subtlety (flag tracks first call, not root); not a fabrication"},
+        {"label": "static UUID compounds bug: stale pom.tycho from prior JVM not regenerated", "grade": -1, "reason": "factually backwards: a different UUID makes isCurrent() return false -> file IS treated stale and regenerated"},
+        {"label": "polyglot 0.4.9-SNAPSHOT unreleased merge blocker", "grade": 2, "reason": "real critical, matches own review"},
+        {"label": "isValidLocation Path.of(location).endsWith correctness vs String.endsWith", "grade": 1, "reason": "correctly explains segment-aware semantics; mild value"},
+        {"label": "TYCHO_POMLESS_AGGREGATOR_NAMES dead-code removal clean", "grade": 0, "reason": "trivial confirmation"},
+        {"label": "good: priority comment, add to other mappings", "grade": 0, "reason": "praise + minor suggestion"},
+        {"label": "test coupled to log format, no error-path coverage", "grade": 1, "reason": "legitimate test-quality point that ties to the untested leak path"},
+        {"label": "Target/Repository could use Path.endsWith for consistency", "grade": 0, "reason": "trivial consistency nit"},
+        {"label": "test goal clean test -> clean compile + verifyTextInLog removed, unrelated?", "grade": 1, "reason": "correctly flags a real scope/behaviour change in the diff"}
+      ],
+      "missed": [
+        "human: feature.xml accept() / .xml extension priority root-cause mechanism"
+      ],
+      "net": 6
+    }
+  },
+  "absence_fabrications": {
+    "v7": 2,
+    "v8": 1
+  },
+  "qualitative": "v8 is a clear, substantial improvement over v7. v7 leads with two confident fabrications (else branch unreachable / get() always true; parallel -T duplicate scanning) that misread the IS_FIRST re-entrancy mechanism, and misses both real criticals (the ThreadLocal leak on error paths and the SNAPSHOT merge blocker); its only valid catch is the redundant Feature priority. v8 (docker rebuild of v7) nails BOTH real criticals -- the IS_FIRST.remove() leak with the correct try/finally fix, and the 0.4.9-SNAPSHOT merge blocker -- plus several solid secondary observations (Path.endsWith semantics, brittle/uncovered test, the clean-test->clean-compile scope change). v8 still carries one backwards claim (the static-UUID 'won't regenerate' compounding, which is actually the opposite). Neither version reaches the human's root-cause insight that MappingSupport.accept() returns true for any *.xml so Feature must outrank the polyglot XML mapping; both only restate the priority ordering at face value."
+}

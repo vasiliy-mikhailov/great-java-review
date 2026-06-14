@@ -1,0 +1,113 @@
+{
+ "pr": 28314,
+ "own_review": [
+  {
+   "file": "runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/ (17 renamed files + 6 import sites in OpenTelemetryProcessor.java & TracerProcessor.java & TracerRecorder.java)",
+   "issue": "Package-name typo 'intrumentation' (missing second 'e') systematically introduced across all four instrumentation subpackages (grpc, vertx, restclient, reactivemessaging). Consistent so it compiles, but it is a permanent public package name baked into a 'pure refactor' that claims to improve clarity. Central defect.",
+   "severity": "critical"
+  },
+  {
+   "file": "runtime tracing.intrumentation.* vs deployment test instrumentation.*",
+   "issue": "Internal inconsistency: runtime package is misspelled 'intrumentation' while the moved deployment test package is correctly spelled 'instrumentation' (io.quarkus.opentelemetry.deployment.instrumentation). The two halves of the same refactor diverge.",
+   "severity": "medium"
+  },
+  {
+   "file": "PR stated goal vs runtime package naming",
+   "issue": "PR claims to 'align with the packages used on the Micrometer extension'. Micrometer uses runtime.binder.{grpc,vertx,kafka,...}; this PR uses runtime.tracing.(in)strumentation.*. The naming does NOT actually align with Micrometer's 'binder' convention (the human's 'binder vs intrumenter' comment).",
+   "severity": "low"
+  },
+  {
+   "file": "deployment/src/test/proto/hello.proto:4 & streaming.proto:4 + GrpcOpenTelemetryTest.java",
+   "issue": "gRPC proto-generated classes keep java_package=io.quarkus.opentelemetry.deployment while the test moved to ...deployment.instrumentation. Compiles via explicit imports, but the proto java_package was NOT aligned to the new test subpackage \u2014 the human's actual requested follow-up.",
+   "severity": "low"
+  },
+  {
+   "file": "runtime/src/main/java/io/quarkus/opentelemetry/runtime/config/TracerRuntimeConfig.java:20",
+   "issue": "resourceAttributes field visibility widened package-private -> public during a 'pure refactor'; an undocumented public-surface change.",
+   "severity": "low"
+  },
+  {
+   "file": "deployment/.../OpenTelemetryProcessor.java:175-178 + tracing/TracerProcessor.java:3",
+   "issue": "isClassPresent removal is SAFE: it was a thin wrapper over QuarkusClassLoader.isClassPresentAtRuntime; sole caller TracerProcessor switches to a direct static import of isClassPresentAtRuntime (which exists in base). Any claim this breaks TracerProcessor would be fabricated.",
+   "severity": "info"
+  }
+ ],
+ "versions": {
+  "v7": {
+   "points": [
+    {
+     "id": "intrumentation-typo",
+     "verdict": "critical",
+     "delta": 2,
+     "note": "Central defect correctly identified; notes propagation to 4 subpackages + imports, confirmed newly introduced (absent at base), and correctly observes Micrometer has no 'instrumentation' package."
+    },
+    {
+     "id": "resourceAttributes-visibility",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Real change verified (package-private -> public at TracerRuntimeConfig:20); reasonably asks to confirm intent."
+    },
+    {
+     "id": "isClassPresent-removal-safe",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Correctly describes removal as a clean simplification, sole caller TracerProcessor switches to direct call, no other callers. Verified true."
+    }
+   ],
+   "missed": [
+    "Human's proto-generated gRPC java_package alignment follow-up (protos still java_package=io.quarkus.opentelemetry.deployment, not aligned to the new instrumentation test subpackage)."
+   ],
+   "exceeds": [
+    "Independently confirmed the typo is absent from the base commit (newly introduced)."
+   ],
+   "net": 3
+  },
+  "v8": {
+   "points": [
+    {
+     "id": "intrumentation-typo",
+     "verdict": "critical",
+     "delta": 2,
+     "note": "Central defect correctly identified; explicitly notes propagation into imports in OpenTelemetryProcessor and TracerProcessor and across ~20 files."
+    },
+    {
+     "id": "isClassPresent-removal-safe",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Correctly: pass-through wrapper, TracerProcessor now calls QuarkusClassLoader.isClassPresentAtRuntime directly, no other callers. Verified."
+    },
+    {
+     "id": "resourceAttributes-visibility",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Real change verified; correctly notes Quarkus config reflection convention makes it appropriate."
+    },
+    {
+     "id": "grpc-test-proto-imports",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Correct: moved GrpcOpenTelemetryTest adds explicit imports for proto-generated classes that remain in deployment package and resolve. Sits on the gRPC/proto area the human cared about, though stops short of recommending proto alignment."
+    },
+    {
+     "id": "no-external-refs-self-contained",
+     "verdict": "good",
+     "delta": 1,
+     "note": "Verified true: no leftover references to old opentelemetry package paths anywhere in extensions; refactor is internally consistent / compiles."
+    }
+   ],
+   "missed": [
+    "Human's proto-generated gRPC java_package alignment follow-up (noted imports resolve but did NOT recommend aligning the proto java_package).",
+    "Micrometer 'binder' naming divergence: summary asserts 'align with Micrometer conventions' but never flags that runtime.tracing.instrumentation.* does not match Micrometer's runtime.binder.* convention."
+   ],
+   "exceeds": [
+    "Explicitly verified self-containment across integration-tests, test-framework, independent-projects, and other extensions (correct)."
+   ],
+   "net": 4
+  }
+ },
+ "absence_fabrications": {
+  "v7": 0,
+  "v8": 0
+ },
+ "qualitative": "Both reviews nail the central defect (the systematic 'intrumentation' typo) as a blocker and both correctly characterize the isClassPresent removal as a safe simplification rather than inventing a TracerProcessor breakage \u2014 a trap both avoided. Every concrete claim in both texts is verifiable against the repo: the resourceAttributes visibility widening is real, and v8's self-containment assertion was confirmed by grep (zero leftover old-package references), so absence-fabrications are zero for both. v8 is the stronger review: it adds two more accurate, relevant points (the gRPC-test proto-import resolution and verified self-containment) without introducing any falsehoods, edging ahead of v7. Both miss the human's actual follow-up request to align the gRPC proto java_package with the new test subpackage, and v8 additionally under-delivers on the Micrometer 'binder' naming divergence that its own summary implicitly raises. v8 is a from-scratch Docker rebuild of the v7 harness and behaves as intended, producing a superset of v7's findings with equal accuracy."
+}

@@ -1,0 +1,9 @@
+{
+ "repo": "quarkusio/quarkus",
+ "pr": 6913,
+ "review": "SUMMARY: This review addresses three confirmed findings regarding a misattributed logger, potentially unused fields, and a comparator contract violation, along with one hedged question regarding error messaging for conditional class configuration.\n\nPOINTS:\n- [core/deployment/src/main/java/io/quarkus/deployment/steps/RuntimeConfigSetupBuildStep.java:29] Logger initialized with wrong class - copy-paste error from ReflectiveHierarchyStep.class instead of RuntimeConfigSetupBuildStep.class. Evidence: `private static final Logger log = Logger.getLogger(ReflectiveHierarchyStep.class);` uses the incorrect class, causing log messages to be misattributed.\n- [core/runtime/src/main/java/io/quarkus/runtime/StartupContext.java:17] lastValue and lastValueSet fields appear to be unused - may be dead code from incomplete implementation. Evidence: The diff adds these fields and their corresponding getters, but a codebase search finds zero callers, indicating they are never used.\n- [core/processor/src/main/java/io/quarkus/annotation/processor/generate_doc/ConfigPhase.java:39] ConfigPhase comparator in doc generation is inconsistent - violates comparator contract and potentially causes sorting issues. Evidence: `compare(BOOTSTRAP, RUN_TIME)` returns 1, but `compare(RUN_TIME, BOOTSTRAP)` also returns 1 due to the `default: return 1` fallback, violating the requirement that sgn(compare(a,b)) == -sgn(compare(b,a)).\n- [core/deployment/src/main/java/io/quarkus/deployment/ExtensionLoader.java:572] Could the error handling for bootstrap config in conditional class fields be clarified or explicitly documented, as it currently falls through to a generic \"Unsupported conditional class configuration build phase\" message that might potentially confuse extension authors?",
+ "confirmed": 3,
+ "partial": 1,
+ "refuted": 5,
+ "n_suspicions": 13
+}

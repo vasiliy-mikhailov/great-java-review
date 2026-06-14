@@ -1,0 +1,13 @@
+{
+  "pr": 11945,
+  "kind": "test",
+  "net": -4,
+  "n_good": 3,
+  "n_critical": 0,
+  "n_wrong": 6,
+  "n_trivial": 5,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 5,
+  "notes": "Huge Spanner-PG PR (truncated at 150k). Review is confident-but-fabricated. WRONG: (1) 'JSON escaping broken' - the ${var//\\\"/\\\\\\\"} substitution DOES correctly escape, output is valid JSON; misanalysis. (2) 'CountFunction wrong arg order' - invented a non-existent countFunctionName param; new CountFunction(this,tc,DEFAULT,\"||\",\"varchar\",true) is standard correct Hibernate usage. (3,4) Entity-name 'conflict' HIGH points cite BatchPostLoadTest/QueryCacheAndOneToManyTest/'25+ tests' NOT in diff + flawed premise (explicit name==default class name). (5) getUrlPrefix 'jdbc:spanner_pg:' MEDIUM fabricated - no getUrlPrefix nor cloudspanner in diff; SPANNER_PG enum only overrides createDialect/productNameMatches/getDriverClassName. (6) port-shift '9010+n leaves nothing on host 9010' is a real grounded catch (good) but its local.databases.gradle:234 ref is fabricated (file not in diff). Good: port-shift observation, SupportsNoWait/SupportNoWait naming, registerUtilityFunctions function-move affecting Spanner. Trivial: SPANNER_EMULATOR_HOST removal (intentional gcloud->curl rewrite, 'critical breakage' unsupported), addPartitionKey redundant, 3 'VERIFIED' praise points. Missed: 'if [[ $DB_COUNT > 8 ]]' uses string (lexicographic) comparison, a real bash bug. Human ref empty ('PR is huge')."
+}

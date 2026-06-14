@@ -1,0 +1,57 @@
+{
+  "pr": 982,
+  "own_review": [
+    {
+      "file_line": "ScanUtil.java:140-142 (post-PR catch FluoException in scanFluo)",
+      "issue": "Added System.exit(-1) sits lexically inside the outer try-with-resources (FluoClient client = ...). System.exit halts the JVM immediately, so neither Snapshot.close() nor FluoClient.close() runs on the error path. This bypasses orderly client shutdown — the real nuance of the change.",
+      "severity": "medium"
+    },
+    {
+      "file_line": "ScanUtil.java:141,178 (both methods)",
+      "issue": "scanFluo/scanAccumulo are static util methods now call System.exit(-1) on scan failure, turning library/util methods into ones that kill the whole JVM. Both callers (FluoScan.main, AppRunner.scan) are CLI entry points that do nothing afterward, so it is benign in practice, but it hurts testability/reusability of ScanUtil.",
+      "severity": "low-medium"
+    },
+    {
+      "file_line": "ScanUtil.java:141,178",
+      "issue": "Routing 'Scan failed' from System.out to System.err plus a non-zero exit code is a genuine improvement: the old code printed errors to stdout and returned exit 0, falsely signaling success to the shell. New behavior is consistent with the IllegalArgumentException handling already in this file (System.err + System.exit(-1)) and with FluoInit/FluoExec/FluoWait/BaseOpts/AppRunner across the codebase.",
+      "severity": "positive"
+    },
+    {
+      "file_line": "ScanUtil.java:93-94,147-148 + line header whitespace",
+      "issue": "Removal of the 'Scanning snapshot...'/'Scanning data in Accumulo directly...' banners and the 'No data found' message is exactly what issue #981 requested (stop printing meta info). The PR title is therefore CONSISTENT with the diff, not contradictory. License-header trailing-whitespace edits are unrelated noise but harmless.",
+      "severity": "trivial"
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"text": "Removing 'No data found' may degrade UX", "grade": "trivial", "note": "Argues against the explicitly-intended fix (#981 asked to stop printing meta info). Defensible suggestion but pushes against PR purpose."},
+        {"text": "Removing scan banners removes useful start feedback", "grade": "trivial", "note": "Same: this is the intended behavior of #981."},
+        {"text": "System.err + System.exit(-1) is a positive change, aligns with in-file IllegalArgumentException pattern and codebase CLI commands; verified both callers are appropriate System.exit contexts", "grade": "good", "note": "Verified true: AppRunner/FluoInit/FluoExec/BaseOpts/FluoWait all use System.exit(-1); callers do nothing after the scan call."},
+        {"text": "exit -1 maps to 255 on Unix; minor inconsistency with FluoWait", "grade": "trivial", "note": "Technically correct, immaterial."},
+        {"text": "License whitespace could be a separate commit", "grade": "trivial", "note": "Correct but cosmetic."}
+      ],
+      "missed": ["System.exit(-1) inside try-with-resources skips FluoClient.close()/Snapshot.close() (the core nuance)"],
+      "exceeds": ["Caller verification (FluoScan.main, AppRunner.scan) and cross-file convention check (FluoExec/FluoInit/BaseOpts) beyond the human reference"],
+      "net": 0
+    },
+    "v8": {
+      "points": [
+        {"text": "PR title 'fixes #981 stopped printing meta info' contradicts the diff", "grade": "wrong", "note": "FALSE: #981 asked to stop printing meta info; the diff does exactly that. Title is consistent. Asserted in both SUMMARY and first point."},
+        {"text": "Removing entriesFound counter and 'No data found' is a UX regression", "grade": "trivial", "note": "Argues against intended #981 behavior; defensible but soft."},
+        {"text": "System.err + System.exit(-1) is an improvement; old code printed to stdout and returned exit 0 falsely signaling success; consistent with AppRunner", "grade": "good", "note": "Verified true and substantive — correctly identifies the false-success-exit-code problem, matching the human's actual point about error return code."},
+        {"text": "Same error-handling improvement applies to scanAccumulo", "grade": "trivial", "note": "Correct but a restatement of the prior point at a second location."},
+        {"text": "Both callers are CLI entry points doing nothing after, so System.exit is safe", "grade": "good", "note": "Verified true: FluoScan.main and AppRunner.scan have no work after the scan call."},
+        {"text": "No tests cover scanFluo/scanAccumulo (ScanTest only tests getSpan/getColumns); pre-existing gap", "grade": "trivial", "note": "Verified accurate against ScanTest.java; fair contextual note."}
+      ],
+      "missed": ["System.exit(-1) inside try-with-resources skips FluoClient.close()/Snapshot.close() (the core nuance)"],
+      "exceeds": ["Caught that the old behavior returned exit 0 (false success), aligning with the human's intended-error-code point; verified test gap and caller safety"],
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 0
+  },
+  "qualitative": "Both reviews correctly identify the central improvement: routing 'Scan failed' to System.err with a non-zero exit code, and both verify it against the file's existing IllegalArgumentException handling and codebase-wide CLI conventions. v8 goes one step deeper by noting the old code returned exit 0 (false success) — which is precisely the bug the human reviewer flagged as the real point of the change — and accurately verifies the missing test coverage and caller safety. However, v8 is dragged down by leading (in both its SUMMARY and first point) with the false claim that the PR title contradicts the diff; the title 'stopped printing meta info' is exactly what #981 requested, so this is a fabricated blocker. Both reviews entirely miss the genuine nuance that System.exit(-1) executes inside the try-with-resources for FluoClient and thus skips FluoClient.close()/Snapshot.close(). Neither review fabricated absence claims — v7's caller checks and v8's test-gap/caller claims were all verified true. Net result is a tie at 0/0: v7 is cleaner (no false claims) but shallower; v8 has sharper insight but offsets it with one clear fabrication."
+}

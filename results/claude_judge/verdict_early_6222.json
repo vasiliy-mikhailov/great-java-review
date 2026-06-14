@@ -1,0 +1,21 @@
+{
+  "pr": 6222,
+  "kind": "general",
+  "net": 3,
+  "n_good": 2,
+  "n_critical": 1,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 5,
+  "n_missed": 3,
+  "fabs": 0,
+  "own_review_points": [
+    "CERT_CONTENT AttributeDefinition is built but never added via addParameter() in DEFINITION (only CERT_FILE) — certificate-content path is unreachable (visible in diff)",
+    "Import handler's else branch on neither cert-file nor certificate-content provided silently no-ops (// throw exception) — operation succeeds without importing",
+    "BufferedReader.ready() loop in test mock is unreliable; should use readLine() != null",
+    "AddCertificatesCommand should not run import step when the operation is canceled (human ref)",
+    "Redundant String.format with no args; duplicated file attachment across parse+build operations (human ref)",
+    "Several handlers log/throw without i18n resolution (human ref)"
+  ],
+  "notes": "The strongest of the batch on grounded findings. The CERT_CONTENT-never-registered point is verifiable directly in the visible diff (DEFINITION only addParameter(CERT_FILE)) and is a real correctness bug — critical. The '// throw exception' silent-success point is also a solid catch matching the visible truncation. Several other points (UnacceptedCertificateHandler line 84, ListCertificates dead method, UpdateCommand) sit outside the visible diff so are unverifiable. Misses the bulk of the human reference's i18n/CLI-doc/cancel-ordering points."
+}

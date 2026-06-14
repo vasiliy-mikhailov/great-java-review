@@ -1,0 +1,20 @@
+{
+  "pr": 25755,
+  "kind": "general",
+  "net": -2,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 6,
+  "n_missed": 3,
+  "fabs": 0,
+  "own_review_points": [
+    "IcebergAvroFileWriter constructor calls validateCompression(AVRO, ...) — redundant with upstream validation in createTableProperties/setTableProperties (visible in window)",
+    "validateCompression run on the read/metadata path would fail DESCRIBE/SHOW CREATE for tables created by other engines with an incompatible codec — should be write-path only (per v8; past truncation)",
+    "Stored codec representation changes case (.name() uppercase) vs prior lowercase — cross-engine readers may differ (per v8; past truncation)",
+    "IcebergMetadata.setTableProperties: the newFileFormat/oldFileFormat handling around line 2502 looks suspect (human flags it as a likely bug; v8 instead asserts it is correct)",
+    "Static-import AVRO consistently across the writer files (visible: AVRO static import is being added)"
+  ],
+  "notes": "Smallest, most checkable PR. v8's redundant-AVRO-validation point lands on code visible in the window and is accurate (good). The other six points target IcebergUtil/IcebergMetadata/test code past the 7000-char truncation and are unverifiable, though several (read-path validation breaking foreign tables, codec case change) would be strong if accurate. v8 misses all three human-reference points: it actively dismisses the newFileFormat==oldFileFormat line the maintainer flags as a bug, omits the 'static import AVRO consistently' nit despite that import being visible, and omits the commit-message fix. Net -2."
+}

@@ -1,0 +1,50 @@
+{
+  "pr": 4771,
+  "own_review": [
+    {
+      "location": "tycho-core/src/main/java/org/eclipse/tycho/p2/publisher/AbstractMetadataGenerator.java:113",
+      "issue": "Core fix: 5th arg (optional) of MetadataFactory.createRequirement changed false->true. The 6-arg overload createRequirement(String,String,VersionRange,IMatchExpression,boolean optional,boolean multiple) hardcodes greedy=true (bytecode-verified: RequiredCapability is constructed with the greedy ctor arg as iconst_1 unconditionally). So the requirement becomes optional+greedy, which exactly matches PDE's behavior of pulling in resolvable entries while silently ignoring unresolvable ones. The change is correct and safe; greedy is preserved.",
+      "severity": "info (verified-correct change, key insight = greedy default)"
+    },
+    {
+      "location": "AbstractMetadataGenerator.java:91-101",
+      "issue": "The fix is applied in the shared helper createRequirementFromPlatformURL, so it affects both jars.extra.classpath (getJarsExtraClasspath) and per-jar extra.<jar> entries (getJarToExtraClasspathMap). This is intended and consistent.",
+      "severity": "info"
+    },
+    {
+      "location": "AbstractMetadataGenerator.java:38-44",
+      "issue": "Import reordering moves StatusTool to its alphabetical position. Purely cosmetic, no functional effect.",
+      "severity": "trivial"
+    },
+    {
+      "location": "tycho-its/src/test/java/org/eclipse/tycho/test/TYCHO253extraClassPathEntries/ExtraClassPathEntriesTest.java",
+      "issue": "Existing integration test (42 lines) has no coverage for an unresolvable jars.extra.classpath entry; a regression test for the optional path would be valuable. Verified the test contains no 'unresolv/optional/platform:/plugin/fragment/missing' references.",
+      "severity": "minor (test gap)"
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"location": "AbstractMetadataGenerator.java:112-113", "claim": "Change semantically correct: optional=true so p2 won't fail on missing platform-specific bundle; matches PDE; precedents InstallableUnitResolver:225 and P2ResolverImpl:363.", "verdict": "good", "score": 1, "note": "Verified correct; precedents real."},
+        {"location": "AbstractMetadataGenerator.java:91-101", "claim": "Change affects both jars.extra.classpath and per-jar extra.<jar> entries via extractExtraEntriesAsIURequirement; consistent behavior.", "verdict": "good", "score": 1, "note": "Verified: both paths flow through the shared helper."},
+        {"location": "TYCHO253extraClassPathEntries", "claim": "Add integration test for unresolvable scenario; existing tests only cover resolvable entries.", "verdict": "good", "score": 1, "note": "Verified real gap; existing test has no unresolvable coverage."},
+        {"location": "AbstractMetadataGenerator.java:38-44", "claim": "Import reordering is cosmetic alphabetical fix.", "verdict": "trivial", "score": 0, "note": "Accurate but cosmetic."}
+      ],
+      "missed": ["Human's key insight: the 6-arg overload keeps greedy=true (greedy hardcoded in MetadataFactory), so optional+greedy is 'already as desired'. v7 cites greedy-named helpers as optional precedents but never states that greedy is retained."],
+      "exceeds": ["Substantive observation that the fix applies to both global and per-jar extra-classpath paths (beyond human's single point)."],
+      "net": 2
+    },
+    "v8": {
+      "points": [
+        {"location": "AbstractMetadataGenerator.java:112-113", "claim": "false->true (5th param) correctly sets optional; confirmed by ArtifactTypeHelper:93 comment '// optional=false, multiple=true', P2ResolverImpl:363 optionalGreedyRequirementTo, InstallableUnitResolver:225 optionalGreedySourceBundleRequirement.", "verdict": "good", "score": 1, "note": "Verified correct; ArtifactTypeHelper:93 comment exists verbatim; all citations real."},
+        {"location": "ExtraClassPathEntriesTest.java", "claim": "No existing IT covers an unresolvable jars.extra.classpath entry; suggest adding one.", "verdict": "good", "score": 1, "note": "Verified real gap."},
+        {"location": "AbstractMetadataGenerator.java:38-47", "claim": "Import reordering of StatusTool is cosmetic.", "verdict": "trivial", "score": 0, "note": "Accurate but cosmetic."}
+      ],
+      "missed": ["Human's key insight: the 6-arg overload keeps greedy=true so the change is 'already as desired'. v8 cites greedy-named precedents/parameter docs but never makes the greedy-is-retained argument explicit."],
+      "exceeds": ["Identifies the documenting comment at ArtifactTypeHelper:93 as evidence the 6-arg overload's parameter semantics; strong concrete corroboration."],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {"v7": 0, "v8": 0},
+  "qualitative": "Both reviews correctly identify the central change as a safe, PDE-aligning optional-requirement fix and back it with real, verified precedents (InstallableUnitResolver:225, P2ResolverImpl:363, and for v8 the verbatim ArtifactTypeHelper:93 comment). Neither fabricates anything: both test-coverage suggestions reference a real test file that genuinely lacks unresolvable-entry coverage, so absence-fabrication count is 0 for each. Both miss the human's one substantive insight — that the 6-arg overload hardcodes greedy=true (bytecode-confirmed), which is precisely why the optional flip is 'already as desired'; they orbit it via greedy-named helpers but never assert greedy retention. v7 edges out v8 with an extra correct, non-trivial observation that the fix covers both global and per-jar extra-classpath paths, while v8 is slightly tighter on the precedent for the parameter semantics. The two texts are near-identical in quality and reasoning, consistent with v8 being a faithful rebuild of v7."
+}

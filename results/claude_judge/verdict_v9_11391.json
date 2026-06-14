@@ -1,0 +1,13 @@
+{
+  "pr": 11391,
+  "kind": "general",
+  "net": 2,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 5,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "notes": "array_reverse()/array_sort() HQL functions across PG/Oracle/H2/HSQL/Cockroach (no truncation). Accurate but shallow review - half the points are verification/praise. Good: lowercase 'boolean' in setArgumentListSignature vs uppercase convention (verified); HSQL sort_array(... desc nulls last) novel-syntax correctness question (grounded, syntax never used before); HSQL expression path lacks string-array casting that PG emulation has (grounded differential); ArraySortTest missing single-element/duplicate tests while ArrayReverseTest has testReverseSingleElement/testReverseDuplicates (verified true). Trivial: 5 'follows pattern correctly / is correct / No issue' praise points (Oracle PL/SQL, SqmCriteriaNodeBuilder, DialectFeatureChecks, docs, needsArrayCasting). No wrongs/fabs. Missed: BOTH human-reference points - the H2ArraySortFunction:115 and PostgreSQLArraySortEmulation:97 simplifications (use nullsFirstNode.accept like HSQL) were not raised."
+}

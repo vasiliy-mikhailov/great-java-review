@@ -1,0 +1,53 @@
+{
+  "pr": 17565,
+  "own_review": [
+    "[build.gradle:801] REAL: Only forbiddenApisMain is added to test.dependsOn; forbiddenApisTest is never wired (and not explicitly disabled like spotbugsTest). Test sources are silently unchecked despite checkstyle covering both main and test.",
+    "[build.gradle:800] REAL: ignoreFailures = true permanently silences all violations. The PR frames it as 'for now' but there is no tracking JIRA/comment, so it will float as a permanent no-op enforcement.",
+    "[build.gradle:799] REAL/SUBTLE: bundledSignatures = ['jdk-unsafe'] is the UNVERSIONED bundle, which floats against targetCompatibility. Kafka pins only options.release = 11 (minJavaVersion), so the unversioned jdk-unsafe set's behavior is not pinned to a specific JDK signature version; jdk-unsafe-11 would be deterministic.",
+    "[build.gradle:856] TRIVIAL: trailing newline at EOF removed ('\\ No newline at end of file') — minor POSIX/style regression.",
+    "FACT-CHECK / ANTI-FABRICATION: forbidden-apis checks BYTECODE on classesDirs, not the java sourceSet. :core has java.srcDirs=[] but Java is jointly compiled into the scala sourceSet, so the .class files exist in classesDirs and ARE scanned. Any claim that ':core scans zero files / is a no-op for the bulk of server code' is FABRICATED.",
+    "FACT-CHECK: @SuppressWarnings('forbiddenapis') does NOT work (SOURCE retention, not visible in bytecode); signaturesFiles only ADD signatures. Suppression must use the //@ForbiddenApis... bytecode-visible annotation or signature exclusions.",
+    "[build.gradle:46] MINOR: plugin declared without 'apply false' unlike spotbugs/scoverage/shadow; harmless since root has no Java sources but breaks convention. Also the duplicate 'apply plugin' inside subprojects."
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        "P1 apply-false inconsistency (line 46) — GOOD +1 (valid, matches own review minor point)",
+        "P2 forbiddenApisTest not wired — GOOD +1 (matches own #1)",
+        "P3 ignoreFailures applies to both main/test — TRIVIAL 0 (scope note; misses the real 'permanent silence' risk framing)",
+        "P4 forbiddenApis tasks lack group='Verification' discoverability — GOOD +1 (valid minor, accurate vs checkstyle pattern)",
+        "P5 EOF newline removal — TRIVIAL 0",
+        "P6 jdk-system-out follow-up suggestion — TRIVIAL 0",
+        "P7 no suppression-file pattern — TRIVIAL 0"
+      ],
+      "good": 3,
+      "critical": 0,
+      "wrong": 0,
+      "trivial": 4,
+      "missed": "unversioned jdk-unsafe floating vs options.release (own #3) (-1)",
+      "fabrications": 0,
+      "net": 2
+    },
+    "v8": {
+      "points": [
+        "P1 forbiddenApisTest gap + cites exact spotbugs whenReady disabling block (lines 859-862, VERIFIED real pattern) — GOOD +1 (strong, actionable)",
+        "P2 ignoreFailures=true permanently silences, add JIRA comment — GOOD +1 (matches own #2 + human's justification)",
+        "P3 only jdk-unsafe, other bundles available — TRIVIAL 0",
+        "P4 ':core java.srcDirs=[] so forbiddenApisMain scans zero files, no-op for bulk of server code' — WRONG -1 (FABRICATION: forbidden-apis scans bytecode on classesDirs; :core Java is joint-compiled into scala sourceSet so .class files ARE scanned)",
+        "P5 EOF newline removal — TRIVIAL 0"
+      ],
+      "good": 2,
+      "critical": 0,
+      "wrong": 1,
+      "trivial": 2,
+      "missed": "unversioned jdk-unsafe floating vs options.release (own #3) (-1)",
+      "fabrications": 1,
+      "net": 0
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 1
+  },
+  "qualitative": "v7 is the safer review: it surfaces the two real findings (forbiddenApisTest gap, plus solid minor wiring/convention points) without inventing defects, and crucially does NOT claim :core is uncovered. v8 is sharper in places — its forbiddenApisTest point is the strongest single observation in either review because it correctly cites the existing spotbugs whenReady disabling mechanism (verified at lines 859-862) and offers two concrete patterns. But v8 then asserts the headline ':core scans zero files / no-op for the bulk of Kafka server code' claim, which is a fabrication: forbidden-apis analyzes compiled bytecode on classesDirs, and :core's Java is jointly compiled into the scala sourceSet, so it is in fact covered. That false high-severity claim (also extended to streams-scala) drags v8's net down to v7's. Both miss the subtle unversioned jdk-unsafe-vs-release concern. Neither flags the @SuppressWarnings SOURCE-retention trap. The v8 docker rebuild did not change the substantive content vs v7's approach — it traded v7's spread of valid-minor points for fewer-but-bolder findings, and the boldest one is wrong."
+}

@@ -1,0 +1,20 @@
+{
+  "pr": 4809,
+  "kind": "general",
+  "net": 0,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 1,
+  "n_unverifiable": 5,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Writability boolean returned by write ops is computed but not yet consumed; risk of stale/racy backpressure if callers adopt it prematurely",
+    "Switch from per-stream byte-tracking (writeWindow/writeOverflow removed) to message-count water marks changes backpressure semantics: one large buffer == many small ones",
+    "writeQueueFull() now delegates to conn.writeQueueFull() where it previously returned false — behavioral change for stream consumers",
+    "MPSC queue: hook2 invoked from producer thread on highWaterMark while overflow/writeQueueFull are documented consumer-only — thread-context must be clearly documented",
+    "drainLoop/WIP increment correctness around highWaterMark return value (the human-ref point at OutboundWriteQueue:221)"
+  ],
+  "notes": "v8 shows real domain understanding of the MPSC/backpressure design and the backpressure-semantics-change point is substantive and likely valid. But the queue internals it cites (lines 103-105, 221-229, sendFile:482) are not in the truncated diff, so those points are unverifiable rather than confirmed. It misses the specific drainLoop return-value correctness issue the human reviewer raised at line 221."
+}

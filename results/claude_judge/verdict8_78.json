@@ -1,0 +1,59 @@
+{
+  "pr": 78,
+  "own_review": [
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": "~505 (block.add(\", $T.$L($T.class)\", Types.class, method, target))",
+      "severity": "critical",
+      "finding": "The wildcard bound `target` is emitted unconditionally with `$T.class`. When the bound is itself a ParameterizedTypeName (e.g. `Set<? extends List<String>>` or `? super Map<String,Number>`), JavaPoet emits `List<String>.class`, which does NOT compile in Java. The new branch must recurse via `makeType(target)` when `target instanceof ParameterizedTypeName` (mirroring the sibling ParameterizedTypeName arm above that already calls makeType). This is the genuine defect — the PR only fixes the simple-bound case it tests (`? extends String`, `? super String`) and reintroduces the same class-literal-on-a-parameterized-type problem one level deeper."
+    },
+    {
+      "file": "auto-value-moshi/src/main/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtension.java",
+      "line": "~503-504 (throw new IllegalArgumentException)",
+      "severity": "minor",
+      "finding": "Throwing IllegalArgumentException deviates from the project's error-reporting convention (processingEnv.getMessager().printMessage(ERROR, ...), used in AutoValueMoshiAdapterFactoryProcessor.java:120-122,252). makeType() has no surrounding try-catch, so the exception propagates uncaught and crashes the annotation processor with a raw stack trace instead of a clean diagnostic. Note this is a near-dead branch in practice: JavaPoet always gives a wildcard exactly one upper bound (Object for an unbounded `?`), so the else is effectively unreachable for well-formed input."
+    },
+    {
+      "file": "auto-value-moshi/src/test/java/com/ryanharter/auto/value/moshi/AutoValueMoshiExtensionTest.java",
+      "line": "n/a",
+      "severity": "minor",
+      "finding": "No test for the unbounded wildcard `Set<?>` (would emit Types.subtypeOf(Object.class)) nor for a parameterized wildcard bound (`Set<? extends List<String>>`), which would expose the critical bug above. The error branch is also untested."
+    },
+    {
+      "file": "n/a",
+      "line": "n/a",
+      "severity": "context",
+      "finding": "Moshi is pinned at 1.4.0 (dependencies.gradle:11). Types.subtypeOf/supertypeOf and Types.newParameterizedType all exist in 1.4.0; the generated calls are valid. Any claim that these APIs were 'added in 1.5.0' is fabricated."
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"ref": "Extension.java:500-504", "claim": "IllegalArgumentException deviates from messager.printMessage(ERROR) pattern; propagates uncaught and crashes processor", "grade": 1, "verdict": "good - matches own finding, correct codebase cross-reference"},
+        {"ref": "Test.java", "claim": "No test covers multi-bound wildcard error path", "grade": 1, "verdict": "good - valid coverage gap"},
+        {"ref": "Extension.java:495", "claim": "Unbounded `?` takes upperBounds==1 branch -> Types.subtypeOf(Object.class), verbose vs Object.class", "grade": 1, "verdict": "good - accurate JavaPoet semantics, legitimate nit"},
+        {"ref": "Extension.java:498-503", "claim": "Branch ordering (lower before upper) correct; API usage aligns with codebase", "grade": 0, "verdict": "trivial - correct confirmation, no new value"}
+      ],
+      "missed": ["CRITICAL: parameterized wildcard bound emits non-compiling List<String>.class; needs makeType(target) recursion"],
+      "exceeds": [],
+      "net": 2
+    },
+    "v8": {
+      "points": [
+        {"ref": "Extension.java:498-501", "claim": "lowerBounds-first ordering correct; `? super X` has both lower and upper bounds", "grade": 0, "verdict": "trivial - correct confirmation only"},
+        {"ref": "Extension.java:503-504", "claim": "IllegalArgumentException reasonable guard; unbounded `?` handled via upperBounds==1 -> subtypeOf(Object.class); else only for 0/2+ bounds (unlikely)", "grade": 1, "verdict": "good - correct analysis of the near-dead branch and unbounded handling"},
+        {"ref": "Test.java", "claim": "No test for unbounded `Set<?>`; should verify subtypeOf(Object.class)", "grade": 1, "verdict": "good - valid coverage gap"},
+        {"ref": "Test.java:127", "claim": "Expected subtypeOf(String.class)/supertypeOf(String.class) correct per Moshi API", "grade": 0, "verdict": "trivial - correct confirmation"},
+        {"ref": "Extension.java:286-290", "claim": "No other code paths need wildcard handling; genericTypeNames branch differs; makeType is the only recursive processor and fix correctly applied", "grade": 0, "verdict": "trivial leaning wrong - asserts fix is complete, which masks the critical parameterized-bound miss; not counted negative since it is hedged confirmation"}
+      ],
+      "missed": ["CRITICAL: parameterized wildcard bound emits non-compiling List<String>.class; needs makeType(target) recursion"],
+      "exceeds": [],
+      "net": 1
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 0
+  },
+  "qualitative": "Both versions correctly understand the wildcard-handling mechanics (lower-before-upper ordering, Types.subtypeOf/supertypeOf semantics, the unbounded-`?`-becomes-subtypeOf(Object.class) behavior) and neither fabricates a Moshi version claim about these APIs. v7 is the stronger review: it lands three substantive points (the messager-pattern error-handling deviation, the missing multi-bound test, and the verbose unbounded-wildcard output) versus v8 which spends three of its five points on trivial confirmations of correctness. Crucially, BOTH miss the actual defect: the new branch emits `$T.class` on the wildcard's bound, so a parameterized bound like `Set<? extends List<String>>` generates the non-compiling `List<String>.class` and should recurse through makeType(target). v8 is worse here because its final point affirmatively claims the fix is complete and no other paths need handling, which directly contradicts the real bug. Net: v7 = 2, v8 = 1."
+}

@@ -1,0 +1,20 @@
+{
+  "pr": 29684,
+  "kind": "general",
+  "net": -1,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 1,
+  "n_trivial": 7,
+  "n_unverifiable": 1,
+  "n_missed": 1,
+  "fabs": 1,
+  "own_review_points": [
+    "MemoryParquetFooterCache.put: the footerBytes.length() > maxSizeInBytes guard is good, but the human-ref point is to also short-circuit the lookup for oversized footers — v8 instead calls this guard 'redundant', the opposite conclusion",
+    "MemoryParquetFooterCache.put wraps ExecutionException in a raw RuntimeException, losing context; a footer-cache failure should not surface as an opaque RuntimeException to readers",
+    "ParquetFooterCache could be unified with the existing filesystem caching system rather than introducing a parallel cache (matches human ref)",
+    "Cache key = location + file size; relies on Iceberg data-file immutability — reasonable but must be documented since other parquet readers share MetadataReader",
+    "NoOpParquetFooterCache as enum is fine but the new readFooter overload's fallback-on-corrupt-bytes path needs a test (PR does add corrupt-cache fallback test)"
+  ],
+  "notes": "v8's lead point claims cache.get(key, footerBytes::copy) WILL replace an existing value — this is factually wrong: Guava Cache.get(K, Callable) is get-or-load and does NOT overwrite a present key, so the in-code comment is correct and v8's claim is a fabrication (-1 wrong). It also contradicts the human reference by calling the size guard 'redundant' when the human wants that very guard reused to skip the lookup (missed). Remaining points are mostly correct-but-trivial observations and 'consider' suggestions; one genuinely useful point (interface declares throws IOException that no impl throws) earns +1."
+}

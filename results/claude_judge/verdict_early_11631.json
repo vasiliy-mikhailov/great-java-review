@@ -1,0 +1,21 @@
+{
+  "pr": 11631,
+  "kind": "general",
+  "net": -1,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 3,
+  "fabs": 0,
+  "own_review_points": [
+    "hasCorrelatedSubquery in AbstractSqlAstTranslator may be incorrect: correlations can live in an UPDATE's SET clause, not just predicate/from - missing branch (human ref)",
+    "NestedCorrelationChecker null check on previousAliases needed (human ref) - potential NPE",
+    "Heavy duplication between MariaDB core and legacy translators (and between the three checker classes) - extract shared logic",
+    "currentLevelAliases != null used as implicit 'in subquery' guard - non-obvious / fragile",
+    "Statement now extends SqlAstNode - verify no instanceof-exclusion code breaks",
+    "Version gate: single-table fallback only needed before MariaDB 11.1 (self-join rewrite handles it after) - human ref"
+  ],
+  "notes": "v8's dead-code finding on hasCorrelatedSubquery and the duplication observation are valid and substantive (two good). The other three points are hedged 'verify/consider documenting' restatements. Crucially it missed the two real correctness concerns the maintainer raised: the SET-clause correlation gap in hasCorrelatedSubquery (it noted the method is unused but not that the logic is wrong) and the missing null check in NestedCorrelationChecker, plus the 11.1 version-gating refinement. Net slightly negative."
+}

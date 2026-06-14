@@ -1,0 +1,19 @@
+{
+  "pr": 12191,
+  "kind": "general",
+  "net": -1,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 8,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Audited.Table javadoc now says default suffix '_AUD' whereas old tableName javadoc said '_aud' — a possible schema-naming breaking change worth a migration note (only hint visible in window)",
+    "New nested @Audited.Excluded/@Audited.Table annotations: verify interaction when @Table is on both root and JOINED subclass (override vs inherit) is enforced, not just documented",
+    "@Repeatable import added to Audited — confirm a containing annotation exists or repeatable usage actually compiles",
+    "(this is a +13944/-1206, 127-file PR truncated to only the Audited.java annotation declarations; the entire audit engine, coordinators, and AuditLog API are unviewable)"
+  ],
+  "notes": "Enormous PR truncated to just the Audited.java annotation definitions, so every v8 point targets code far outside the window and is unverifiable per instructions. The headline 'confirmed NPE regression' in DeleteCoordinatorAudit is asserted with high confidence about a file not shown and not in the visible changed-file list; I cannot refute it from the truncation so it is scored 0 rather than penalized, but the overconfident 'confirmed' framing on uncheckable code is a quality risk. Misses the human reference's RevisionMapping long-vs-Instant question. Net -1 from the one confirmed miss."
+}

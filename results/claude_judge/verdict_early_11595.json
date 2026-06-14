@@ -1,0 +1,27 @@
+{
+  "pr": 11595,
+  "kind": "general",
+  "net": -3,
+  "n_good": 4,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 1,
+  "n_missed": 11,
+  "fabs": 0,
+  "own_review_points": [
+    "Dialect not registered in CommunityDatabase/CommunityDialectSelector - not discoverable by short name",
+    "Many column-type / JDBC-type registrations duplicate what the super Dialect already does (NCLOB, nvarchar, blob/clob, char, float, UUID)",
+    "TIMESTAMP/TIMESTAMP_UTC mapping likely wrong - timestamp2 is the real SQL timestamp; LOCAL_DATE_TIME is virtual",
+    "NCLOB should map to clob since dialect lacks nclob support",
+    "No MINIMUM_VERSION constant / getMinimumSupportedVersion() override; default ctor should pass minimum version",
+    "Mutable instance fields should be removed in favor of locals/direct use",
+    "Code style: always use blocks for if, final local vars, whitespace",
+    "Functions registered with '%' prefix likely invalid Java identifier start - untested registrations",
+    "Many registered functions duplicate HQL standard alternatives (extract, upper) - unnecessary",
+    "LimitHandler.INSTANCE should be returned (singleton) rather than constructing",
+    "Deprecated render()/processSql APIs used instead of current overloads",
+    "Redundant supportsSubqueryOnMutatingTable without @Override"
+  ],
+  "notes": "v8 landed four genuine, substantive findings (missing CommunityDatabase/DialectSelector registration, missing modern processSql overload, deprecated render() signature, duplicate function-factory calls) that align with or extend the review's spirit. But against an unusually rich human reference (30+ concrete points on type-mapping bugs, redundant super-handled registrations, code style, minimum version, untested '%' functions), v8 missed the bulk of the real defects. The dateadd/datediff and contributeTypes points are hedged speculation; supportsSubqueryOnMutatingTable is unverifiable from the truncation. Net negative due to heavy missed count on a deep review."
+}

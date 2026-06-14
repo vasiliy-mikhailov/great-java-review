@@ -1,0 +1,13 @@
+{
+  "pr": 11595,
+  "kind": "general",
+  "net": 14,
+  "n_good": 15,
+  "n_critical": 1,
+  "n_wrong": 0,
+  "n_trivial": 2,
+  "n_unverifiable": 0,
+  "n_missed": 3,
+  "fabs": 0,
+  "notes": "Earlier/larger IRIS dialect (57k, no truncation, ~1815 lines, many more functions than 11740). Excellent, well-grounded review. CRITICAL (verified): case 02,21,22 are SQL-state codes misused against getErrorCode() int -> branches never fire. Verified good: user() function setInvariantType(timestamp) for a string-returning fn + contradictory config; getFractionalSecondPrecisionInNanos returns 1_000L w/ misleading comment; translateExtractField trailing spaces (DAYOFYEAR); constraint extractor template too broad; duplicate nowCurdateCurtime/yearMonthDay/weekQuarter; concat_pipeOperator twice; bit_length twice; extract/Extract case-dup; $piece 4 param types vs max 3 args; $listfind/$listdata/$listget missing param types; fragile LimitHandler indexOf('select'); registerKeyword override bypasses lowercase normalization; extractPattern WEEK_OF_MONTH dead/divergent; CommunityDatabase missing IRIS enum entry (correct - not in changed files); getDual no column alias. Trivial: getInExpressionCountLimit 900 doc nit, IdentityColumnSupport similarity note. No fabrications. Missed (from human ref): code-style ask (always-blocks/final vars), the broad 'many columnType/function registrations already handled by super' redundancy theme, and missing local.databases.gradle/docker_db.sh test profile."
+}

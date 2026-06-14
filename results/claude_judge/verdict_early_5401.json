@@ -1,0 +1,19 @@
+{
+  "pr": 5401,
+  "kind": "general",
+  "net": -3,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 5,
+  "n_trivial": 3,
+  "n_unverifiable": 0,
+  "n_missed": 1,
+  "fabs": 5,
+  "own_review_points": [
+    "Field/Map @Inject without a qualifier (e.g. Map<String,IAgentServiceFactory>) may not bind identically to Plexus @Requirement map injection under Sisu",
+    "@Singleton without @Named on role-providing components can break hint-based lookups that Plexus @Component(role=...) supported",
+    "Migration risks losing the explicit role= contract; bare @Singleton relies on implemented-interface inference which may not match all lookup sites",
+    "Compilation failures from incomplete/broken @Named constant references (corroborated by human reference: TychoConstants, ROLE_HINT, FrameworkFinder unresolved)"
+  ],
+  "notes": "v8's central thesis — broken @Named constant references cause compile failures — is corroborated by the human reference, so the CLASS of bug is real and well-targeted. However v8 invents specific verbatim contents (@Named(T), @Named(A), @Named(D)) for files (TargetArtifactRepositoryLayout, baseline comparators, DefaultBuildTimestampProvider) that are NOT in the truncated diff; these literal renderings are fabrications, and they also miss the human-ref files actually cited (TychoConstants/ROLE_HINT/FrameworkFinder). I score the five fabricated file-content claims as wrong despite the right intuition, because a judge cannot reward invented code text."
+}

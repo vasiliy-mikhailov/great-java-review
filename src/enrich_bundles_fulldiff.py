@@ -10,7 +10,7 @@ as the harness, so 'truncated' is never mistaken for 'absent'.
 from __future__ import annotations
 import glob, json, os, subprocess, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from v8.full_diff import TRUNC_MARK  # noqa: E402
+from current_version.full_diff import TRUNC_MARK  # noqa: E402
 
 BUNDLE_DIR = "results/claude_judge"
 REPOS = "data/repos"

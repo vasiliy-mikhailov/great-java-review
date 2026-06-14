@@ -1,0 +1,21 @@
+{
+  "pr": 11800,
+  "kind": "general",
+  "net": -3,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 6,
+  "n_unverifiable": 0,
+  "n_missed": 3,
+  "fabs": 0,
+  "own_review_points": [
+    "Calendar-based TIME/TIMESTAMP path: should the calendar pass through as-is rather than be reconstructed? (human ref)",
+    "Calendar path may need an explicit 'Z'/offset to force offset-based timestamp format when jdbcTimeZone is null (human ref)",
+    "TIME handling: timezone is meaningless for a time-of-day; simplified Instant.EPOCH-based construction preferred (human ref)",
+    "appendLiteral backslash-escaping correctness for Spanner (comment justifies it; not a clear defect)",
+    "TIME rendered as TIMESTAMP with offset - absolute-point-in-time semantics worth documenting",
+    "currentTime() delegates to currentTimestamp() - returns full timestamp not time-of-day"
+  ],
+  "notes": "Every one of v8's six points is hedged with 'please confirm', 'worth noting', 'worth documenting', or 'no issue, just noting' - none asserts an actual defect, and several explicitly conclude the code is correct. This is a diff-restating review with no real findings. It also missed all of the maintainer's substantive feedback on the Calendar-based literal path (pass-through, forcing the offset/'Z', and the simplified time construction). Net clearly negative."
+}

@@ -1,0 +1,20 @@
+{
+  "pr": 27788,
+  "kind": "general",
+  "net": 1,
+  "n_good": 2,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 4,
+  "n_unverifiable": 4,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "Writing deletion vectors from the coordinator (IcebergMetadata) may incur reads of prior deletes and large coordinator resource use vs. doing it on workers (matches human ref)",
+    "ICEBERG_DELETION_VECTOR_TOO_LARGE error code added but truncated diff does not show the size-check enforcement path — verify the bound is actually applied before write",
+    "CommitTaskData now carries Optional<byte[]> serializedDeletionVector; ensure JSON codec round-trips byte[] correctly and large DV bytes are not serialized through the coordinator commit path unboundedly",
+    "v2->v3 upgrade merges existing position deletes into a single DV per data file — concurrency/correctness of 'single DV per file' invariant under concurrent writers is untested in shown diff",
+    "Roaring64 bitmap usage removed from IcebergMergeSink imports in favor of DeletionVector class — verify endianness/serialization matches Iceberg Puffin deletion-vector-v1 spec"
+  ],
+  "notes": "Most v8 points cite code (DeletionVector, DeleteManager, PositionDeleteReader, IcebergSplitSource) outside the truncated diff, so they are unverifiable and scored 0 rather than penalized. Two genuinely useful grounded points (typos confirmable, orElseThrow message hygiene) earn +1 each; the rest are praise or speculative design musings. v8 misses the central human-reference concern that DVs are written from the coordinator, a real resource/architecture issue."
+}

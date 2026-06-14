@@ -1,0 +1,20 @@
+{
+  "pr": 25538,
+  "kind": "general",
+  "net": -1,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 6,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "clientId defaults to 'pulsar-client' when omitted while RFC 8705 requires client_id — confirm the silent default is acceptable for all token endpoints (visible in builder javadoc)",
+    "tlsCertFile/tlsKeyFile are 'Optional' in javadoc but 'Required when tls_client_auth' — builder does not enforce this conditional requirement at build() time (only hinted in window)",
+    "HttpClient ownership: if TokenClient closes an AsyncHttpClient it received but does not own, double-close on shutdown is possible (per v8; FlowBase/TokenClient past truncation)",
+    "TokenEndpointAuthMethod enum parsing untested for case-insensitivity / invalid input (per v8; past truncation)",
+    "(13-file PR but truncated to the AuthenticationFactoryOAuth2 builder; FlowBase, TlsClientAuthFlow, TokenClient, TokenEndpointAuthMethod bodies are unviewable)"
+  ],
+  "notes": "Smaller PR but the 7000-char window stops at the AuthenticationFactoryOAuth2 builder, so all six v8 points cite FlowBase/TlsClientAuthFlow/TokenClient/TokenEndpointAuthMethod code outside the window and are unverifiable per instructions. The points are specific and would be substantive if accurate (the double-close and dead-param-forwarding observations especially), but none can be confirmed or refuted here. Misses the human reference's note about how ClientCredentialsFlow handles the privateKey parameter at line 311. Net -1 from the one miss."
+}

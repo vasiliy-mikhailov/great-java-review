@@ -107,17 +107,26 @@ class LLM:
         for attempt in range(retries):
             try:
                 with self.sem:
-                    r = self.client.chat.completions.create(
+                    # stream=True so a long generation keeps bytes flowing — a proxy/gateway
+                    # in front of vLLM closes an idle single-shot connection after its read
+                    # timeout (~60-100s), which is what killed long synthesizer/generator calls.
+                    stream = self.client.chat.completions.create(
                         model=self.model,
                         messages=messages,
                         temperature=self.temperature if temperature is None else temperature,
                         max_tokens=max_tokens or self.max_tokens,
                         extra_body=extra,
+                        stream=True,
+                        stream_options={"include_usage": True},
                     )
+                    content, u = "", None
+                    for chunk in stream:
+                        if chunk.usage is not None:
+                            u = chunk.usage
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            content += chunk.choices[0].delta.content
                 self.calls += 1
-                content = r.choices[0].message.content or ""
                 try:
-                    u = getattr(r, "usage", None)
                     if u:
                         TOKENS["prompt"] += int(getattr(u, "prompt_tokens", 0) or 0)
                         TOKENS["completion"] += int(getattr(u, "completion_tokens", 0) or 0)

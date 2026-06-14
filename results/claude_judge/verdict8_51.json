@@ -1,0 +1,38 @@
+{
+  "pr": 51,
+  "own_review": [
+    {"point": "transports/stdio/pom.xml: typo 'stanard input/output' should be 'standard input/output'", "severity": "good", "verified": true},
+    {"point": "New sse/stdio quarkus-extension.yaml files lack the top-level 'description' field that core/runtime quarkus-extension.yaml has (line 2); add for consistency", "severity": "good", "verified": true},
+    {"point": "Guide URL inconsistency: core has commented-out 'mcp-server/dev/' (old path, line 6) while new files use uncommented 'quarkus-mcp-server/dev/index.html'; confirm correct URL / reconcile core", "severity": "good", "verified": true},
+    {"point": "'server side events' in sse pom description and yaml name should be 'Server-Sent Events' (correct expansion of SSE)", "severity": "good", "verified": true}
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"point": "stdio pom.xml typo 'stanard' -> 'standard'", "grade": 1, "reason": "correct, matches human + own"},
+        {"point": "New yaml files missing top-level 'description' field vs core; suggest adding for consistency", "grade": 1, "reason": "verified against core yaml line 2; valid consistency point"},
+        {"point": "Guide URL inconsistency vs core's commented-out 'mcp-server/dev/' path; confirm correct / reconcile", "grade": 1, "reason": "verified; matches human's guide-URL concern and own review; accurate path-structure observation"}
+      ],
+      "missed": ["'server side events' should be 'Server-Sent Events' (own review item not raised)"],
+      "exceeds": [],
+      "net": 2
+    },
+    "v8": {
+      "points": [
+        {"point": "stdio pom.xml typo 'stanard' -> 'standard'", "grade": 1, "reason": "correct, matches human + own"},
+        {"point": "sse yaml missing 'description' field vs core; suggested text uses 'server side events'", "grade": 1, "reason": "valid consistency point; note suggested wording propagates 'server side events' rather than 'Server-Sent Events'"},
+        {"point": "stdio yaml missing 'description' field vs core", "grade": 1, "reason": "valid; same consistency point for second file"},
+        {"point": "core yaml guide URL commented out and uses wrong path 'mcp-server/dev/' vs 'quarkus-mcp-server/dev/'; suggest uncomment/fix in follow-up", "grade": 1, "reason": "verified against core yaml line 6; correctly scoped as nit/out-of-scope follow-up; matches own guide-URL item"}
+      ],
+      "missed": ["'server side events' should be 'Server-Sent Events' (raised consistency but propagated the wrong expansion instead of flagging it)"],
+      "exceeds": [],
+      "net": 3
+    }
+  },
+  "absence_fabrications": {
+    "v7": 0,
+    "v8": 0
+  },
+  "qualitative": "Both versions nail the 'stanard' typo and the missing-description consistency point, all verified against the core extension yaml. v8 edges ahead by explicitly flagging the core guide-URL path bug ('mcp-server/dev/' vs 'quarkus-mcp-server/dev/') as a properly-scoped out-of-scope nit, whereas v7 folds the guide-URL into a single consistency question without isolating the wrong path. Neither version caught the 'server side events' -> 'Server-Sent Events' wording issue; in fact v8's suggested description text actively reproduces 'server side events', a minor miss but not wrong enough to penalize beyond the missed-point deduction. No absence fabrications in either version: every claimed comparison against the core file checks out, and no hallucinated 'missing' code. Both reviews are accurate, well-grounded, and appropriately calibrated for a trivial metadata PR.",
+  "_grading_note": "Both: 1 missed point (-1) already netted in. v7 raw=3, net=3-1=2. v8 raw=4, net=4-1=3."
+}

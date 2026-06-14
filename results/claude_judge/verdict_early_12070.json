@@ -1,0 +1,19 @@
+{
+  "pr": 12070,
+  "kind": "test",
+  "net": -1,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 9,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "SpannerDialect: ARRAY<T> component-type parsing by '<'/'>' string indices is brittle and silently falls through to super for unknown inner types (per v8, but past truncation)",
+    "SpannerSqlAstTranslator: hardcoded '1_0' alias stem in custom UPDATE rendering risks collisions with multi-target mutations (per v8, past truncation)",
+    "Many @SkipForDialect skips could be converted to Spanner-adapted assertions to preserve coverage rather than disabling tests wholesale",
+    "(the visible 7000-char window is only the SpannerDialect import block; no substantive change body is checkable)"
+  ],
+  "notes": "94-file PR truncated to nothing but the SpannerDialect.java import list, so all nine v8 points cite code past the window and are unverifiable per instructions (none penalized, none credited). The points themselves read as plausible and specific, but depth is unconfirmable. Misses the human reference's concrete note that the CriteriaUpdateWithParametersTest:81 skip can be removed because the underlying bug was fixed (PR #12099). Net is -1 from the single confirmed miss."
+}

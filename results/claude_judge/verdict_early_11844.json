@@ -1,0 +1,20 @@
+{
+  "pr": 11844,
+  "kind": "test",
+  "net": 0,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 0,
+  "n_unverifiable": 8,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "docker_db.sh: curl-pipe install of gcloud SDK over network in CI is a supply-chain/availability risk and unpinned",
+    "docker_db.sh: gcloud commands swallow all errors with '|| true' + 2>&1 >/dev/null, so emulator misconfig fails silently and tests run against a half-configured DB",
+    "SpannerPostgreSQLDialect: NoLockingSupport reported while getForUpdateString still returns ' for update' is an inconsistency",
+    "Per-test @Entity(name) workarounds for '$' scatter dialect-specific concerns across ~30 test files instead of a naming strategy",
+    "(most core changes are beyond the 7000-char truncation and cannot be verified)"
+  ],
+  "notes": "Recovered review for a 124-file PR whose diff is truncated to 7000 chars showing only docker_db.sh and the import block of SpannerPostgreSQLDialect. Only the docker_db.sh point lands inside the visible window and is a sound observation (good); the eight other points cite line numbers far past the truncation and are scored unverifiable per instructions. Misses the human reference's LIKE-escape emulation suggestion. Reads as careful and grounded where checkable, but depth is unconfirmable."
+}

@@ -1,0 +1,19 @@
+{
+  "pr": 30358,
+  "kind": "general",
+  "net": -1,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 3,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "@since tag in MissingWebServerFactoryBeanException should be 2.7, not 2.7.0 (appears twice: class javadoc and getter javadoc) — matches human reference and is visible in the diff",
+    "MissingWebServerFactoryBeanFailureAnalyzer advice is too prescriptive: a webflux dep with web-application-type=servlet, or web minus tomcat without jetty/undertow, all hit this; advice should only suggest checking deps and the web-application-type config (human ref)",
+    "MissingWebServerFactoryBeanException uses @NonNull on all ctor params but does not enforce non-null at runtime; reactive path still throws a separate ApplicationContextException for the beanNames.length > 1 case (inconsistent exception typing)",
+    "WebApplicationType field is stored but the truncated diff does not show it being consumed by the analyzer — verify the analyzer actually uses webApplicationType to tailor the message"
+  ],
+  "notes": "v8's headline 'critical' claim — that the analyzer extends AbstractFailureAnalyzer<ApplicationContextException> and therefore getCause() is always null — concerns the FailureAnalyzer source, which is NOT in the truncated diff; it is a plausible but unverifiable claim, scored 0 (not penalized, not credited). The genericness-of-advice point overlaps the human reference and earns +1, but v8 frames it as wanting MORE specific starters, the opposite of the maintainer's guidance. v8 entirely misses the two @since 2.7.0->2.7 fixes that ARE visible in the diff (counted as 2 missed plus the advice-direction miss)."
+}

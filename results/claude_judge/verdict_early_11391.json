@@ -1,0 +1,21 @@
+{
+  "pr": 11391,
+  "kind": "general",
+  "net": -1,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 5,
+  "n_unverifiable": 0,
+  "n_missed": 2,
+  "fabs": 0,
+  "own_review_points": [
+    "array_sort with literal ASC/DESC NULLS FIRST/LAST suffix must match actual DB grammar (HSQL sort_array, PG) - emulation correctness",
+    "Oracle generated PL/SQL marked deterministic while doing dynamic table(arr) SQL - may be invalid/optimizer hazard",
+    "NULLS-placement default = sort direction default per docs; verify rendering matches in expression (parameter) path vs literal path",
+    "needsArrayCasting only true for string types - numeric array coalesce(cast(array[] as TYPE)) fallback element-type mismatch",
+    "H2 emulation bounded by getMaximumArraySize() (1000) - silent truncation for large arrays",
+    "PostgreSQL/H2 array_sort emulation could be simplified the same way HSQL was (human ref)"
+  ],
+  "notes": "Only the Oracle 'deterministic' point is a substantive concrete concern (good). The rest are hedged 'verify/confirm/worth noting' observations that restate the diff without asserting a defect, and the maximumArraySize point self-concludes 'acceptable'. It missed the reviewer's actual feedback - that the H2 and PostgreSQL emulations could be simplified to match the HSQL approach. Net slightly negative: many trivial, two missed."
+}

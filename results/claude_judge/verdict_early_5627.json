@@ -1,0 +1,21 @@
+{
+  "pr": 5627,
+  "kind": "general",
+  "net": -2,
+  "n_good": 1,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 3,
+  "n_unverifiable": 2,
+  "n_missed": 4,
+  "fabs": 0,
+  "own_review_points": [
+    "Manifest 'Multi-Release: true' must be a hard prerequisite/primary trigger; classpath-attribute detection should live inside that gate (human ref: AbstractOsgiCompilerMojo:390)",
+    "Auto-setting Multi-Release header is wrong — it is a prerequisite the user must opt into, not something the build sets (human ref: PackagePluginMojo:392)",
+    "getMultiReleaseVersion should return OptionalInt not Integer (human ref: SourceFolderClasspathEntry:35)",
+    "Docs/README repeatedly use wrong attribute name and over-claim flexible folder naming semantics (human ref README:5/31)",
+    "Test only checks verifyErrorFreeLog, does not assert META-INF/versions/N contents",
+    "Test source folders with both test=true and release=N could be misrouted into main bundle versions output"
+  ],
+  "notes": "v8's test-coverage point (no assertion on META-INF/versions/N contents) is a genuine, grounded finding. The test=true interaction point is plausible but unverifiable from truncation. The rest is largely site.xml menu-placement and javadoc-wording nits plus restating that the fallback is fine. It misses the entire substance of the human review: the manifest-header-as-prerequisite design issue, the auto-set-header bug, the OptionalInt request, and the attribute-naming doc errors."
+}

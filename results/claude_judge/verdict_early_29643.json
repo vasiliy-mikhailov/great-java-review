@@ -1,0 +1,19 @@
+{
+  "pr": 29643,
+  "kind": "general",
+  "net": -1,
+  "n_good": 0,
+  "n_critical": 0,
+  "n_wrong": 0,
+  "n_trivial": 6,
+  "n_unverifiable": 2,
+  "n_missed": 1,
+  "fabs": 0,
+  "own_review_points": [
+    "FlatHash is not thread-safe and is guarded by a ReadWriteLock; under many concurrent equality-delete loads the write lock can contend (PR author already acknowledges this risk)",
+    "Positions is a hand-copied simplified SelectedPositions due to trino-main being test-scope-only in the iceberg plugin — duplication that can drift from the original; the human ref notes a related micro-inefficiency at Positions.java:89 (range vs list iteration)",
+    "New BlocksHashFactory SPI method added as a default throwing UnsupportedOperationException — verify all out-of-tree connectors are not broken and consider @Unstable marking",
+    "TestIcebergLegacyEqualityDeletes duplicates a large test body just to flip the feature flag false; will need consolidation when the flag is removed"
+  ],
+  "notes": "v8 is articulate but almost entirely praise and soft 'consider' suggestions with no concrete bug; none of the points reach 'good' substance and most restate the design or the PR's own acknowledged risk. The EXPECTED_SIZE=1024 and @Unstable suggestions are speculative and unverifiable from the truncated diff, scored 0. It misses the human-reference Positions iteration nit (range vs list)."
+}

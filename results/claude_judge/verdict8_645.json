@@ -1,0 +1,62 @@
+{
+  "pr": 645,
+  "own_review": [
+    {
+      "file": "sevntu-checks/src/main/java/com/github/sevntu/checkstyle/checks/coding/ForbidCertainMethodCheck.java",
+      "line": "visitToken / numArgsInCode",
+      "severity": "critical",
+      "finding": "Argument count is computed as dot.getNextSibling().getChildCount(TokenTypes.EXPR) on the ELIST. Normal arguments are each wrapped in an EXPR node, but a LAMBDA argument is a DIRECT child of ELIST (not wrapped in EXPR). So a call like foo(x -> x) is counted as 0 args instead of 1, undercounting whenever any argument is a lambda. This causes false negatives/positives in argumentCount matching. No test exercises a lambda argument, so the bug is uncaught."
+    },
+    {
+      "file": "ForbidCertainMethodCheck.java",
+      "line": "getChildCount usage (counter-note)",
+      "severity": "info",
+      "finding": "Using getChildCount(TokenTypes.EXPR) (rather than a raw ELIST.getChildCount()) is the CORRECT way to avoid counting the COMMA separator children; a naive raw-getChildCount 'fix' would itself miscount by including COMMAs. The only real defect is the LAMBDA-not-EXPR case above."
+    },
+    {
+      "file": "ForbidCertainMethodCheck.java",
+      "line": "IntRange.from",
+      "severity": "minor",
+      "finding": "from() declares throws CheckstyleException but Integer.parseInt may throw an unwrapped NumberFormatException for non-numeric tokens (e.g. 'abc'); the framework catches it upstream so tests still pass, but the method contract is technically violated."
+    },
+    {
+      "file": "ForbidCertainMethodCheck.java",
+      "line": "0-argument calls (NEGATIVE-CLAIM VERIFIED)",
+      "severity": "info",
+      "finding": "VERIFIED that there is NO NPE on zero-argument method calls: a METHOD_CALL ALWAYS has an ELIST child (empty for zero args), so dot.getNextSibling() is never null. Zero-arg calls like System.exit(1) and exit2() parse correctly in the existing tests."
+    }
+  ],
+  "versions": {
+    "v7": {
+      "points": [
+        {"claim": "NPE on 0-argument method calls (getNextSibling null)", "grade": "wrong", "score": -1, "reason": "Fabricated. METHOD_CALL always has an ELIST child (empty when 0 args); getNextSibling never null. Existing tests parse zero-arg exit2()/System.exit() without crashing."},
+        {"claim": "Missing test for 0-argument method matching", "grade": "good", "score": 1, "reason": "Real coverage gap: input has exit2() zero-arg calls but no test matches a zero-arg method with argumentCount=0."},
+        {"claim": "Whitespace-only tokens between commas cause unclear error ('1, , 3')", "grade": "trivial", "score": 0, "reason": "Mechanism misdescribed (claims 'Specified range is not valid' wrapping; actually raw NumberFormatException via parseInt branch since token has no '-'). Very minor robustness musing."},
+        {"claim": "Sonar param type consistency / description could clarify", "grade": "trivial", "score": 0, "reason": "Self-described as 'this is fine'; non-issue."},
+        {"claim": "setArgumentCount rejects empty but default is non-empty (asymmetry)", "grade": "trivial", "score": 0, "reason": "Self-described as 'defensible'; design musing, not a defect."}
+      ],
+      "missed": [
+        {"bug": "LAMBDA-argument EXPR undercount (the one real bug)", "score": -1}
+      ],
+      "net": -1
+    },
+    "v8": {
+      "points": [
+        {"claim": "Non-standard AST navigation for argument counting; prefer findFirstToken(ELIST).getChildCount(EXPR)", "grade": "good", "score": 1, "reason": "Valid readability/convention point; correctly preserves getChildCount(EXPR) (does not introduce the COMMA-miscount). Cites real codebase patterns."},
+        {"claim": "IntRange.from declares throws CheckstyleException but NumberFormatException propagates unwrapped", "grade": "good", "score": 1, "reason": "Correct contract observation; accurately notes tests pass because framework catches upstream. Matches own review."},
+        {"claim": "Javadoc does not mention METHOD_REF (System::exit) are not matched", "grade": "good", "score": 1, "reason": "Correct: check only registers METHOD_CALL, so method references are silently unmatched; worth documenting."},
+        {"claim": "test empty expected={} before asserting failure is unconventional", "grade": "trivial", "score": 0, "reason": "Correct but pure style nitpick."},
+        {"claim": "Add comment explaining File::new should not trigger", "grade": "trivial", "score": 0, "reason": "Trivial test-clarity suggestion."}
+      ],
+      "missed": [
+        {"bug": "LAMBDA-argument EXPR undercount (the one real bug)", "score": -1, "reason": "v8 point 1 touches the same line but argues readability only and reproduces getChildCount(EXPR) in its suggested fix; does not identify the defect."}
+      ],
+      "net": 2
+    }
+  },
+  "absence_fabrications": {
+    "v7": 1,
+    "v8": 0
+  },
+  "qualitative": "Otherwise-clean PR adding ForbidCertainMethodCheck. The single real bug is the LAMBDA-argument undercount: arguments are counted via ELIST.getChildCount(TokenTypes.EXPR), but lambda args are direct ELIST children not wrapped in EXPR, so any lambda arg is counted as zero. Both versions MISS this bug. v7 leads with a fabricated CRITICAL NPE-on-zero-args claim (false: METHOD_CALL always carries an ELIST, empty for zero args; the suite parses zero-arg calls fine) which dominates its review and drags net negative; it does land one genuine point (missing zero-arg matching test). v8 is materially cleaner: three legitimate points (convention/readability of AST navigation correctly preserving getChildCount(EXPR); the unwrapped NumberFormatException contract violation in IntRange.from; the undocumented METHOD_REF limitation) plus two trivial test nitpicks, and zero fabricated absences. v8's point 1 brushes the buggy line but only on style grounds and even reproduces the buggy EXPR count in its fix, so it does not rescue the missed bug. Net: v8 clearly better, v7 hurt by the phantom critical."
+}
