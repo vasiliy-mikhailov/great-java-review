@@ -70,6 +70,11 @@ try:
                         f.write("tools: " + ", ".join(
                             (t.get('function', {}) or {}).get('name', '?') for t in tools) + "\n")
                     f.write("body keys: " + ",".join(sorted(body.keys())) + "\n")
+                    import json as _j
+                    blob = _j.dumps(body)
+                    f.write(f"thinking_token_budget present: {'thinking_token_budget' in blob}\n")
+                    f.write("extra_body: " + _j.dumps(body.get("extra_body"))[:300] + "\n")
+                    f.write("chat_template_kwargs: " + _j.dumps(body.get("chat_template_kwargs"))[:200] + "\n")
             except Exception:  # noqa: BLE001
                 pass
 
