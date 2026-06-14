@@ -182,6 +182,10 @@ def _llm(profile: str = "qwen"):
         num_retries=10,
         retry_max_wait=120,
         native_tool_calling=True,   # use the OpenAI tools param + parse message.tool_calls
+        # Drop reasoning_effort (OpenHands defaults 'high'): it conflicts with
+        # thinking_token_budget — with reasoning_effort on the wire the budget reaches vLLM but
+        # is NOT enforced (reasoning balloons); the working replay never sent reasoning_effort.
+        reasoning_effort=None,
         # OpenHands defaults drop_params=True, which makes litellm STRIP params it doesn't
         # recognize for this custom model — silently dropping thinking_token_budget (it keeps
         # chat_template_kwargs but not the budget). False keeps our extra_body intact.
