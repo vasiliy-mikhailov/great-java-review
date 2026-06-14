@@ -78,6 +78,22 @@ try:
             except Exception:  # noqa: BLE001
                 pass
 
+        def log_success_event(self, kwargs, response_obj, start_time, end_time):  # noqa: ARG002
+            path = os.environ.get("PROFILE_LOG")
+            if not path:
+                return
+            try:
+                ch = response_obj.choices[0]; m = ch.message
+                tcs = getattr(m, "tool_calls", None) or []
+                rc = getattr(m, "reasoning_content", None) or ""
+                with open(path, "a") as f:
+                    f.write(f">>> RESPONSE finish={ch.finish_reason} tool_calls={len(tcs)} "
+                            f"reasoning_chars={len(rc)} content_chars={len(m.content or '')}\n")
+                    for t in tcs:
+                        f.write(f"    resp tool: {(getattr(t,'function',None) or {}) and t.function.name}\n")
+            except Exception:  # noqa: BLE001
+                pass
+
     if os.environ.get("PROFILE_LOG"):
         _litellm.callbacks = [_ProfileLogger()]
 except Exception:  # noqa: BLE001
