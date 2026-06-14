@@ -186,8 +186,12 @@ def _llm(profile: str = "qwen"):
         # native tools working, turns are short (think->call->return) so non-stream may be fine.
         stream=os.environ.get("OH_STREAM", "1") == "1",
         max_output_tokens=131072,
-        litellm_extra_body={"chat_template_kwargs":
-                            {"enable_thinking": c.get("enable_thinking", True)}},
+        litellm_extra_body={"chat_template_kwargs": {"enable_thinking": c.get("enable_thinking", True)},
+                            # Bound THINKING (not output): unbounded, the model ruminates to the
+                            # token cap and emits 0 tool calls (finish=length); with a budget it
+                            # stops reasoning and ACTS (8 add_suspicion calls in one turn). This is
+                            # the Qwen-native fix for the rumination — caps thinking, leaves output free.
+                            "thinking_token_budget": int(os.environ.get("THINK_BUDGET", "2048"))},
     )
 
 
