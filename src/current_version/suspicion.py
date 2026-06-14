@@ -147,7 +147,13 @@ an assertion. RECORD each suspicion by calling the `add_suspicion` tool — once
 moment you notice it (claim = what might be wrong phrased as something to verify; location = File.java:line
 or area; severity = critical/high/medium/low impact IF true; confidence = 0-1 prior it's real, pre-check).
 Do not emit a JSON list and do not keep them in your head — call the tool for each, so none is lost. Do
-not verify here, do not write a review. When you have recorded every suspicion you can find, finish."""
+not verify here, do not write a review.
+
+WORK INCREMENTALLY — act, do not deliberate: the MOMENT you spot a candidate, call add_suspicion for
+it RIGHT AWAY. Do NOT plan, analyze, or reason through the whole PR before acting; do NOT think at
+length or weigh whether to call the tool — a quick glance then an add_suspicion call, repeat. Keep each
+step short. You are scoring recall by ACTIONS taken (suspicions recorded), not by analysis written;
+thinking that does not end in a tool call is wasted. When you can find no more, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
@@ -278,7 +284,10 @@ CAPTURE = "add_suspicion"
 def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=()):
     """Run a tool-using agent to completion; return its final (post-think) text."""
     tools = _read_tools() + [Tool(name=n) for n in extra_tools]
-    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": 32768})
+    # env-tunable per-turn output budget — too high (32768) lets the model ruminate for ~15min
+    # without ever emitting a tool call; a tight cap forces it to ACT (emit add_suspicion).
+    max_out = int(os.environ.get("OH_MAX_OUT", "8000"))
+    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": max_out})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
     conv = Conversation(agent=agent, workspace=str(repo_dir), visualizer=harness._NoViz, persistence_dir=None)
     try:
@@ -387,7 +396,9 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=16, log=
     return review, list(by_id.values())
 
 
-def run(repo, pr, conf_floor=0.4):
+def _setup(repo, pr):
+    """Resolve the PR, fetch the base repo, build the context, and point REASONING_LOG at
+    this PR. Returns (repo_dir, pr_input, tag). Shared by run() and gen_probe()."""
     from current_version.repo import base_sha, ensure_repo
     from current_version.full_diff import full_pr_input
     from current_version import pr_diff_tool
@@ -407,6 +418,28 @@ def run(repo, pr, conf_floor=0.4):
     os.makedirs("results/reasoning", exist_ok=True)
     os.environ["REASONING_LOG"] = f"results/reasoning/{tag}.log"
     open(os.environ["REASONING_LOG"], "w").close()   # truncate per run; logs each agent turn's thinking
+    return d, pi, tag
+
+
+def gen_probe(repo, pr):
+    """FAST inner-loop eval: run ONLY the generator and report how many suspicions it records
+    and how long it took — so generator tuning (token cap / prompt) doesn't pay for fact-check."""
+    import time as _t
+    d, pi, _tag = _setup(repo, pr)
+    files = harness._changed_files_content(d, pi)
+    ctx = pi + (("\n\n=== FULL CONTENT OF THE CHANGED FILES (base commit) ===\n" + files) if files else "")
+    _reset_store()
+    t0 = _t.time()
+    by_id = generate(d, ctx)
+    print(f"\n=== GEN PROBE {repo}#{pr}: {len(by_id)} suspicions in {_t.time()-t0:.0f}s "
+          f"(OH_MAX_OUT={os.environ.get('OH_MAX_OUT','8000')}) ===")
+    for s in sorted(by_id.values(), key=lambda x: -x.value()):
+        print(f"  S[{s.id}] sev={s.severity} conf={s.confidence} :: {s.claim[:80]}")
+    return by_id
+
+
+def run(repo, pr, conf_floor=0.4):
+    d, pi, tag = _setup(repo, pr)
     os.makedirs("results/probes", exist_ok=True)
     _sandbox.start(repo, pr, log_path=f"results/probes/{tag}.log")
     try:
@@ -419,10 +452,13 @@ def run(repo, pr, conf_floor=0.4):
            "partial": sum(1 for s in sus if s.status == "partial"),
            "refuted": sum(1 for s in sus if s.status == "refuted"),
            "n_suspicions": len(sus)}
-    json.dump(out, open(f"results/susp_runs/{repo.replace('/', '__')}__{pr}.json", "w"), indent=1)
+    json.dump(out, open(f"results/susp_runs/{tag}.json", "w"), indent=1)
     print("\n=== REVIEW ===\n" + review)
     return review, sus
 
 
 if __name__ == "__main__":
-    run(sys.argv[1], int(sys.argv[2]))
+    if len(sys.argv) > 3 and sys.argv[3] == "gen":
+        gen_probe(sys.argv[1], int(sys.argv[2]))
+    else:
+        run(sys.argv[1], int(sys.argv[2]))
