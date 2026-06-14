@@ -46,6 +46,39 @@ _apply_endpoint_env()
 
 from openhands.sdk import LLM  # noqa: E402
 
+# --- request profiler: dump EXACTLY what is sent to vLLM (PROFILE_LOG set) -----------------
+# A litellm pre-API hook sees the final request body (complete_input_dict): tools, stream,
+# tool_choice, messages — so we can confirm whether OpenHands actually sends `tools`.
+try:
+    import litellm as _litellm
+    from litellm.integrations.custom_logger import CustomLogger as _CustomLogger
+
+    class _ProfileLogger(_CustomLogger):
+        def log_pre_api_call(self, model, messages, kwargs):  # noqa: ARG002
+            path = os.environ.get("PROFILE_LOG")
+            if not path:
+                return
+            try:
+                op = kwargs.get("optional_params", {}) or {}
+                body = (kwargs.get("additional_args", {}) or {}).get("complete_input_dict", {}) or {}
+                tools = body.get("tools") or op.get("tools") or []
+                with open(path, "a") as f:
+                    f.write(f"\n=== PRE-API model={model} stream={body.get('stream', op.get('stream'))} "
+                            f"tool_choice={body.get('tool_choice', op.get('tool_choice'))} "
+                            f"n_tools={len(tools)} n_msgs={len(messages or [])} ===\n")
+                    if tools:
+                        f.write("tools: " + ", ".join(
+                            (t.get('function', {}) or {}).get('name', '?') for t in tools) + "\n")
+                    f.write("body keys: " + ",".join(sorted(body.keys())) + "\n")
+            except Exception:  # noqa: BLE001
+                pass
+
+    if os.environ.get("PROFILE_LOG"):
+        _litellm.callbacks = [_ProfileLogger()]
+except Exception:  # noqa: BLE001
+    pass
+
+
 _STREAM_BUF = []   # accumulates streamed deltas; flushed in ~400-char chunks (avoid per-token IO)
 
 
