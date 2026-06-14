@@ -2,9 +2,11 @@
 per-session Java container on server2, so the fact-checker (P15) PROVES a suspicion by
 execution instead of imagining it.
 
-The harness runs on the laptop; execution goes to server2 over SSH (`mh`). One NAMED,
-persistent container per review session (`review-<repo>-<pr>`) from a `review-java-<n>-sandbox`
-image; every probe is `docker exec`'d into it and logged. The container is the only place
+Talks to the Docker daemon LOCALLY by default (the harness runs in its own container on the
+build host with the host socket mounted, so probe containers are spawned as SIBLINGS); set
+SANDBOX_SSH_HOST=mh to drive the daemon over SSH from the laptop instead. One NAMED, persistent
+container per review session (`review-<repo>-<pr>`) from a `review-java-<n>-sandbox` image;
+every probe is `docker exec`'d into it and logged. The container is the only place
 untrusted/build code runs — never the host.
 
 Two hard substrate rules (from the bump_java_version cluster, P6) are baked in here:
@@ -17,7 +19,10 @@ Two hard substrate rules (from the bump_java_version cluster, P6) are baked in h
 from __future__ import annotations
 import os, subprocess, time
 
-SSH_HOST = os.environ.get("SANDBOX_SSH_HOST", "mh")
+# Where the Docker daemon is. Empty (default) = LOCAL docker — the harness runs ON the build
+# host inside its own container with the host socket mounted, spawning probe containers as
+# SIBLINGS. Set SANDBOX_SSH_HOST=mh to drive the remote daemon over SSH from the laptop.
+SSH_HOST = os.environ.get("SANDBOX_SSH_HOST", "")
 # JDK major -> image. All are `maven:3.9-eclipse-temurin-<n>` tagged `review-java-<n>-sandbox`.
 IMAGE_FOR = {8: "review-java-8-sandbox", 11: "review-java-11-sandbox",
              17: "review-java-17-sandbox", 21: "review-java-21-sandbox"}
@@ -26,17 +31,19 @@ DEFAULT_JDK = 21
 _SESSION = {"name": None, "log": None}
 
 
-def _ssh(remote_cmd: str, stdin: str = "", timeout: int = 240):
-    """Run one remote command on the sandbox host over a single SSH call."""
-    return subprocess.run(["ssh", SSH_HOST, remote_cmd], input=stdin,
-                          capture_output=True, text=True, timeout=timeout)
+def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
+    """Run one docker command against the daemon — locally (default) or over a single SSH
+    call (SANDBOX_SSH_HOST set). Local mode talks to the host socket from inside the harness
+    container (docker-out-of-docker), spawning probe containers as siblings."""
+    argv = ["ssh", SSH_HOST, remote_cmd] if SSH_HOST else ["bash", "-lc", remote_cmd]
+    return subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
 
 
 def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = None) -> str:
     """Create the per-session container (idempotent: removes a stale one first)."""
     image = IMAGE_FOR.get(jdk, IMAGE_FOR[DEFAULT_JDK])
     name = "review-" + repo.replace("/", "-") + "-" + str(pr)
-    _ssh(f"docker rm -f {name} >/dev/null 2>&1; "
+    _run(f"docker rm -f {name} >/dev/null 2>&1; "
          f"docker run -d --name {name} -w /work {image} sleep infinity")
     _SESSION["name"] = name
     _SESSION["log"] = log_path
@@ -55,7 +62,7 @@ def exec_(command: str, timeout_s: int = 120) -> tuple[int, str]:
     inner = f"timeout -k 5 {timeout_s} bash -s"
     remote = f"docker exec -i {name} bash -lc '{inner}'"
     try:
-        r = _ssh(remote, stdin=command, timeout=timeout_s + 30)
+        r = _run(remote, stdin=command, timeout=timeout_s + 30)
         rc, out = r.returncode, (r.stdout or "") + (r.stderr or "")
     except subprocess.TimeoutExpired:
         rc, out = 124, "(ssh client timed out; inner timeout should have bounded the container)"
@@ -72,7 +79,7 @@ def exec_(command: str, timeout_s: int = 120) -> tuple[int, str]:
 def stop():
     name = _SESSION["name"]
     if name:
-        _ssh(f"docker rm -f {name} >/dev/null 2>&1", timeout=60)
+        _run(f"docker rm -f {name} >/dev/null 2>&1", timeout=60)
         _SESSION["name"] = None
 
 
