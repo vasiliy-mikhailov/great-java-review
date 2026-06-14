@@ -26,13 +26,13 @@ tool = [{"type": "function", "function": {"name": "add_suspicion",
             "severity": {"type": "string"}, "confidence": {"type": "number"}},
             "required": ["claim", "location", "severity", "confidence"]}}}]
 
-for re in ["high", "low"]:
+for tb in [1024, 4096]:
     t0 = time.time()
     r = litellm.completion(model=model, api_base=base, api_key=key, messages=msgs, tools=tool,
-                           tool_choice="auto", max_tokens=8000, temperature=0,
-                           reasoning_effort=re,
-                           extra_body={"chat_template_kwargs": {"enable_thinking": True}})
+                           tool_choice="auto", max_tokens=14000, temperature=0,
+                           extra_body={"chat_template_kwargs": {"enable_thinking": True},
+                                       "thinking_token_budget": tb})
     m = r.choices[0].message
-    print(f"reasoning_effort={re} t={time.time()-t0:.0f}s finish={r.choices[0].finish_reason} "
+    print(f"thinking_token_budget={tb} t={time.time()-t0:.0f}s finish={r.choices[0].finish_reason} "
           f"tool_calls={len(m.tool_calls or [])} reasoning_chars={len(getattr(m,'reasoning_content',None) or '')} "
-          f"content={repr((m.content or '')[:50])}")
+          f"content={repr((m.content or '')[:60])}")
