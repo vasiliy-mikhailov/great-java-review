@@ -147,13 +147,7 @@ an assertion. RECORD each suspicion by calling the `add_suspicion` tool — once
 moment you notice it (claim = what might be wrong phrased as something to verify; location = File.java:line
 or area; severity = critical/high/medium/low impact IF true; confidence = 0-1 prior it's real, pre-check).
 Do not emit a JSON list and do not keep them in your head — call the tool for each, so none is lost. Do
-not verify here, do not write a review.
-
-WORK INCREMENTALLY — act, do not deliberate: the MOMENT you spot a candidate, call add_suspicion for
-it RIGHT AWAY. Do NOT plan, analyze, or reason through the whole PR before acting; do NOT think at
-length or weigh whether to call the tool — a quick glance then an add_suspicion call, repeat. Keep each
-step short. You are scoring recall by ACTIONS taken (suspicions recorded), not by analysis written;
-thinking that does not end in a tool call is wasted. When you can find no more, finish."""
+not verify here, do not write a review. When you have recorded every suspicion you can find, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
@@ -284,10 +278,10 @@ CAPTURE = "add_suspicion"
 def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=()):
     """Run a tool-using agent to completion; return its final (post-think) text."""
     tools = _read_tools() + [Tool(name=n) for n in extra_tools]
-    # env-tunable per-turn output budget — too high (32768) lets the model ruminate for ~15min
-    # without ever emitting a tool call; a tight cap forces it to ACT (emit add_suspicion).
-    max_out = int(os.environ.get("OH_MAX_OUT", "8000"))
-    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": max_out})
+    # Full output budget (inherits base 131072) — do NOT cap it. The rumination was never a
+    # budget problem; it was the native-tool-calling bug (model had no working tool path so it
+    # just thought). With native tools fixed, let the model think and act freely (don't-limit).
+    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion"})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
     conv = Conversation(agent=agent, workspace=str(repo_dir), visualizer=harness._NoViz, persistence_dir=None)
     try:
