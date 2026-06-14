@@ -24,16 +24,13 @@ _SEARCH_GUIDE = (
     "region you can't target by pattern. Don't grep for a filename then view the whole "
     "file — one `search` does it.")
 
-# Confirm the impact of a change, and surface every candidate issue noticed while reading.
-_FOCUS_GUIDE = (
-    "\n\nA focused investigation is the most useful kind. Once you've answered the "
-    "specific question, it helps to confirm what it means in practice — for a changed or "
-    "removed symbol, a quick look at who calls or imports it shows the real impact, and "
-    "that is what turns an observation into an actionable finding. After that the finding "
-    "is complete: tracing the wider call graph or unrelated code usually adds length "
-    "without changing the conclusion, so it's natural to wrap up and report what you "
-    "found. Aim for the smallest investigation that fully answers the question and "
-    "confirms its impact.")
+# Confirm the impact of a change; investigate as far as the question needs (no minimizing).
+_IMPACT_GUIDE = (
+    "\n\nConfirm the impact of what you find: for a changed or removed symbol, check who "
+    "calls or imports it — that is what turns an observation into an actionable finding. "
+    "Investigate as far as the question needs: follow the call graph or related code "
+    "whenever it could change, strengthen, or overturn the conclusion. Aim for a complete, "
+    "verified answer, not a short one.")
 
 # Absence asymmetry + findings ledger: the repo is at BASE, so not finding something can
 # never prove the PR lacks it; and any candidate issue noticed must be handed back, not
@@ -68,7 +65,7 @@ _LEAN_CONTEXT_GUIDE = (
     "content of a changed file, read it with file_editor or search — it is not in this "
     "prompt. The diff above is the change itself; the tools give you everything around it.")
 
-SUB_GUIDE = _SEARCH_GUIDE + _FOCUS_GUIDE + _ABSENCE_LEDGER_GUIDE + _PR_TOOLS_GUIDE + _LEAN_CONTEXT_GUIDE
+SUB_GUIDE = _SEARCH_GUIDE + _IMPACT_GUIDE + _ABSENCE_LEDGER_GUIDE + _PR_TOOLS_GUIDE + _LEAN_CONTEXT_GUIDE
 
 # Orchestrator synthesis: keep each finding at the confidence its evidence supports (don't
 # promote a hedge to a definite "missing/broken" claim — that is how fabrications are born),
@@ -99,7 +96,9 @@ definition it actually binds to: match the number AND types of arguments to the 
 (and follow the inheritance chain) BEFORE concluding anything is wrong — an apparent mismatch is usually
 you reading the wrong overload. You have NO shell and CANNOT edit files. Return a grounded finding:
 VERDICT (confirmed/refuted/partial) + path/File.java:line + the exact evidence (as long as it needs to
-be to be precise). Answer ONLY the question asked; do not write a full review."""
+be to be precise). Answer the question fully, and if you notice a related issue while reading,
+flag it too (one line + its file:line). Return a finding, not a full review — the orchestrator
+writes the review."""
 
 INVESTIGATOR_SYS = """You investigate ONE area of a Java pull request. The PR's PROPOSED CHANGE
 (diff) is at the end of this prompt — the repo is at the BASE commit so added code is NOT in the
