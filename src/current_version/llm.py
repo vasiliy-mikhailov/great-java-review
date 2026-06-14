@@ -121,15 +121,29 @@ class StreamingLLM(LLM):
 
 def _llm(profile: str = "qwen"):
     c = CFG[profile]
+    model = f"hosted_vllm/{c['model']}"
+    # CRITICAL: litellm's registry doesn't know this custom vLLM model supports function
+    # calling, so `supports_function_calling` returns False and OpenHands silently falls back
+    # to PROMPT-BASED tool parsing (it looks for the tool call in `content`). With thinking
+    # correctly separated the content is empty, so that path finds nothing -> the agent never
+    # acts (it ruminates). The endpoint DOES do native tool calls (verified by direct curl),
+    # so register the model as function-calling-capable and pin native_tool_calling on.
+    try:
+        import litellm
+        info = {"litellm_provider": "hosted_vllm", "mode": "chat", "supports_function_calling": True}
+        litellm.register_model({model: info, c["model"]: info})
+    except Exception:  # noqa: BLE001
+        pass
     return StreamingLLM(
         usage_id="oh_review",
-        model=f"hosted_vllm/{c['model']}",
+        model=model,
         base_url=c["base_url"],
         api_key=os.environ.get(c.get("api_key_env", "QWEN_API_KEY"), "x"),
         temperature=c.get("temperature", 0.7),
         max_message_chars=300000,
         num_retries=10,
         retry_max_wait=120,
+        native_tool_calling=True,   # use the OpenAI tools param + parse message.tool_calls
         # With stream=True the timeout is a byte-gap heartbeat: abort a request that
         # has gone silent for this long (vllm under concurrent load accepts the call
         # then stops streaming) so num_retries can re-issue it instead of hanging forever.
