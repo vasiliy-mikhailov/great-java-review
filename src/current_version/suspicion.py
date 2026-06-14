@@ -356,7 +356,7 @@ def synthesize(ctx, confirmed, partials):
     return final_review(_post_think(txt))
 
 
-def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=16, log=print):
+def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print):
     files = harness._changed_files_content(repo_dir, pr_input)
     ctx = pr_input + (("\n\n=== FULL CONTENT OF THE CHANGED FILES (base commit) ===\n" + files)
                       if files else "")
