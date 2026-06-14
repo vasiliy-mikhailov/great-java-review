@@ -26,17 +26,19 @@ tool = [{"type": "function", "function": {"name": "add_suspicion",
             "severity": {"type": "string"}, "confidence": {"type": "number"}},
             "required": ["claim", "location", "severity", "confidence"]}}}]
 
-# Matrix: isolate the reasoning_effort x thinking_token_budget interaction at the vLLM level.
-for re, tb in [(None, None), (None, 2048), ("high", 2048), ("high", None)]:
-    extra = {"chat_template_kwargs": {"enable_thinking": True}}
-    if tb is not None:
-        extra["thinking_token_budget"] = tb
+# Decisive: budget held at 2048, vary ONLY streaming. Does stream=True break budget enforcement?
+from litellm import stream_chunk_builder
+extra = {"chat_template_kwargs": {"enable_thinking": True}, "thinking_token_budget": 2048}
+for streaming in [False, True]:
     kw = dict(model=model, api_base=base, api_key=key, messages=msgs, tools=tool,
               tool_choice="auto", max_tokens=14000, temperature=0, extra_body=extra)
-    if re is not None:
-        kw["reasoning_effort"] = re
     t0 = time.time()
-    r = litellm.completion(**kw)
-    m = r.choices[0].message
-    print(f"reasoning_effort={re} budget={tb} t={time.time()-t0:.0f}s finish={r.choices[0].finish_reason} "
+    if not streaming:
+        r = litellm.completion(stream=False, **kw)
+        m = r.choices[0].message; finish = r.choices[0].finish_reason
+    else:
+        chunks = list(litellm.completion(stream=True, **kw))
+        f = stream_chunk_builder(chunks, messages=msgs)
+        m = f.choices[0].message; finish = f.choices[0].finish_reason
+    print(f"stream={streaming} budget=2048 t={time.time()-t0:.0f}s finish={finish} "
           f"tool_calls={len(m.tool_calls or [])} reasoning_chars={len(getattr(m,'reasoning_content',None) or '')}")
