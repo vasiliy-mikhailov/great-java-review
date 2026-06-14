@@ -182,6 +182,10 @@ def _llm(profile: str = "qwen"):
         num_retries=10,
         retry_max_wait=120,
         native_tool_calling=True,   # use the OpenAI tools param + parse message.tool_calls
+        # OpenHands defaults drop_params=True, which makes litellm STRIP params it doesn't
+        # recognize for this custom model — silently dropping thinking_token_budget (it keeps
+        # chat_template_kwargs but not the budget). False keeps our extra_body intact.
+        drop_params=False,
         # With stream=True the timeout is a byte-gap heartbeat: abort a request that
         # has gone silent for this long (vllm under concurrent load accepts the call
         # then stops streaming) so num_retries can re-issue it instead of hanging forever.
