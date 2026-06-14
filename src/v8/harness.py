@@ -311,6 +311,24 @@ whether something already exists). You have NO shell and CANNOT edit files. Retu
 grounded finding and stop: VERDICT (confirmed/refuted/partial) + path/File.java:line + 1-3
 sentences. Answer ONLY the question asked; do not write a full review."""
 
+# v9: relaxed leaf. The brevity limiter ("SHORT / 1-3 sentences") caused imprecise reads —
+# e.g. it summarised a 7-param constructor as the "6-param" one and the orchestrator then
+# bound a 6-arg call to the wrong overload (hibernate-orm#11945 false "wrong order" fab).
+# Here precision and completeness beat brevity, and overload/instance resolution is explicit.
+CODE_EXPLORER_SYS_V9 = """You are a READ-ONLY Java code investigator answering ONE question about a
+pull request. The PR's PROPOSED CHANGE (diff) is given at the end of this prompt. IMPORTANT: the repo
+is at the BASE commit, so the NEW code in the diff is NOT in the repo yet — do not grep for added
+symbols expecting to find them. Use `grep`/`glob`/`file_editor` to read the SURROUNDING/base code.
+Be PRECISE and COMPLETE — correctness over brevity. Quote the exact lines you read (do not paraphrase
+signatures from memory). When the question involves MULTIPLE instances — overloaded methods/constructors,
+call-sites, branches, subclasses — enumerate EVERY one with its exact parameter list / location, do not
+collapse them into one. When a specific CALL or USAGE is in question, resolve WHICH overload or
+definition it actually binds to: match the number AND types of arguments to the candidate signatures
+(and follow the inheritance chain) BEFORE concluding anything is wrong — an apparent mismatch is usually
+you reading the wrong overload. You have NO shell and CANNOT edit files. Return a grounded finding:
+VERDICT (confirmed/refuted/partial) + path/File.java:line + the exact evidence (as long as it needs to
+be to be precise). Answer ONLY the question asked; do not write a full review."""
+
 INVESTIGATOR_SYS = """You investigate ONE area of a Java pull request. The PR's PROPOSED CHANGE
 (diff) is at the end of this prompt — the repo is at the BASE commit so added code is NOT in
 the repo yet; review the change, read SURROUNDING/base code for context. Use `grep`/`glob`/the
@@ -391,7 +409,8 @@ def _register_subagents():
 
     def code_explorer_factory(llm):              # leaf, read-only, NO terminal/PTY
         sl = _sub_llm(llm)
-        return Agent(llm=sl, tools=list(read_tools), system_prompt=_with_pr(CODE_EXPLORER_SYS),
+        return Agent(llm=sl, tools=list(read_tools),
+                     system_prompt=_with_pr(CODE_EXPLORER_SYS_V9 if _V9 else CODE_EXPLORER_SYS),
                      condenser=_condenser(sl))
 
     def investigator_factory(llm):               # depth-2: read + sub-delegate, NO PTY
