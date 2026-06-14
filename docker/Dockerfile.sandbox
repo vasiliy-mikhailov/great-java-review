@@ -1,0 +1,8 @@
+# review-java-<n>-sandbox: a per-JDK probe container for fact-check-by-execution (P17).
+# JDK + Maven (the official maven-on-temurin image) with Maven pointed at the on-host Nexus
+# group repo so Tier-B builds resolve through the warm cache.
+#   docker build -f docker/Dockerfile.sandbox --build-arg JDK=21 -t review-java-21-sandbox .
+#   (repeat for JDK=8/11/17)
+ARG JDK=21
+FROM maven:3.9-eclipse-temurin-${JDK}
+COPY docker/sandbox-settings.xml /root/.m2/settings.xml

@@ -43,8 +43,11 @@ def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = Non
     """Create the per-session container (idempotent: removes a stale one first)."""
     image = IMAGE_FOR.get(jdk, IMAGE_FOR[DEFAULT_JDK])
     name = "review-" + repo.replace("/", "-") + "-" + str(pr)
+    # join the mvn-cache network so Maven resolves through the Nexus group repo (`nexus:8081`)
+    net = os.environ.get("SANDBOX_NETWORK", "mvn-cache")
+    netarg = f"--network {net} " if net else ""
     _run(f"docker rm -f {name} >/dev/null 2>&1; "
-         f"docker run -d --name {name} -w /work {image} sleep infinity")
+         f"docker run -d {netarg}--name {name} -w /work {image} sleep infinity")
     _SESSION["name"] = name
     _SESSION["log"] = log_path
     return name
