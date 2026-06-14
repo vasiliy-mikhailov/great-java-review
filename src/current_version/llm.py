@@ -46,55 +46,74 @@ _apply_endpoint_env()
 
 from openhands.sdk import LLM  # noqa: E402
 
-_NOOP_TOKEN = lambda _chunk: None  # noqa: E731
+_STREAM_BUF = []   # accumulates streamed deltas; flushed in ~400-char chunks (avoid per-token IO)
 
 
-def _log_turn(usage_id, resp):
-    """Append this LLM turn's REASONING + content + tool calls to $REASONING_LOG, so the
-    model's thinking is visible (Qwen needs thinking ON; with the fixed vLLM the thought
-    lands in reasoning_content and `content` is often empty — invisible without this)."""
+def _stream_tap(tok):
+    """on_token callback: append streamed REASONING + content deltas to $REASONING_LOG LIVE.
+    Reasoning tokens also stream, so this shows the model thinking DURING a long call instead
+    of only after it returns (a giant generator call can run minutes — we must see inside it)."""
     path = os.environ.get("REASONING_LOG")
     if not path:
         return
     try:
+        if isinstance(tok, str):
+            piece = tok
+        else:
+            d = tok.choices[0].delta
+            piece = (getattr(d, "reasoning_content", None) or "") + (getattr(d, "content", None) or "")
+        if piece:
+            _STREAM_BUF.append(piece)
+            if sum(len(x) for x in _STREAM_BUF) >= 400:
+                with open(path, "a") as f:
+                    f.write("".join(_STREAM_BUF))
+                _STREAM_BUF.clear()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _log_turn(usage_id, resp):
+    """Turn end: flush any buffered stream, then record the tool calls (they don't stream as
+    readable text — this is where a malformed name like `add_sicion` would show) + a separator."""
+    path = os.environ.get("REASONING_LOG")
+    if not path:
+        return
+    if _STREAM_BUF:
+        try:
+            with open(path, "a") as f:
+                f.write("".join(_STREAM_BUF))
+        except Exception:  # noqa: BLE001
+            pass
+        _STREAM_BUF.clear()
+    try:
         msg = resp.choices[0].message
-        rc = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
-        content = getattr(msg, "content", None)
         tcs = getattr(msg, "tool_calls", None) or []
         with open(path, "a") as f:
-            f.write(f"\n===== turn [{usage_id}] =====\n")
-            if rc:
-                f.write("[thinking]\n" + str(rc).strip() + "\n")
-            if content:
-                f.write("[content]\n" + str(content).strip() + "\n")
             for t in tcs:
                 fn = getattr(getattr(t, "function", None), "name", None)
                 args = getattr(getattr(t, "function", None), "arguments", None)
-                f.write(f"[tool_call] {fn}({str(args)[:600]})\n")
-            if not (rc or content or tcs):
-                f.write("[empty turn]\n")
+                f.write(f"\n[tool_call] {fn}({str(args)[:600]})")
+            f.write(f"\n===== end turn [{usage_id}] =====\n")
     except Exception:  # noqa: BLE001
         pass
 
 
 class StreamingLLM(LLM):
-    """stream=True turns httpx's read-timeout into a byte-gap heartbeat (P8/P14). But
-    OpenHands raises if stream=True and on_token is None, and two call sites hit the
-    shared llm: the agent loop passes on_token=None EXPLICITLY (so `setdefault` would
-    not fix it — need `is None`), the condenser passes it ABSENT. Inject a no-op for
-    both, sync + async (the condenser uses acompletion). Also logs each turn's thinking
-    to $REASONING_LOG when set (observability — see _log_turn)."""
+    """stream=True turns httpx's read-timeout into a byte-gap heartbeat (P8/P14). OpenHands
+    raises if stream=True and on_token is None; the agent loop passes on_token=None EXPLICITLY
+    and the condenser passes it ABSENT, so inject our live-streaming tap for both (sync +
+    async). The tap streams reasoning+content to $REASONING_LOG; _log_turn adds tool calls."""
 
     def completion(self, *a, **kw):
         if kw.get("on_token") is None:
-            kw["on_token"] = _NOOP_TOKEN
+            kw["on_token"] = _stream_tap
         resp = super().completion(*a, **kw)
         _log_turn(self.usage_id, resp)
         return resp
 
     async def acompletion(self, *a, **kw):
         if kw.get("on_token") is None:
-            kw["on_token"] = _NOOP_TOKEN
+            kw["on_token"] = _stream_tap
         resp = await super().acompletion(*a, **kw)
         _log_turn(self.usage_id, resp)
         return resp
