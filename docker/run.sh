@@ -13,4 +13,4 @@ docker run --rm \
   -v "$PWD":/work -w /work \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v oh-m2-cache:/root/.m2 -v oh-gradle-cache:/root/.gradle \
-  review-harness "${@:-}"
+  review-harness "$@"
