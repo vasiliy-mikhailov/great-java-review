@@ -370,13 +370,11 @@ def synthesize(ctx, confirmed, partials):
 
 
 def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print):
-    # GENERATOR gets the FULL changed-file content up front (one wide-net pass): read-on-demand
-    # generation DID NOT terminate on big PRs (it wandered file-by-file for 1h, stuck at 23
-    # suspicions). The fat blob is safe now that max_output_tokens is capped (no overflow). The
-    # FACT-CHECK stays lean (it verifies ONE suspicion, reads the relevant code on demand).
-    files = harness._changed_files_content(repo_dir, pr_input)
-    ctx = pr_input + (("\n\n=== FULL CONTENT OF THE CHANGED FILES (base commit) ===\n" + files)
-                      if files else "")
+    # LEAN context (Q2 / v10): the model gets the diff + the changed-files LIST and pulls full
+    # file content on demand via pr_file_diff/file_editor — no pre-loaded blob. Verified: the lean
+    # generator terminates cleanly (6222: 23 suspicions in ~9min, vs the fat blob's 17 — higher
+    # recall) and the lean fact-check verifies one suspicion without overflowing the window.
+    ctx = pr_input
     _reset_store()
     by_id = generate(repo_dir, ctx)           # generator writes suspicions to the store
     log(f"generated {len(by_id)} suspicions")
