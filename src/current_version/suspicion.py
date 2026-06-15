@@ -349,9 +349,14 @@ def fact_check(repo_dir, ctx, s):
            f"claim: {s.claim}\nlocation: {s.location}\n"
            "Verify it against the ACTUAL code. Record any NEW issue you notice with add_suspicion, "
            "then output the JSON {verdict, evidence} for THIS suspicion.")
-    return _extract_json(_run_agent(FACT_CHECKER_SYS, msg, repo_dir,
-                                    extra_tools=[CAPTURE, "sandbox_exec"]), "{") \
-        or {"verdict": "partial"}
+    try:
+        out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir, extra_tools=[CAPTURE, "sandbox_exec"])
+    except Exception as e:  # noqa: BLE001
+        # RESILIENCE: a single fact-check agent failure (e.g. a 400 from context overflow, a
+        # transient endpoint error) must NOT crash the whole PR. Treat as unverified → refuted
+        # (precision-first: don't surface an unverified claim) and let the loop continue.
+        return {"verdict": "refuted", "evidence": f"fact-check errored ({type(e).__name__}): {str(e)[:160]}"}
+    return _extract_json(out, "{") or {"verdict": "partial"}
 
 
 def synthesize(ctx, confirmed, partials):
