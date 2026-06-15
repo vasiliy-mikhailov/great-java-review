@@ -40,14 +40,20 @@ def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
 
 
 def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = None) -> str:
-    """Create the per-session container (idempotent: removes a stale one first)."""
+    """Create the per-session JDK sandbox with the REPO MOUNTED at /work, so every tool the
+    harness calls (read AND compile) sees the same real project. Idempotent (removes a stale one)."""
     image = IMAGE_FOR.get(jdk, IMAGE_FOR[DEFAULT_JDK])
     name = "review-" + repo.replace("/", "-") + "-" + str(pr)
     # join the mvn-cache network so Maven resolves through the Nexus group repo (`nexus:8081`)
     net = os.environ.get("SANDBOX_NETWORK", "mvn-cache")
     netarg = f"--network {net} " if net else ""
+    # mount the repo at the HOST path (the daemon resolves -v paths host-side, even though the
+    # harness issues `docker run` from inside its own container — DooD). HOST_WORKDIR = the host
+    # path that is the harness's /work; the repo lives under data/repos/<owner>__<repo>.
+    host_work = os.environ.get("HOST_WORKDIR", os.getcwd())
+    repo_host = f"{host_work}/data/repos/{repo.replace('/', '__')}"
     _run(f"docker rm -f {name} >/dev/null 2>&1; "
-         f"docker run -d {netarg}--name {name} -w /work {image} sleep infinity")
+         f"docker run -d {netarg}-v {repo_host}:/work -w /work --name {name} {image} sleep infinity")
     _SESSION["name"] = name
     _SESSION["log"] = log_path
     return name
