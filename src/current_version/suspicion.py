@@ -287,10 +287,11 @@ CAPTURE = "add_suspicion"
 def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=()):
     """Run a tool-using agent to completion; return its final (post-think) text."""
     tools = _read_tools() + [Tool(name=n) for n in extra_tools]
-    # Full output budget (inherits base 131072) — do NOT cap it. The rumination was never a
-    # budget problem; it was the native-tool-calling bug (model had no working tool path so it
-    # just thought). With native tools fixed, let the model think and act freely (don't-limit).
-    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion"})
+    # PER-TURN output cap = 32768 (NOT a limit on the review — a turn emits a verdict + a few tool
+    # calls). The base 131072 reserves half the 262144 window for output, leaving only ~11k tokens
+    # of condenser margin (120000 + 131072 = 251072) — one big tool read overshoots → vLLM 400 (the
+    # 6222 crash). 32768 gives the prompt a ~109k-token margin and satisfies the P14 invariant.
+    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": 32768})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
     conv = Conversation(agent=agent, workspace=str(repo_dir), visualizer=harness._NoViz, persistence_dir=None)
     try:
@@ -369,9 +370,10 @@ def synthesize(ctx, confirmed, partials):
 
 
 def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print):
-    files = harness._changed_files_content(repo_dir, pr_input)
-    ctx = pr_input + (("\n\n=== FULL CONTENT OF THE CHANGED FILES (base commit) ===\n" + files)
-                      if files else "")
+    # LEAN context (Q2 / v10): hand the model the diff + the changed-files LIST (pr_input) and let
+    # it pull full file content on demand via pr_file_diff/file_editor — no pre-loaded blob (the
+    # blob bloated the window, was lost-in-the-middle, and was costly to re-process every turn).
+    ctx = pr_input
     _reset_store()
     by_id = generate(repo_dir, ctx)           # generator writes suspicions to the store
     log(f"generated {len(by_id)} suspicions")
@@ -432,13 +434,10 @@ def gen_probe(repo, pr):
     and how long it took — so generator tuning (token cap / prompt) doesn't pay for fact-check."""
     import time as _t
     d, pi, _tag = _setup(repo, pr)
-    files = harness._changed_files_content(d, pi)
-    ctx = pi + (("\n\n=== FULL CONTENT OF THE CHANGED FILES (base commit) ===\n" + files) if files else "")
     _reset_store()
     t0 = _t.time()
-    by_id = generate(d, ctx)
-    print(f"\n=== GEN PROBE {repo}#{pr}: {len(by_id)} suspicions in {_t.time()-t0:.0f}s "
-          f"(OH_MAX_OUT={os.environ.get('OH_MAX_OUT','8000')}) ===")
+    by_id = generate(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
+    print(f"\n=== GEN PROBE {repo}#{pr}: {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
     for s in sorted(by_id.values(), key=lambda x: -x.value()):
         print(f"  S[{s.id}] sev={s.severity} conf={s.confidence} :: {s.claim[:80]}")
     return by_id
