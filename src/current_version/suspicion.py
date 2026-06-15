@@ -188,12 +188,21 @@ A suspicion is a hypothesis of a PROBLEM. Judge the PROBLEM, not the description
   does but the behavior is correct / intended / harmless. Confirming that the code merely MATCHES a
   neutral description ("X is added at index 4", "the flag is set to false") is NOT a finding — if
   nothing is wrong, REFUTE.
-- 'partial' ONLY when you genuinely cannot tell from the visible code; it should be rare.
-Bias toward a decisive confirmed/refuted."""
+- 'partial' is a LAST RESORT, not a hedge. If you cannot POSITIVELY prove the problem is real —
+  even after reading the code and running a sandbox probe — REFUTE it (default-refute), do not
+  downgrade to partial. Reserve partial only for a SUBSTANTIVE issue that genuinely cannot be
+  determined from the available code/tools. Most uncertainty should resolve to refuted.
+Bias hard toward a decisive confirmed/refuted; a wall of 'partial' verdicts is a failure to decide."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only. Each confirmed
-finding becomes a point with its file:line and the evidence. Include the OPEN QUESTIONS (partials) as
-questions to the author, clearly hedged — never as definite claims. Add NO new claims of your own.
+finding becomes a point with its file:line and the evidence. Add NO new claims of your own.
+
+CURATE the OPEN QUESTIONS (partials) hard — do not dump them all. MERGE any that restate the same
+underlying concern into ONE question; DROP any that are speculative, already answered by the diff, or
+rest on a false premise; keep only the few genuinely-uncertain, substantive ones, clearly hedged and
+never as definite claims. A short, sharp review beats a flood of vague questions — a reviewer who asks
+ten hedged questions about one concern is noise, and noise costs credibility.
+
 Output SUMMARY: then POINTS:, each point as - [path/File.java:line] <point>."""
 
 
