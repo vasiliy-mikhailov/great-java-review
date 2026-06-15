@@ -52,6 +52,13 @@ def _store_add(claim, location, severity, confidence):
     return sid
 
 
+_VERDICT = {}   # the fact-checker writes its verdict here via the record_verdict tool (not parsed prose)
+
+
+def _reset_verdict():
+    _VERDICT.clear()
+
+
 class AddSuspicionAction(Action):
     claim: str = Field(description="The suspected PROBLEM, phrased as something to verify.")
     location: str = Field(description="File.java:line or area where it is.")
@@ -86,6 +93,46 @@ class AddSuspicionTool(ToolDefinition[AddSuspicionAction, AddSuspicionObservatio
                                                 destructiveHint=False, idempotentHint=False,
                                                 openWorldHint=False),
                     executor=_AddSuspicionExecutor())]
+
+
+# --- record_verdict: the fact-checker's decision is CAPTURED BY A TOOL, not parsed from prose ---
+# The loop used to regex the final message for {"verdict":...}; when the model wrote its decision in
+# prose ("the logger issue — confirmed, uses ReflectiveHierarchyStep.class") the parse failed and the
+# verdict SILENTLY defaulted to "partial", losing real confirms (richer post-PR context made the model
+# more discursive, exposing this). A tool call is robust to verbosity — same fix add_suspicion already is.
+class RecordVerdictAction(Action):
+    verdict: str = Field(description="confirmed | refuted | partial — your decision on THIS suspicion.")
+    evidence: str = Field(description="file:line + exactly what the code shows that justifies the verdict.")
+
+
+class RecordVerdictObservation(Observation):
+    pass
+
+
+_VERDICT_DESC = ("Record your FINAL decision on the one suspicion you are fact-checking. Call this "
+                 "exactly ONCE, LAST — instead of writing the verdict in prose. Args: verdict "
+                 "(confirmed/refuted/partial), evidence (file:line + what the code shows).")
+
+
+class _RecordVerdictExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        _VERDICT["verdict"] = str(action.verdict).lower().strip()
+        _VERDICT["evidence"] = str(action.evidence)
+        return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']}")
+
+
+class RecordVerdictTool(ToolDefinition[RecordVerdictAction, RecordVerdictObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[RecordVerdictTool]":  # noqa: ARG003
+        return [cls(description=_VERDICT_DESC, action_type=RecordVerdictAction,
+                    observation_type=RecordVerdictObservation,
+                    annotations=ToolAnnotations(title="record_verdict", readOnlyHint=False,
+                                                destructiveHint=False, idempotentHint=False,
+                                                openWorldHint=False),
+                    executor=_RecordVerdictExecutor())]
 
 
 # --- the sandbox_exec tool: PROVE a suspicion by execution (contract P17) ----------------
@@ -186,8 +233,9 @@ reproduce or read in the code, you cannot confirm it — REFUTE it (an unverifia
 not a finding; confirming one is how fabrications survive).
 
 While reading, if you NOTICE a DIFFERENT candidate issue, record it with the `add_suspicion` tool
-(do not put it in your output). For THIS suspicion, output ONLY JSON:
-{"verdict": "confirmed|refuted|partial", "evidence": "<file:line + exactly what the code shows>"}.
+(do not put it in your output). For THIS suspicion, RECORD your decision by CALLING the `record_verdict`
+tool — once, last — with verdict (confirmed|refuted|partial) and evidence (file:line + exactly what the
+code shows). Do NOT state the verdict only in prose; the prose is not read — only the tool call is.
 A suspicion is a hypothesis of a PROBLEM. Judge the PROBLEM, not the description:
 - CONFIRM only when the suspected problem is REAL — the code is actually wrong, unsafe, or will
   misbehave, and the author should act (e.g. a wrong class/constant/logger name literally present, a
@@ -281,7 +329,8 @@ def _read_tools():
     global _TOOLS_READY
     if not _TOOLS_READY:
         harness._register_subagents()    # registers search/grep/glob/file_editor/pr_files/pr_file_diff
-        for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool)):
+        for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
+                       ("record_verdict", RecordVerdictTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -364,12 +413,21 @@ def fact_check(repo_dir, s):
     # suspicion, so it gets the suspicion and reads the actual code ON DEMAND via the tools (the
     # sandbox sees the real repo). Passing the whole ~150k-char PR context here overflowed
     # max-model-len across the multi-turn agent — and was lost-in-the-middle and costly anyway.
+    _reset_verdict()
     msg = (f"SUSPICION TO FACT-CHECK:\nclaim: {s.claim}\nlocation: {s.location}\n\n"
-           "Read the actual code at that location with `pr_file_diff` (the file's full PR change) "
-           "and `file_editor`/`search`/`grep` for the surrounding base code; verify against it. "
-           "Record any NEW issue you notice with add_suspicion, then output {verdict, evidence}.")
-    out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir, extra_tools=[CAPTURE, "sandbox_exec"])
-    return _extract_json(out, "{") or {"verdict": "partial"}
+           "Read the actual code at that location: `file_editor`/`search`/`grep` open the POST-PR tree, "
+           "`pr_file_diff` shows the exact change, `sandbox_exec` (version='old' for the base) compiles/runs it. "
+           "Verify against the real code. Record any NEW issue you notice with add_suspicion. When decided, "
+           "call `record_verdict` (confirmed/refuted/partial + evidence) — once, last.")
+    out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir,
+                     extra_tools=[CAPTURE, "sandbox_exec", "record_verdict"])
+    if _VERDICT.get("verdict") in ("confirmed", "refuted", "partial"):   # tool-captured: robust
+        return dict(_VERDICT)
+    j = _extract_json(out, "{")                                          # fallback: a JSON blob in text
+    if isinstance(j, dict) and str(j.get("verdict", "")).lower() in ("confirmed", "refuted", "partial"):
+        return {"verdict": str(j["verdict"]).lower(), "evidence": str(j.get("evidence", ""))}
+    print(f"  [verdict] no record_verdict + no JSON for S[{s.id}] — defaulting partial", flush=True)
+    return {"verdict": "partial", "evidence": (out or "")[-300:]}
 
 
 def synthesize(ctx, confirmed, partials):
