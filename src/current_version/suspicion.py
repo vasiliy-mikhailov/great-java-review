@@ -344,18 +344,16 @@ def schedule(pending):
     return max(pending, key=lambda s: s.value())          # fallback: highest value
 
 
-def fact_check(repo_dir, ctx, s):
-    msg = ("PULL REQUEST:\n" + ctx + "\n\nSUSPICION TO FACT-CHECK:\n"
-           f"claim: {s.claim}\nlocation: {s.location}\n"
-           "Verify it against the ACTUAL code. Record any NEW issue you notice with add_suspicion, "
-           "then output the JSON {verdict, evidence} for THIS suspicion.")
-    try:
-        out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir, extra_tools=[CAPTURE, "sandbox_exec"])
-    except Exception as e:  # noqa: BLE001
-        # RESILIENCE: a single fact-check agent failure (e.g. a 400 from context overflow, a
-        # transient endpoint error) must NOT crash the whole PR. Treat as unverified → refuted
-        # (precision-first: don't surface an unverified claim) and let the loop continue.
-        return {"verdict": "refuted", "evidence": f"fact-check errored ({type(e).__name__}): {str(e)[:160]}"}
+def fact_check(repo_dir, s):
+    # LEAN context (root-cause fix for the 400 that crashed 6222): a fact-check verifies ONE
+    # suspicion, so it gets the suspicion and reads the actual code ON DEMAND via the tools (the
+    # sandbox sees the real repo). Passing the whole ~150k-char PR context here overflowed
+    # max-model-len across the multi-turn agent — and was lost-in-the-middle and costly anyway.
+    msg = (f"SUSPICION TO FACT-CHECK:\nclaim: {s.claim}\nlocation: {s.location}\n\n"
+           "Read the actual code at that location with `pr_file_diff` (the file's full PR change) "
+           "and `file_editor`/`search`/`grep` for the surrounding base code; verify against it. "
+           "Record any NEW issue you notice with add_suspicion, then output {verdict, evidence}.")
+    out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir, extra_tools=[CAPTURE, "sandbox_exec"])
     return _extract_json(out, "{") or {"verdict": "partial"}
 
 
@@ -390,7 +388,7 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=
             break
         s = schedule(pending)
         before = len(_STORE)
-        res = fact_check(repo_dir, ctx, s)
+        res = fact_check(repo_dir, s)
         s.status = str(res.get("verdict", "partial")).lower()
         s.evidence = str(res.get("evidence", ""))[:600]
         checks += 1

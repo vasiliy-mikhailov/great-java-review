@@ -292,3 +292,17 @@ Adopted architecture (supersedes the orchestrator-delegate-then-synthesize tree 
 **Reward:** iteration variance from non-measured factors approaches zero — zero disk-full crashes, zero stray containers/scratch dirs, predictable per-iteration wall-clock, the inference endpoint unharmed by our load.
 
 **Attention mechanism:** host state is the channel — a `review-*` container or scratch dir outliving its run, container-log or disk size creeping toward full, or the inference endpoint degrading during a build, signals P18 to fix the reap/limit before the next iteration counts. The shared host also PRUNES images under disk pressure (`review-harness` and `review-java-<n>-sandbox` both vanished mid-session, freeing ~25G) — so build-on-demand: verify/rebuild both images at the start of a run, and treat a `Unable to find image` / `pull access denied` at launch as the signal to rebuild, not a code error.
+
+---
+
+## P19 — Problem (bug fixing): reproduce, root-cause, fix the cause, rerun clean — never a workaround.
+
+**Value:** a bug fixed at its root removes a whole failure class and leaves the code smaller; a bug papered over with a guard/special-case hides the cause, corrupts data downstream, and accretes into the kind of cruft this project keeps stripping. The discipline is what keeps the harness honest enough to trust its own measurements.
+
+**Contract and constraints** *(operator-only)*: when something breaks, (1) REPRODUCE it (a real trace, not a guess); (2) find the ROOT cause — the actual mechanism (e.g. "the fact-check passes the whole ~150k-char PR context to a multi-turn agent, so it overflows `max-model-len` → 400"), not the symptom ("a check errored"); (3) fix the ROOT — change the thing that is wrong so the error cannot occur, do NOT add a `try/except`, a "treat as X on failure", a retry, a cap, or any mask that lets the broken path keep running; (4) RERUN CLEAN to confirm the fix and that the error is gone; (5) clean up any CONSEQUENCES the bug or a prior wrong-fix left behind (corrupted outputs, litter, dead guards). A workaround is acceptable only as an explicitly-labelled, temporary stopgap with the root-cause fix tracked — never as the resolution.
+
+**Solution search approach and hints:** trace on the host (logs, the real request/response, the actual mount) before theorising — you can almost always reproduce deterministically. When a fix ADDS code (a guard, a branch, a retry), suspect you are masking; the root-cause fix usually REMOVES code (the redundant context, the wrong path, the duplicated state). Re-enter whenever an error is being caught-and-continued rather than prevented.
+
+**Reward:** less code and fewer workarounds after the fix than before — a resolved bug that deletes a special-case beats one that adds a guard. Zero masks left in the resolved path; the rerun is clean.
+
+**Attention mechanism:** the diff is the channel — a `try/except` that swallows, a "default to X on failure", a retry around a deterministic error, or a cap that hides an overflow, each signals the symptom was treated, not the cause; re-open until the root is fixed and the mask is gone.
