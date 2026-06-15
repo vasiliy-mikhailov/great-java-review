@@ -28,7 +28,7 @@ IMAGE_FOR = {8: "review-java-8-sandbox", 11: "review-java-11-sandbox",
              17: "review-java-17-sandbox", 21: "review-java-21-sandbox"}
 DEFAULT_JDK = 21
 
-_SESSION = {"name": None, "log": None}
+_SESSION = {"name": None, "log": None, "base": None, "worktree": None}
 
 
 def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
@@ -40,35 +40,40 @@ def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
 
 
 def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = None) -> str:
-    """Create the per-session JDK sandbox with the REPO MOUNTED at /work, so every tool the
-    harness calls (read AND compile) sees the same real project. Idempotent (removes a stale one)."""
+    """Per-session JDK sandbox with BOTH versions mounted: the base tree (prev) at /src/old and a
+    pr-<pr>-head worktree (post-PR) at /src/new — so tools read/compile whichever version is the
+    target. Default cwd is /src/new (what you verify). Idempotent."""
     image = IMAGE_FOR.get(jdk, IMAGE_FOR[DEFAULT_JDK])
     name = "review-" + repo.replace("/", "-") + "-" + str(pr)
-    # join the mvn-cache network so Maven resolves through the Nexus group repo (`nexus:8081`)
     net = os.environ.get("SANDBOX_NETWORK", "mvn-cache")
     netarg = f"--network {net} " if net else ""
-    # mount the repo at the HOST path (the daemon resolves -v paths host-side, even though the
-    # harness issues `docker run` from inside its own container — DooD). HOST_WORKDIR = the host
-    # path that is the harness's /work; the repo lives under data/repos/<owner>__<repo>.
+    # HOST_WORKDIR = the host path that is the harness's /work; -v paths are resolved host-side
+    # (DooD), and the harness sees the same dirs at /work/... so it can run git there.
     host_work = os.environ.get("HOST_WORKDIR", os.getcwd())
-    repo_host = f"{host_work}/data/repos/{repo.replace('/', '__')}"
+    slug = repo.replace('/', '__')
+    old_host, new_host = f"{host_work}/data/repos/{slug}", f"{host_work}/data/repos/{slug}__new-{pr}"
+    cbase, cnew = f"/work/data/repos/{slug}", f"/work/data/repos/{slug}__new-{pr}"
+    # create the post-PR worktree from the pr-head ref (fall back to base if the ref is missing)
+    _run(f"git -C {cbase} worktree remove -f {cnew} >/dev/null 2>&1; git -C {cbase} worktree prune >/dev/null 2>&1; "
+         f"git -C {cbase} worktree add -f {cnew} pr-{pr}-head >/dev/null 2>&1 || "
+         f"git -C {cbase} worktree add -f {cnew} HEAD >/dev/null 2>&1")
     _run(f"docker rm -f {name} >/dev/null 2>&1; "
-         f"docker run -d {netarg}-v {repo_host}:/work -w /work --name {name} {image} sleep infinity")
-    _SESSION["name"] = name
-    _SESSION["log"] = log_path
+         f"docker run -d {netarg}-v {old_host}:/src/old -v {new_host}:/src/new -w /src/new "
+         f"--name {name} {image} sleep infinity")
+    _SESSION.update(name=name, log=log_path, base=cbase, worktree=cnew)
     return name
 
 
-def exec_(command: str, timeout_s: int = 120) -> tuple[int, str]:
-    """Run `command` (bash) inside the session container; return (exit_code, output).
-
-    Output is combined stdout+stderr, tail-capped. The probe is wrapped in an INNER
-    `timeout -k` so it self-exits even if the ssh client is interrupted.
+def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
+    """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
+    old = base); return (exit_code, output). Output is combined stdout+stderr, tail-capped. The
+    probe is wrapped in an INNER `timeout -k` so it self-exits even if the client is interrupted.
     """
     name = _SESSION["name"]
     if not name:
         return 127, "sandbox not started (call start())"
-    inner = f"timeout -k 5 {timeout_s} bash -s"
+    wd = "/src/old" if version == "old" else "/src/new"
+    inner = f"cd {wd} && timeout -k 5 {timeout_s} bash -s"
     remote = f"docker exec -i {name} bash -lc '{inner}'"
     try:
         r = _run(remote, stdin=command, timeout=timeout_s + 30)
@@ -89,6 +94,10 @@ def stop():
     name = _SESSION["name"]
     if name:
         _run(f"docker rm -f {name} >/dev/null 2>&1", timeout=60)
+        base, wt = _SESSION.get("base"), _SESSION.get("worktree")
+        if base and wt:                       # reap the post-PR worktree we created in start()
+            _run(f"git -C {base} worktree remove -f {wt} >/dev/null 2>&1; "
+                 f"git -C {base} worktree prune >/dev/null 2>&1", timeout=60)
         _SESSION["name"] = None
 
 
