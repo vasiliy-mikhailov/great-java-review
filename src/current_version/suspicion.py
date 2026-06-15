@@ -100,22 +100,29 @@ class SandboxExecAction(Action):
     command: str = Field(description="bash to run INSIDE the Java sandbox container. Write a "
                          "file with a heredoc, compile with javac, run with java (or mvn). "
                          "Returns combined stdout+stderr and the exit code.")
+    version: str = Field(default="new", description="which checked-out tree to run in (cwd): "
+                         "'new' = the POST-PR code at /src/new (default — what you are "
+                         "reviewing), 'old' = the base code at /src/old. Both are full source "
+                         "trees; cd into subdirs, javac/grep/cat real files of that version.")
 
 
 class SandboxExecObservation(Observation):
     pass
 
 
-_SBX_DESC = ("Run bash in a Java sandbox container to VERIFY a claim by EXECUTION: write a "
-             "tiny program/test reproducing the suspected behavior, `javac` it, `java` it, "
-             "and read the result — the compiler resolves overloads/signatures/types exactly "
-             "and the runtime shows whether it actually throws/misbehaves. Use it whenever a "
-             "claim is checkable by running code rather than only reading it.")
+_SBX_DESC = ("Run bash in a Java sandbox container to VERIFY a claim by EXECUTION. The "
+             "container has BOTH full source trees mounted: /src/new (post-PR code, the "
+             "default cwd via version='new') and /src/old (base). Write a tiny program/test "
+             "reproducing the suspected behavior, `javac` it, `java` it; or just compile the "
+             "real changed file in place — the compiler resolves overloads/signatures/types "
+             "exactly and the runtime shows whether it actually throws/misbehaves. Pass "
+             "version='old' to run against the base tree (e.g. before/after comparison). Use "
+             "it whenever a claim is checkable by running code rather than only reading it.")
 
 
 class _SandboxExecExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
-        rc, out = _sandbox.exec_(action.command)
+        rc, out = _sandbox.exec_(action.command, version=getattr(action, "version", "new"))
         return SandboxExecObservation.from_text(text=f"exit={rc}\n{out}")
 
 
@@ -136,8 +143,8 @@ class SandboxExecTool(ToolDefinition[SandboxExecAction, SandboxExecObservation])
 # --- prompts (the genome for this architecture) -----------------------------------------
 
 GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate issues to fact-check
-later, NOT confirmed findings. The PR diff and the base content of the changed files are provided;
-use search/grep/file_editor to look closer wherever it helps. For every place a strong reviewer
+later, NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code itself;
+use search/grep/file_editor to look closer at the real changed files wherever it helps. For every place a strong reviewer
 would pause — a possible correctness bug, broken contract, missing null/error handling, concurrency
 hazard, resource leak, wrong API/overload use, untested path, security/escaping gap, behavior change,
 copy-paste slip (a class/constant/field/logger name carried over wrong from a sibling), off-by-one,
@@ -154,9 +161,11 @@ verification is most valuable now — high severity AND genuinely uncertain (a h
 plausible but not yet confirmed). Return ONLY {"id": N} for the chosen suspicion."""
 
 FACT_CHECKER_SYS = """You FACT-CHECK one suspicion about a Java pull request against the ACTUAL code.
-The suspicion is a hypothesis — confirm or refute it by reading the real thing with the tools:
-`pr_file_diff` for the exact change to a file (past any truncation), `file_editor`/`search`/`grep` for
-base/surrounding code. The repo is at the BASE commit, so added code lives only in the diff.
+The suspicion is a hypothesis — confirm or refute it by reading the real thing with the tools.
+Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the actual files AS THE
+PR LEAVES THEM — added and renamed files ARE on disk, read them directly. `pr_file_diff` shows the exact
+change to a file (the - lines = base, + lines = post-PR). When you need the base version of a file,
+`sandbox_exec` with version='old'.
 
 Be rigorous and skeptical — default to REFUTED unless the code positively proves the claim. Resolve the
 real binding before judging:
@@ -284,8 +293,13 @@ def _read_tools():
 CAPTURE = "add_suspicion"
 
 
-def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=()):
-    """Run a tool-using agent to completion; return its final (post-think) text."""
+def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new"):
+    """Run a tool-using agent to completion; return its final (post-think) text. The read
+    tools (search/grep/glob/file_editor) are rooted at the agent's workspace, which we point
+    at the POST-PR tree by default (version='new') so added/renamed files are on disk and
+    searchable — base-only was the dominant cause of under-confirming. `version='old'` (or no
+    live sandbox session) falls back to the base checkout."""
+    ws = _sandbox.workdir(version) or str(repo_dir)
     tools = _read_tools() + [Tool(name=n) for n in extra_tools]
     # PER-TURN output cap = 32768 (NOT a limit on the review — a turn emits a verdict + a few tool
     # calls). The base 131072 reserves half the 262144 window for output, leaving only ~11k tokens
@@ -293,7 +307,7 @@ def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=()):
     # 6222 crash). 32768 gives the prompt a ~109k-token margin and satisfies the P14 invariant.
     llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": 32768})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
-    conv = Conversation(agent=agent, workspace=str(repo_dir), visualizer=harness._NoViz, persistence_dir=None)
+    conv = Conversation(agent=agent, workspace=ws, visualizer=harness._NoViz, persistence_dir=None)
     try:
         conv.send_message(user_msg)
         conv.run()

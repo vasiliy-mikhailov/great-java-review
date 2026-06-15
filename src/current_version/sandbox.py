@@ -64,6 +64,14 @@ def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = Non
     return name
 
 
+def workdir(version: str = "new") -> str | None:
+    """Harness-container path to the checked-out tree for `version` (new = post-PR worktree,
+    old = base), or None if no session. Both live under /work (bind-mounted into the harness
+    container), so they are valid working dirs for the local read tools too — not only the
+    sandbox's /src/<version>."""
+    return _SESSION.get("base") if version == "old" else _SESSION.get("worktree")
+
+
 def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
     """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
     old = base); return (exit_code, output). Output is combined stdout+stderr, tail-capped. The

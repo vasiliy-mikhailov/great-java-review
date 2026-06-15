@@ -86,10 +86,10 @@ class SearchExecutor(ToolExecutor):
         abs = target if os.path.isabs(target) else os.path.join(self.working_dir, target)
         if action.path and not os.path.exists(abs):
             return SearchObservation.from_text(
-                text=(f"Path '{action.path}' does not exist at the base commit. "
-                      "NOTE: files ADDED or RENAMED by this PR are NOT on disk yet "
-                      "(the repo is checked out at the PR's base) — don't search for "
-                      "them; read them from the diff instead."),
+                text=(f"Path '{action.path}' does not exist in this tree. The workspace is the "
+                      "POST-PR code, so a missing path usually means the PR DELETED or RENAMED "
+                      "it — check `pr_file_diff`/`pr_files`, or read the base version with "
+                      "`sandbox_exec` version='old'."),
                 pattern=action.pattern, is_error=True)
         ctx = max(0, min(int(action.context), 20))
         cmd = ["rg", "-n", "-i", "--no-heading", "--color", "never", "-C", str(ctx)]
