@@ -45,11 +45,11 @@ def _reset_store():
     _STORE.clear()
 
 
-def _store_add(claim, location, severity, confidence, expected="", actual=""):
+def _store_add(claim, location, severity, confidence, expected="", suspected=""):
     sid = len(_STORE)
     _STORE.append({"id": sid, "claim": str(claim), "location": str(location),
                    "severity": str(severity).lower(), "confidence": confidence,
-                   "expected": str(expected), "actual": str(actual)})
+                   "expected": str(expected), "suspected": str(suspected)})
     return sid
 
 
@@ -63,12 +63,11 @@ def _reset_verdict():
 class AddSuspicionAction(Action):
     claim: str = Field(description="The suspected PROBLEM, in one line.")
     location: str = Field(description="File.java:line or area where it is.")
-    expected: str = Field(description="What CORRECT behavior would be, and roughly WHERE that is grounded "
-                          "(a contract, a sibling/precedent, a test, a convention) — not your taste. A quick "
-                          "hypothesis, not a proven claim.")
-    actual: str = Field(description="The SPECIFIC differing thing you SUSPECT the code does — a concrete, "
-                        "falsifiable guess (a specific wrong value/symbol/case), NOT a vague 'may/might/could'. "
-                        "You need NOT have verified it; the prover will. Just name the concrete suspicion.")
+    expected: str = Field(default="", description="OPTIONAL one-line hint: what correct behavior SHOULD be "
+                          "(the norm/contract/precedent). Fill from a glance if obvious; leave blank if not.")
+    suspected: str = Field(default="", description="OPTIONAL one-line hint: what you SUSPECT this code does "
+                           "wrong instead — a GUESS, not verified. Glance-fill or leave blank. The prover "
+                           "establishes the real behavior.")
     severity: str = Field(description="critical | high | medium | low (impact IF the problem is real).")
     confidence: float = Field(description="0-1, your prior that it is real, before fact-checking.")
 
@@ -77,18 +76,18 @@ class AddSuspicionObservation(Observation):
     pass
 
 
-_ADD_DESC = ("Record ONE suspicion — a candidate DEFECT to prove later, NOT a confirmed finding. A "
-             "suspicion must be a FALSIFIABLE defect: you must state `expected` (correct behavior, "
-             "grounded in a contract/sibling/test/spec) and `actual` (the SPECIFIC differing thing the "
-             "code does — a concrete value/symbol, not 'may/might'). If you cannot fill expected≠actual "
-             "concretely, it is a chore or a speculation — do NOT raise it. Call once per suspicion. "
-             "Args: claim, location, expected, actual, severity (critical/high/medium/low), confidence (0-1).")
+_ADD_DESC = ("Record ONE suspicion — a candidate DEFECT for a prover to check later, NOT a confirmed "
+             "finding. Raise it the MOMENT something looks off; do not verify it yourself. Optionally add "
+             "one-line hints: `expected` (what correct behavior should be) and `suspected` (what you guess "
+             "the code does wrong) — glance-fill or leave blank, the prover pins down the real behavior. "
+             "Skip pure chores ('verify X') and pure speculation ('might be slow'). Call once per suspicion. "
+             "Args: claim, location, [expected], [suspected], severity (critical/high/medium/low), confidence (0-1).")
 
 
 class _AddSuspicionExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
         sid = _store_add(action.claim, action.location, action.severity, action.confidence,
-                         action.expected, action.actual)
+                         action.expected, action.suspected)
         return AddSuspicionObservation.from_text(text=f"recorded suspicion #{sid}: {str(action.claim)[:60]}")
 
 
@@ -265,30 +264,32 @@ CRITICAL — work FAST and shallow. Do NOT deep-read to verify, do NOT build "st
 confirm anything — that is the prover's job and doing it here is wasted work. The moment a place looks
 off, RECORD it and move on. Breadth and speed matter; a separate prover will refute the wrong ones.
 
-A suspicion must be a FALSIFIABLE DEFECT — you must be able to name, as a quick hypothesis (NOT verified):
-- expected = what correct behavior would be, roughly grounded (a contract, a sibling/precedent, a test,
-  a convention); and
-- actual = the SPECIFIC differing thing you SUSPECT the code does — a concrete guess (a specific wrong
-  value/symbol/case), NOT a vague "may/might/could".
-If you cannot even name a concrete expected≠actual guess, it is a CHORE ("verify X is handled") or a
-SPECULATION ("this might be imprecise") — SKIP it; those are exactly what get falsely confirmed.
+Each suspicion should be a FALSIFIABLE DEFECT — something a prover could later prove or refute, not a
+vague chore. As OPTIONAL one-line hints (glance-fill, leave blank if not obvious — do NOT read deeply):
+- expected = what correct behavior SHOULD be (a contract, a sibling/precedent, a convention); and
+- suspected = what you GUESS this code does wrong instead (a specific guess, not verified).
+Skip pure CHORES ("verify X is handled") and pure SPECULATION ("this might be imprecise") — those are
+exactly what get falsely confirmed. But do NOT agonize over the hints: a one-line claim + location is
+enough; the prover will pin down the real behavior.
 
-Cast a WIDE net over falsifiable candidates — correctness bugs, broken contracts, missing null/error
-handling, concurrency hazards, resource leaks, wrong API/overload use, copy-paste slips (a class/
-constant/field/logger name carried wrong from a sibling), off-by-one, inverted conditions, etc.
+Cast a WIDE net over candidate defects — correctness bugs, broken contracts, missing null/error handling,
+concurrency hazards, resource leaks, wrong API/overload use, copy-paste slips (a class/constant/field/
+logger name carried wrong from a sibling), off-by-one, inverted conditions, etc. Over-suspect: a
+suspicion is cheap, a missed issue is gone, and the prover refutes the wrong ones.
 
-RECORD each by calling `add_suspicion` (claim, location, expected, actual, severity, confidence=0-1 prior
-it's real pre-proof) — once per suspicion, the moment you notice it; do not keep them in your head, do not
-prove them, do not write a review. When you have swept the diff for falsifiable suspicions, finish."""
+RECORD each by calling `add_suspicion` (claim, location, optionally expected+suspected, severity,
+confidence=0-1 prior it's real pre-proof) — once per suspicion, the MOMENT you notice it; do not keep them
+in your head, do not prove them, do not write a review. When you have swept the diff, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
 plausible but not yet confirmed). Return ONLY {"id": N} for the chosen suspicion."""
 
-FACT_CHECKER_SYS = """You are a PROVER. You are handed ONE suspicion — a defect HYPOTHESIS with an
-`expected` (correct behavior, grounded) and an `actual` (the specific differing thing). Your job is NOT
-to reason about whether it's "probably" a bug and opine — it is to PROVE, by reproduction, whether
-`actual` really differs from `expected`. The verdict is the OUTCOME of that proof, never your opinion.
+FACT_CHECKER_SYS = """You are a PROVER. You are handed ONE suspicion — a defect HYPOTHESIS: what behavior
+is `expected` (the norm/contract) and what the code is `suspected` to do wrong instead (an unverified
+guess; it may be blank or imprecise — that's fine, you pin it down). Your job is NOT to opine on whether
+it's "probably" a bug — it is to PROVE, by reproduction, what the code ACTUALLY does and whether that
+actual behavior differs from `expected`. The verdict is the OUTCOME of that proof, never your opinion.
 
 Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the files AS THE PR LEAVES
 THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (- = base, + = post-PR).
@@ -344,7 +345,7 @@ class Suspicion:
     severity: str
     confidence: float
     expected: str = ""
-    actual: str = ""
+    suspected: str = ""
     status: str = "pending"           # pending / confirmed / refuted / partial
     evidence: str = ""
     proof_kind: str = ""              # static / dynamic / none — how a confirm was proven
@@ -455,7 +456,7 @@ def _store_to_suspicions(by_id):
             try:
                 by_id[d["id"]] = Suspicion(id=d["id"], claim=d["claim"], location=d["location"],
                                            severity=d["severity"], confidence=float(d["confidence"]),
-                                           expected=d.get("expected", ""), actual=d.get("actual", ""))
+                                           expected=d.get("expected", ""), suspected=d.get("suspected", ""))
             except Exception:  # noqa: BLE001
                 pass
 
@@ -491,9 +492,10 @@ def fact_check(repo_dir, s):
     _reset_verdict()
     _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous prover wrote/built
     msg = (f"SUSPICION TO PROVE:\nclaim: {s.claim}\nlocation: {s.location}\n"
-           f"expected: {s.expected or '(not stated — derive it, grounded)'}\n"
-           f"actual:   {s.actual or '(not stated — pin the concrete differing thing)'}\n\n"
-           "PROVE whether actual != expected. Build the cheapest sufficient proof: STATIC (read/grep shows "
+           f"expected:  {s.expected or '(not stated — derive the norm/contract)'}\n"
+           f"suspected: {s.suspected or '(not stated — figure out what the code actually does here)'}\n\n"
+           "PROVE what the code ACTUALLY does and whether it differs from expected. Build the cheapest "
+           "sufficient proof: STATIC (read/grep shows "
            "the wrong value/symbol literally present or absent) for a mechanical slip; DYNAMIC (write a test "
            "asserting `expected`, compile and RUN it via `sandbox_exec` — a FAILING run = confirmed, a PASSING "
            "run = refuted) for a behavioral/numeric claim. If the code matches expected, or the worry is "
@@ -512,8 +514,8 @@ def fact_check(repo_dir, s):
 
 
 def synthesize(ctx, confirmed, partials):
-    body = "CONFIRMED FINDINGS (each PROVEN: expected != actual):\n" + ("\n".join(
-        f"- [{s.location}] {s.claim}\n    expected: {s.expected}\n    actual: {s.actual}\n"
+    body = "CONFIRMED FINDINGS (each PROVEN: actual behavior != expected):\n" + ("\n".join(
+        f"- [{s.location}] {s.claim}\n    expected: {s.expected}\n"
         f"    proof ({s.proof_kind}): {s.evidence}" for s in confirmed) or "(none)")
     if partials:
         body += "\n\nOPEN QUESTIONS (partial — include as hedged questions):\n" + "\n".join(
