@@ -63,11 +63,12 @@ def _reset_verdict():
 class AddSuspicionAction(Action):
     claim: str = Field(description="The suspected PROBLEM, in one line.")
     location: str = Field(description="File.java:line or area where it is.")
-    expected: str = Field(description="What CORRECT behavior is, and WHERE that is grounded (the "
-                          "API/Comparator contract, a sibling/precedent in the code, a test, a spec) — "
-                          "NOT your personal preference.")
-    actual: str = Field(description="The SPECIFIC differing thing the code does — a concrete wrong "
-                        "value/symbol present, or a concrete failing input. NOT 'may/might/could'.")
+    expected: str = Field(description="What CORRECT behavior would be, and roughly WHERE that is grounded "
+                          "(a contract, a sibling/precedent, a test, a convention) — not your taste. A quick "
+                          "hypothesis, not a proven claim.")
+    actual: str = Field(description="The SPECIFIC differing thing you SUSPECT the code does — a concrete, "
+                        "falsifiable guess (a specific wrong value/symbol/case), NOT a vague 'may/might/could'. "
+                        "You need NOT have verified it; the prover will. Just name the concrete suspicion.")
     severity: str = Field(description="critical | high | medium | low (impact IF the problem is real).")
     confidence: float = Field(description="0-1, your prior that it is real, before fact-checking.")
 
@@ -256,28 +257,29 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate DEFECTS to PROVE later,
-NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code itself; use
-search/grep/file_editor to look closer at the real changed files wherever it helps.
+GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate DEFECTS for a PROVER to
+check later, NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code;
+glance with search/grep/file_editor where a quick look helps. You HYPOTHESIZE; you do NOT prove.
 
-A valid suspicion is a FALSIFIABLE DEFECT: you must be able to state
-- expected = what CORRECT behavior is, GROUNDED in something outside your own taste — the API/Comparator
-  contract, a sibling/precedent in the code, a test, the project's convention, a spec; and
-- actual = the SPECIFIC differing thing the code does — a concrete wrong value/symbol that is literally
-  present, or a concrete failing input — NOT "may/might/could".
-If you cannot fill expected≠actual concretely, it is a CHORE ("verify X is handled") or a SPECULATION
-("this might be imprecise") — DO NOT raise it. Those are exactly what get falsely confirmed; skip them.
+CRITICAL — work FAST and shallow. Do NOT deep-read to verify, do NOT build "static proofs", do NOT
+confirm anything — that is the prover's job and doing it here is wasted work. The moment a place looks
+off, RECORD it and move on. Breadth and speed matter; a separate prover will refute the wrong ones.
 
-For every place a strong reviewer would pause and you CAN name a concrete expected≠actual — a correctness
-bug, broken contract, missing null/error handling, concurrency hazard, resource leak, wrong API/overload,
-copy-paste slip (a class/constant/field/logger name carried wrong from a sibling), off-by-one, inverted
-condition, etc. — emit a suspicion. Cast a wide net over REAL candidate defects (over-suspect among
-falsifiable ones — a later prover refutes the wrong ones), but a vague chore/speculation is not a candidate.
+A suspicion must be a FALSIFIABLE DEFECT — you must be able to name, as a quick hypothesis (NOT verified):
+- expected = what correct behavior would be, roughly grounded (a contract, a sibling/precedent, a test,
+  a convention); and
+- actual = the SPECIFIC differing thing you SUSPECT the code does — a concrete guess (a specific wrong
+  value/symbol/case), NOT a vague "may/might/could".
+If you cannot even name a concrete expected≠actual guess, it is a CHORE ("verify X is handled") or a
+SPECULATION ("this might be imprecise") — SKIP it; those are exactly what get falsely confirmed.
 
-RECORD each by calling `add_suspicion` (claim, location, expected, actual, severity, confidence) — once
-per suspicion, the moment you notice it; confidence = 0-1 prior it's real, pre-proof. Do not emit a JSON
-list, do not keep them in your head — call the tool for each. Do not prove them here, do not write a
-review. When you have recorded every falsifiable suspicion you can find, finish."""
+Cast a WIDE net over falsifiable candidates — correctness bugs, broken contracts, missing null/error
+handling, concurrency hazards, resource leaks, wrong API/overload use, copy-paste slips (a class/
+constant/field/logger name carried wrong from a sibling), off-by-one, inverted conditions, etc.
+
+RECORD each by calling `add_suspicion` (claim, location, expected, actual, severity, confidence=0-1 prior
+it's real pre-proof) — once per suspicion, the moment you notice it; do not keep them in your head, do not
+prove them, do not write a review. When you have swept the diff for falsifiable suspicions, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
