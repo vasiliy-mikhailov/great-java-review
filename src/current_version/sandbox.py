@@ -52,7 +52,10 @@ def detect_jdk(repo_dir: str) -> int:
     if not levels:
         return DEFAULT_JDK
     lvl = max(levels)
-    return 11 if lvl <= 11 else 17 if lvl <= 17 else 21
+    # build on the lowest LTS that safely compiles the level. <=8 builds on 11 (the quarkus lesson:
+    # Java-8-target code overwhelmingly builds on 11+ with sun.misc intact; the 8 image stays available
+    # for a manual jdk= override on a true-Java-8 project that uses APIs removed in 11, e.g. JAXB).
+    return 11 if lvl <= 11 else 17 if lvl <= 17 else 21 if lvl <= 21 else 25
 
 
 def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
