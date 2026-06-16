@@ -336,8 +336,13 @@ behaves.
 How you get there is up to you — add logging to the real files, write throwaway drivers, reset the
 workspace whenever you like (it's cleaned between bugs). Compile the real module with `javac -cp <deps>`
 rather than fighting Maven. When you've done your best, record what you found with record_verdict: whether
-it's real, and the run plus its output on both versions that shows it. If you notice a different bug while
-you're in there, jot it down with add_suspicion."""
+it's real, and the run plus its output on both versions that shows it.
+
+You're down in the real code now — closer to it than the suspector who handed this to you. Often the
+actual problem sits a little to the side of what you were given, or there's a separate bug nearby that
+catches your eye. When that happens, raise it with add_suspicion (observation + suspected_bug) — it gets
+its own look, with its own reproduction and fix. A sharper suspicion you raise is worth as much as the
+one you were asked to settle, so don't let it pass."""
 
 SOLVER_SYS = """You're handed a bug that's already been shown to be real — in the real code's own logging
 you can see a value coming out wrong on /src/new and right on /src/old, with the driver that triggers it.
