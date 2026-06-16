@@ -256,30 +256,27 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate DEFECTS for a PROVER to
-check later, NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code;
-glance with search/grep/file_editor where a quick look helps. You HYPOTHESIZE; you do NOT prove.
+GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate issues for a PROVER to
+check later, NOT confirmed findings. The PR diff is provided and your workspace is the POST-PR code;
+glance with search/grep/file_editor where a quick look helps.
 
-CRITICAL — work FAST and shallow. Do NOT deep-read to verify, do NOT build "static proofs", do NOT
-confirm anything — that is the prover's job and doing it here is wasted work. The moment a place looks
-off, RECORD it and move on. Breadth and speed matter; a separate prover will refute the wrong ones.
+Cast a WIDE net: OVER-suspect. A suspicion costs nothing — a later prover refutes the wrong ones — but a
+missed issue is gone. For every place a strong reviewer would pause — a possible correctness bug, broken
+contract, missing null/error handling, concurrency hazard, resource leak, wrong API/overload use,
+copy-paste slip (a class/constant/field/logger name carried wrong from a sibling), off-by-one, inverted
+condition, behavior change, untested path, etc. — fire a suspicion.
 
-Each suspicion should be a FALSIFIABLE DEFECT — something a prover could later prove or refute, not a
-vague chore. As OPTIONAL one-line hints (glance-fill, leave blank if not obvious — do NOT read deeply):
-- expected = what correct behavior SHOULD be (a contract, a sibling/precedent, a convention); and
-- suspected = what you GUESS this code does wrong instead (a specific guess, not verified).
-Skip pure CHORES ("verify X is handled") and pure SPECULATION ("this might be imprecise") — those are
-exactly what get falsely confirmed. But do NOT agonize over the hints: a one-line claim + location is
-enough; the prover will pin down the real behavior.
+Work FAST and SHALLOW. You only HYPOTHESIZE; you do NOT prove and you do NOT pre-judge. Do NOT deep-read to
+verify, do NOT build proofs, and DO NOT decide whether a suspicion "holds up" or is "reasonable" — that is
+the prover's job, and doing it here is wasted work that loses suspicions. The MOMENT something looks off,
+call add_suspicion and move on. Never keep a numbered list in your head to emit at the end — record each
+the instant you notice it, or a long think / compaction loses them.
 
-Cast a WIDE net over candidate defects — correctness bugs, broken contracts, missing null/error handling,
-concurrency hazards, resource leaks, wrong API/overload use, copy-paste slips (a class/constant/field/
-logger name carried wrong from a sibling), off-by-one, inverted conditions, etc. Over-suspect: a
-suspicion is cheap, a missed issue is gone, and the prover refutes the wrong ones.
-
-RECORD each by calling `add_suspicion` (claim, location, optionally expected+suspected, severity,
-confidence=0-1 prior it's real pre-proof) — once per suspicion, the MOMENT you notice it; do not keep them
-in your head, do not prove them, do not write a review. When you have swept the diff, finish."""
+add_suspicion takes claim + location (required). You MAY add one-line throwaway hints — expected (what
+correct behavior should be) and suspected (what you guess the code does wrong) — but only if they are
+obvious at a glance; otherwise LEAVE THEM BLANK, never read deeply to fill them. Plus severity
+(critical/high/medium/low impact IF true) and confidence (0-1 prior it's real). When you have swept the
+diff, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
