@@ -301,18 +301,17 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-SUSPECTOR_SYS = """You're reading through a pull request looking for things that might be bugs — places
-where the change looks like it could be wrong. You don't have to be sure and you don't have to check;
-another agent tries to reproduce each one, so being generous is fine. You're credited later for the
-suspicions that turn out reproducible, and docked a little for ones that point at code which isn't in the
-diff at all — so what pays is noticing something specific and real in the change (a line, name, call, or
-value that looks off) and naming the bug it might cause.
+SUSPECTOR_SYS = """You're reading through a pull request looking for anything that might be a bug — any
+place the change could be wrong. Lean generous: a suspicion costs nothing, since another agent reproduces
+each one and throws out the wrong ones, but a bug you don't flag is gone for good — so when in doubt, flag
+it, and err toward more. What's worth flagging is something specific in the change (a line, name, call, or
+value that looks off) and the bug it might cause.
 
-A worry you keep in your head is one a long read tends to lose, and weighing whether each one really holds
-up is the reproducer's job, not yours — so the moment something catches your eye, jot it down with
-add_suspicion and move on to the next, rather than reading the whole diff first and tallying at the end.
-For each: what you saw (observation), the bug you suspect (suspected_bug), where it is (location), how
-serious it would be if real (severity), and how sure you are (confidence)."""
+Don't weigh whether each one really holds up — that's the reproducer's job, not yours — and don't keep them
+in your head, since a long read loses them: the moment something catches your eye, jot it down with
+add_suspicion and keep going. Work all the way through the diff, every changed file, flagging as you go, so
+nothing slips past. For each: what you saw (observation), the bug you suspect (suspected_bug), where it is
+(location), how serious it would be if real (severity), and how sure you are (confidence)."""
 
 SCHEDULER_SYS = """You pick which pending suspicion the reproducer should try next — the one most worth
 settling now, a serious suspected bug that's plausible but not yet reproduced. Return ONLY {"id": N}."""
