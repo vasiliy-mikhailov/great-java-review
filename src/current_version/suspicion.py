@@ -17,7 +17,7 @@ and dropped by construction.
 """
 from __future__ import annotations
 import json, os, re, sys, warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 warnings.filterwarnings("ignore")
 os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
@@ -45,10 +45,11 @@ def _reset_store():
     _STORE.clear()
 
 
-def _store_add(claim, location, severity, confidence):
+def _store_add(claim, location, severity, confidence, expected="", actual=""):
     sid = len(_STORE)
     _STORE.append({"id": sid, "claim": str(claim), "location": str(location),
-                   "severity": str(severity).lower(), "confidence": confidence})
+                   "severity": str(severity).lower(), "confidence": confidence,
+                   "expected": str(expected), "actual": str(actual)})
     return sid
 
 
@@ -60,8 +61,13 @@ def _reset_verdict():
 
 
 class AddSuspicionAction(Action):
-    claim: str = Field(description="The suspected PROBLEM, phrased as something to verify.")
+    claim: str = Field(description="The suspected PROBLEM, in one line.")
     location: str = Field(description="File.java:line or area where it is.")
+    expected: str = Field(description="What CORRECT behavior is, and WHERE that is grounded (the "
+                          "API/Comparator contract, a sibling/precedent in the code, a test, a spec) — "
+                          "NOT your personal preference.")
+    actual: str = Field(description="The SPECIFIC differing thing the code does — a concrete wrong "
+                        "value/symbol present, or a concrete failing input. NOT 'may/might/could'.")
     severity: str = Field(description="critical | high | medium | low (impact IF the problem is real).")
     confidence: float = Field(description="0-1, your prior that it is real, before fact-checking.")
 
@@ -70,14 +76,18 @@ class AddSuspicionObservation(Observation):
     pass
 
 
-_ADD_DESC = ("Record ONE suspicion — a candidate issue to fact-check later, NOT a confirmed "
-             "finding. Call this the moment you notice something worth verifying; call it once "
-             "per suspicion. Args: claim, location, severity (critical/high/medium/low), confidence (0-1).")
+_ADD_DESC = ("Record ONE suspicion — a candidate DEFECT to prove later, NOT a confirmed finding. A "
+             "suspicion must be a FALSIFIABLE defect: you must state `expected` (correct behavior, "
+             "grounded in a contract/sibling/test/spec) and `actual` (the SPECIFIC differing thing the "
+             "code does — a concrete value/symbol, not 'may/might'). If you cannot fill expected≠actual "
+             "concretely, it is a chore or a speculation — do NOT raise it. Call once per suspicion. "
+             "Args: claim, location, expected, actual, severity (critical/high/medium/low), confidence (0-1).")
 
 
 class _AddSuspicionExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
-        sid = _store_add(action.claim, action.location, action.severity, action.confidence)
+        sid = _store_add(action.claim, action.location, action.severity, action.confidence,
+                         action.expected, action.actual)
         return AddSuspicionObservation.from_text(text=f"recorded suspicion #{sid}: {str(action.claim)[:60]}")
 
 
@@ -101,24 +111,44 @@ class AddSuspicionTool(ToolDefinition[AddSuspicionAction, AddSuspicionObservatio
 # verdict SILENTLY defaulted to "partial", losing real confirms (richer post-PR context made the model
 # more discursive, exposing this). A tool call is robust to verbosity — same fix add_suspicion already is.
 class RecordVerdictAction(Action):
-    verdict: str = Field(description="confirmed | refuted | partial — your decision on THIS suspicion.")
-    evidence: str = Field(description="file:line + exactly what the code shows that justifies the verdict.")
+    verdict: str = Field(description="confirmed | refuted. confirmed ONLY if your PROOF shows actual != "
+                         "expected (a real defect). If the proof shows they match, or you could not build "
+                         "a proof, the verdict is refuted. (partial only for a genuinely-substantive issue "
+                         "that no static read AND no runnable test could settle.)")
+    proof_kind: str = Field(description="static | dynamic | none. static = a read/grep shows the wrong "
+                            "value/symbol literally present (or absent). dynamic = you wrote & RAN a test "
+                            "in sandbox_exec and report its result. none = you could not prove it.")
+    proof: str = Field(description="The PROOF itself: for static, the file:line + the exact text shown; "
+                       "for dynamic, the command you ran and its actual output (pass/fail). This must "
+                       "demonstrate actual vs expected, not assert it.")
+    evidence: str = Field(description="One-line summary: file:line + the concrete defect (or why refuted).")
 
 
 class RecordVerdictObservation(Observation):
     pass
 
 
-_VERDICT_DESC = ("Record your FINAL decision on the one suspicion you are fact-checking. Call this "
-                 "exactly ONCE, LAST — instead of writing the verdict in prose. Args: verdict "
-                 "(confirmed/refuted/partial), evidence (file:line + what the code shows).")
+_VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. You are a PROVER, not a judge: "
+                 "verdict=confirmed REQUIRES a proof that `actual` != `expected` — either `static` (a "
+                 "read/grep showing the wrong value literally present/absent) or `dynamic` (a test you "
+                 "wrote and RAN in sandbox_exec, reporting its pass/fail output). If the code matches "
+                 "expected, or the concern is speculative/idiomatic/in test-tooling and you cannot build a "
+                 "proof, record refuted (proof_kind=none). Do not confirm a plausibility. "
+                 "Args: verdict, proof_kind (static/dynamic/none), proof (the actual evidence/test output), evidence.")
 
 
 class _RecordVerdictExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
         _VERDICT["verdict"] = str(action.verdict).lower().strip()
+        _VERDICT["proof_kind"] = str(action.proof_kind).lower().strip()
+        _VERDICT["proof"] = str(action.proof)
         _VERDICT["evidence"] = str(action.evidence)
-        return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']}")
+        # guard: a 'confirmed' with no proof is exactly the failure mode we are killing — downgrade it.
+        if _VERDICT["verdict"] == "confirmed" and _VERDICT["proof_kind"] not in ("static", "dynamic"):
+            _VERDICT["verdict"] = "refuted"
+            return RecordVerdictObservation.from_text(
+                text="confirmed REQUIRES proof_kind=static|dynamic with real proof; none given -> recorded refuted")
+        return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['proof_kind']})")
 
 
 class RecordVerdictTool(ToolDefinition[RecordVerdictAction, RecordVerdictObservation]):
@@ -189,67 +219,67 @@ class SandboxExecTool(ToolDefinition[SandboxExecAction, SandboxExecObservation])
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate issues to fact-check
-later, NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code itself;
-use search/grep/file_editor to look closer at the real changed files wherever it helps. For every place a strong reviewer
-would pause — a possible correctness bug, broken contract, missing null/error handling, concurrency
-hazard, resource leak, wrong API/overload use, untested path, security/escaping gap, behavior change,
-copy-paste slip (a class/constant/field/logger name carried over wrong from a sibling), off-by-one,
-inverted or incorrect condition, etc. — emit a suspicion. Cast a WIDE net: over-suspect, because a later fact-checker refutes the wrong
-ones; a suspicion costs nothing, a missed issue is gone. Each suspicion is a HYPOTHESIS to verify, not
-an assertion. RECORD each suspicion by calling the `add_suspicion` tool — once per suspicion, the
-moment you notice it (claim = what might be wrong phrased as something to verify; location = File.java:line
-or area; severity = critical/high/medium/low impact IF true; confidence = 0-1 prior it's real, pre-check).
-Do not emit a JSON list and do not keep them in your head — call the tool for each, so none is lost. Do
-not verify here, do not write a review. When you have recorded every suspicion you can find, finish."""
+GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate DEFECTS to PROVE later,
+NOT confirmed findings. The PR diff is provided, and your workspace is the POST-PR code itself; use
+search/grep/file_editor to look closer at the real changed files wherever it helps.
+
+A valid suspicion is a FALSIFIABLE DEFECT: you must be able to state
+- expected = what CORRECT behavior is, GROUNDED in something outside your own taste — the API/Comparator
+  contract, a sibling/precedent in the code, a test, the project's convention, a spec; and
+- actual = the SPECIFIC differing thing the code does — a concrete wrong value/symbol that is literally
+  present, or a concrete failing input — NOT "may/might/could".
+If you cannot fill expected≠actual concretely, it is a CHORE ("verify X is handled") or a SPECULATION
+("this might be imprecise") — DO NOT raise it. Those are exactly what get falsely confirmed; skip them.
+
+For every place a strong reviewer would pause and you CAN name a concrete expected≠actual — a correctness
+bug, broken contract, missing null/error handling, concurrency hazard, resource leak, wrong API/overload,
+copy-paste slip (a class/constant/field/logger name carried wrong from a sibling), off-by-one, inverted
+condition, etc. — emit a suspicion. Cast a wide net over REAL candidate defects (over-suspect among
+falsifiable ones — a later prover refutes the wrong ones), but a vague chore/speculation is not a candidate.
+
+RECORD each by calling `add_suspicion` (claim, location, expected, actual, severity, confidence) — once
+per suspicion, the moment you notice it; confidence = 0-1 prior it's real, pre-proof. Do not emit a JSON
+list, do not keep them in your head — call the tool for each. Do not prove them here, do not write a
+review. When you have recorded every falsifiable suspicion you can find, finish."""
 
 SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
 verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
 plausible but not yet confirmed). Return ONLY {"id": N} for the chosen suspicion."""
 
-FACT_CHECKER_SYS = """You FACT-CHECK one suspicion about a Java pull request against the ACTUAL code.
-The suspicion is a hypothesis — confirm or refute it by reading the real thing with the tools.
-Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the actual files AS THE
-PR LEAVES THEM — added and renamed files ARE on disk, read them directly. `pr_file_diff` shows the exact
-change to a file (the - lines = base, + lines = post-PR). When you need the base version of a file,
-`sandbox_exec` with version='old'.
+FACT_CHECKER_SYS = """You are a PROVER. You are handed ONE suspicion — a defect HYPOTHESIS with an
+`expected` (correct behavior, grounded) and an `actual` (the specific differing thing). Your job is NOT
+to reason about whether it's "probably" a bug and opine — it is to PROVE, by reproduction, whether
+`actual` really differs from `expected`. The verdict is the OUTCOME of that proof, never your opinion.
 
-Be rigorous and skeptical — default to REFUTED unless the code positively proves the claim. Resolve the
-real binding before judging:
-- a 'removed/deleted' claim: find the actual `-` line in the diff. The line still being in the base file
-  on disk does NOT settle it — the diff is the source of truth for what the PR removes.
-- a wrong-overload / signature-mismatch claim: find EVERY candidate overload with its exact parameters,
-  then match the call by number AND types of arguments (follow the inheritance chain). An apparent
-  mismatch is usually you reading the wrong overload.
-- a 'missing/conflict/untested' claim: verify against the actual code and the project's conventions.
+Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the files AS THE PR LEAVES
+THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (- = base, + = post-PR).
+`sandbox_exec` runs code in a Java sandbox with BOTH trees mounted (version='new' post-PR default, 'old'
+base) — write a snippet/test, compile, run.
 
-PROVE it by EXECUTION when you can: you have `sandbox_exec`, a Java sandbox where you write a
-tiny program/test reproducing the suspected behavior, compile it (`javac`), and run it. The
-compiler resolves overloads/signatures/types EXACTLY (settling any wrong-overload or
-"won't compile" claim) and the runtime shows whether the code actually throws or misbehaves
-(a comparator-contract violation, an NPE, an off-by-one, a locale surprise). Prefer a run to
-an argument. If a claim depends on an EXTERNAL library/service or a behavior you cannot
-reproduce or read in the code, you cannot confirm it — REFUTE it (an unverifiable claim is
-not a finding; confirming one is how fabrications survive).
+Build the CHEAPEST sufficient PROOF:
+- STATIC proof — when the defect is a literal fact: a read/grep shows the wrong value/symbol literally
+  PRESENT (a wrong class/constant/logger name, an off-by-one constant) or a required thing literally
+  ABSENT (an unregistered attribute, a missing guard). The reading IS the proof: actual != expected, on
+  the page. Use this for mechanical slips — no test needed.
+- DYNAMIC proof — when the defect is BEHAVIORAL or NUMERIC (a comparator-contract violation, a precision
+  loss, an NPE, a wrong result, a locale surprise): WRITE a tiny test that asserts `expected`, compile and
+  RUN it in `sandbox_exec`, and read the result. A FAILING test (actual != expected, shown by the run) =
+  confirmed. A PASSING test = refuted. Construct the concrete failing input; if you cannot make a test
+  fail, the defect is not real.
 
-While reading, if you NOTICE a DIFFERENT candidate issue, record it with the `add_suspicion` tool
-(do not put it in your output). For THIS suspicion, RECORD your decision by CALLING the `record_verdict`
-tool — once, last — with verdict (confirmed|refuted|partial) and evidence (file:line + exactly what the
-code shows). Do NOT state the verdict only in prose; the prose is not read — only the tool call is.
-A suspicion is a hypothesis of a PROBLEM. Judge the PROBLEM, not the description:
-- CONFIRM only when the suspected problem is REAL — the code is actually wrong, unsafe, or will
-  misbehave, and the author should act (e.g. a wrong class/constant/logger name literally present, a
-  value dereferenced without a guard, an off-by-one, a public-API break). A visible mechanical slip
-  counts — you need not prove intent.
-- REFUTE when there is NO actual problem — either the code does not do what the suspicion says, OR it
-  does but the behavior is correct / intended / harmless. Confirming that the code merely MATCHES a
-  neutral description ("X is added at index 4", "the flag is set to false") is NOT a finding — if
-  nothing is wrong, REFUTE.
-- 'partial' is a LAST RESORT, not a hedge. If you cannot POSITIVELY prove the problem is real —
-  even after reading the code and running a sandbox probe — REFUTE it (default-refute), do not
-  downgrade to partial. Reserve partial only for a SUBSTANTIVE issue that genuinely cannot be
-  determined from the available code/tools. Most uncertainty should resolve to refuted.
-Bias hard toward a decisive confirmed/refuted; a wall of 'partial' verdicts is a failure to decide."""
+Then REFUTE — decisively — whenever you cannot produce such a proof:
+- the code matches `expected` (correct / intentional / by-design / guarded) — your own analysis saying
+  "this is correct" or "this is intended" IS a refutation, record it as refuted;
+- the concern is speculative ("may/might/could") and you cannot build a test that actually fails;
+- the claim depends on an EXTERNAL library/service or behavior you cannot read or run;
+- the observation is factually true but harmless / idiomatic / in test or build tooling.
+An un-disproven worry is NOT a finding. Confirming a plausibility is exactly how false findings survive.
+
+While reading, if you NOTICE a DIFFERENT falsifiable defect (with its own expected≠actual), record it
+with `add_suspicion`. For THIS suspicion, RECORD your decision by CALLING `record_verdict` — once, last —
+with verdict, proof_kind (static|dynamic|none), proof (the actual file:line text OR the command + its
+run output), and a one-line evidence summary. The prose is not read; only the tool call is. confirmed
+REQUIRES proof_kind static or dynamic carrying real proof — a confirmed with proof_kind=none is rejected."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only. Each confirmed
 finding becomes a point with its file:line and the evidence. Add NO new claims of your own.
@@ -273,8 +303,12 @@ class Suspicion:
     location: str
     severity: str
     confidence: float
+    expected: str = ""
+    actual: str = ""
     status: str = "pending"           # pending / confirmed / refuted / partial
     evidence: str = ""
+    proof_kind: str = ""              # static / dynamic / none — how a confirm was proven
+    proof: str = ""                   # the proof itself (file:line text, or command + run output)
 
     def value(self) -> float:
         try:
@@ -380,7 +414,8 @@ def _store_to_suspicions(by_id):
         if d["id"] not in by_id:
             try:
                 by_id[d["id"]] = Suspicion(id=d["id"], claim=d["claim"], location=d["location"],
-                                           severity=d["severity"], confidence=float(d["confidence"]))
+                                           severity=d["severity"], confidence=float(d["confidence"]),
+                                           expected=d.get("expected", ""), actual=d.get("actual", ""))
             except Exception:  # noqa: BLE001
                 pass
 
@@ -414,11 +449,16 @@ def fact_check(repo_dir, s):
     # sandbox sees the real repo). Passing the whole ~150k-char PR context here overflowed
     # max-model-len across the multi-turn agent — and was lost-in-the-middle and costly anyway.
     _reset_verdict()
-    msg = (f"SUSPICION TO FACT-CHECK:\nclaim: {s.claim}\nlocation: {s.location}\n\n"
-           "Read the actual code at that location: `file_editor`/`search`/`grep` open the POST-PR tree, "
-           "`pr_file_diff` shows the exact change, `sandbox_exec` (version='old' for the base) compiles/runs it. "
-           "Verify against the real code. Record any NEW issue you notice with add_suspicion. When decided, "
-           "call `record_verdict` (confirmed/refuted/partial + evidence) — once, last.")
+    msg = (f"SUSPICION TO PROVE:\nclaim: {s.claim}\nlocation: {s.location}\n"
+           f"expected: {s.expected or '(not stated — derive it, grounded)'}\n"
+           f"actual:   {s.actual or '(not stated — pin the concrete differing thing)'}\n\n"
+           "PROVE whether actual != expected. Build the cheapest sufficient proof: STATIC (read/grep shows "
+           "the wrong value/symbol literally present or absent) for a mechanical slip; DYNAMIC (write a test "
+           "asserting `expected`, compile and RUN it via `sandbox_exec` — a FAILING run = confirmed, a PASSING "
+           "run = refuted) for a behavioral/numeric claim. If the code matches expected, or the worry is "
+           "speculative/external/idiomatic and you cannot build a failing proof — REFUTE. Record any NEW "
+           "falsifiable defect with add_suspicion. When proven, call `record_verdict` (verdict, proof_kind "
+           "static|dynamic|none, proof = the file:line text or command+output, evidence) — once, last.")
     out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir,
                      extra_tools=[CAPTURE, "sandbox_exec", "record_verdict"])
     if _VERDICT.get("verdict") in ("confirmed", "refuted", "partial"):   # tool-captured: robust
@@ -426,13 +466,14 @@ def fact_check(repo_dir, s):
     j = _extract_json(out, "{")                                          # fallback: a JSON blob in text
     if isinstance(j, dict) and str(j.get("verdict", "")).lower() in ("confirmed", "refuted", "partial"):
         return {"verdict": str(j["verdict"]).lower(), "evidence": str(j.get("evidence", ""))}
-    print(f"  [verdict] no record_verdict + no JSON for S[{s.id}] — defaulting partial", flush=True)
-    return {"verdict": "partial", "evidence": (out or "")[-300:]}
+    print(f"  [verdict] no record_verdict + no JSON for S[{s.id}] — defaulting refuted (no proof)", flush=True)
+    return {"verdict": "refuted", "evidence": (out or "")[-300:], "proof_kind": "none"}
 
 
 def synthesize(ctx, confirmed, partials):
-    body = "CONFIRMED FINDINGS:\n" + ("\n".join(
-        f"- {s.claim} [{s.location}] :: {s.evidence}" for s in confirmed) or "(none)")
+    body = "CONFIRMED FINDINGS (each PROVEN: expected != actual):\n" + ("\n".join(
+        f"- [{s.location}] {s.claim}\n    expected: {s.expected}\n    actual: {s.actual}\n"
+        f"    proof ({s.proof_kind}): {s.evidence}" for s in confirmed) or "(none)")
     if partials:
         body += "\n\nOPEN QUESTIONS (partial — include as hedged questions):\n" + "\n".join(
             f"- {s.claim} [{s.location}]" for s in partials)
@@ -464,10 +505,12 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=
         s = schedule(pending)
         before = len(_STORE)
         res = fact_check(repo_dir, s)
-        s.status = str(res.get("verdict", "partial")).lower()
+        s.status = str(res.get("verdict", "refuted")).lower()
         s.evidence = str(res.get("evidence", ""))[:600]
+        s.proof_kind = str(res.get("proof_kind", ""))
+        s.proof = str(res.get("proof", ""))[:600]
         checks += 1
-        log(f"  check {checks}: [{s.id}] {s.status} (+{len(_STORE) - before} new) — {s.claim[:70]}")
+        log(f"  check {checks}: [{s.id}] {s.status}/{s.proof_kind or '-'} (+{len(_STORE) - before} new) — {s.claim[:62]}")
     confirmed = [s for s in by_id.values() if s.status == "confirmed"]
     partials = [s for s in by_id.values() if s.status == "partial"]
     refuted = sum(1 for s in by_id.values() if s.status == "refuted")
@@ -529,7 +572,8 @@ def run(repo, pr, conf_floor=0.4):
            "confirmed": sum(1 for s in sus if s.status == "confirmed"),
            "partial": sum(1 for s in sus if s.status == "partial"),
            "refuted": sum(1 for s in sus if s.status == "refuted"),
-           "n_suspicions": len(sus)}
+           "n_suspicions": len(sus),
+           "suspicions": [asdict(s) for s in sus]}
     json.dump(out, open(f"results/susp_runs/{tag}.json", "w"), indent=1)
     print("\n=== REVIEW ===\n" + review)
     return review, sus
