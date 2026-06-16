@@ -52,11 +52,18 @@ def _store_add(observation, suspected_bug, location, severity, confidence):
     return sid
 
 
-_VERDICT = {}   # the fact-checker writes its verdict here via the record_verdict tool (not parsed prose)
+_VERDICT = {}   # the reproducer writes its verdict here via the record_verdict tool (not parsed prose)
 
 
 def _reset_verdict():
     _VERDICT.clear()
+
+
+_FIX = {}   # the solver writes its fix here via the record_fix tool
+
+
+def _reset_fix():
+    _FIX.clear()
 
 
 class AddSuspicionAction(Action):
@@ -161,6 +168,48 @@ class RecordVerdictTool(ToolDefinition[RecordVerdictAction, RecordVerdictObserva
                     executor=_RecordVerdictExecutor())]
 
 
+# --- record_fix: the SOLVER records its fix (the patch + the verified rerun) -----------------
+class RecordFixAction(Action):
+    fixed: bool = Field(description="true if your change makes the reproduced value come out right on "
+                        "/src/new with nothing else broken; false if you could not fix it.")
+    fix_diff: str = Field(default="", description="the change you made to the real lines, as a diff (the "
+                          "logic fix only — not the reproduction's logging).")
+    rerun: str = Field(default="", description="the rerun output showing the value now correct on /src/new "
+                       "and the other findings / module tests still passing.")
+
+
+class RecordFixObservation(Observation):
+    pass
+
+
+_FIX_DESC = ("Record your fix for the one bug, once, last. fixed=true only if re-running the reproduction "
+             "against your changed code shows the value now correct on /src/new and nothing else broken. "
+             "Give the fix_diff (the logic change to the real lines) and the rerun output. Smaller fixes "
+             "score higher. If you couldn't fix it, fixed=false.")
+
+
+class _RecordFixExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        _FIX["fixed"] = bool(action.fixed)
+        _FIX["fix_diff"] = str(action.fix_diff)
+        _FIX["rerun"] = str(action.rerun)
+        return RecordFixObservation.from_text(text=f"recorded fix: fixed={_FIX['fixed']}")
+
+
+class RecordFixTool(ToolDefinition[RecordFixAction, RecordFixObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[RecordFixTool]":  # noqa: ARG003
+        return [cls(description=_FIX_DESC, action_type=RecordFixAction,
+                    observation_type=RecordFixObservation,
+                    annotations=ToolAnnotations(title="record_fix", readOnlyHint=False,
+                                                destructiveHint=False, idempotentHint=False,
+                                                openWorldHint=False),
+                    executor=_RecordFixExecutor())]
+
+
 # --- the sandbox_exec tool: PROVE a suspicion by execution (contract P17) ----------------
 # Runs arbitrary bash in the per-session Java container on the remote Docker host (server2).
 # The fact-checker writes a snippet/test, compiles, runs it — the compiler/runtime settles
@@ -252,76 +301,63 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-SUSPECTOR_SYS = """You are the SUSPECTOR. You scan a Java pull request and record SUSPICIONS — each an
-OBSERVATION (something you literally see that looks off) plus the suspected_bug it might cause. These are
-candidates for a REPRODUCER to reproduce later, NOT confirmed findings. The PR diff is provided and your
-workspace is the POST-PR code; glance with search/grep/file_editor where a quick look helps.
+SUSPECTOR_SYS = """You're reading through a pull request looking for things that might be bugs — places
+where the change looks like it could be wrong. You don't have to be sure and you don't have to check;
+another agent tries to reproduce each one, so being generous is fine. You're credited later for the
+suspicions that turn out reproducible, and docked a little for ones that point at code which isn't in the
+diff at all — so what pays is noticing something specific and real in the change (a line, name, call, or
+value that looks off) and naming the bug it might cause.
 
-Cast a WIDE net: OVER-suspect. A suspicion costs nothing — the reproducer drops the wrong ones — but a
-missed issue is gone. For every place a strong reviewer would pause — a possible correctness bug, broken
-contract, missing null/error handling, concurrency hazard, resource leak, wrong API/overload use,
-copy-paste slip (a class/constant/field/logger name carried wrong from a sibling), off-by-one, inverted
-condition, behavior change, untested path, etc. — record a suspicion.
+Note each one as you go with add_suspicion — what you saw (observation), the bug you suspect
+(suspected_bug), where it is (location), how serious it would be if real (severity), and how sure you are
+(confidence). Keep moving; the reproducer does the checking."""
 
-Work FAST and SHALLOW. You only OBSERVE and SUSPECT; you do NOT prove and you do NOT pre-judge. Do NOT
-deep-read to verify, do NOT reproduce anything, and DO NOT decide whether a suspicion "holds up" or is
-"reasonable" — that is the reproducer's job, and doing it here is wasted work that loses suspicions. The
-MOMENT something looks off, call add_suspicion and move on. Never keep a numbered list in your head to emit
-at the end — record each the instant you notice it, or a long think / compaction loses them.
+SCHEDULER_SYS = """You pick which pending suspicion the reproducer should try next — the one most worth
+settling now, a serious suspected bug that's plausible but not yet reproduced. Return ONLY {"id": N}."""
 
-add_suspicion takes: observation (the concrete thing you SEE — a specific line/name/call/value, factual,
-not a judgment), suspected_bug (one line — the bug you suspect it causes), location, severity (critical/
-high/medium/low impact IF real), confidence (0-1 prior it's real). When you have swept the diff, finish."""
+REPRODUCER_SYS = """You're given one suspected bug in a Java project — an observation and the problem it
+might cause, at a location. The question is whether it's real, and the way to settle it is to get the real
+code to show it. You can add logging into the real source to watch what it does, and write whatever
+throwaway drivers help; the code's behaviour stays as the project wrote it — you're watching it, not
+changing it. You have the project at two versions you can build and run, /src/new (with the change) and
+/src/old (without), and a sandbox.
 
-SCHEDULER_SYS = """You pick which pending SUSPICION the reproducer should try next. Choose the one most
-valuable to settle now — high severity AND genuinely uncertain (a high-impact suspected bug that is
-plausible but not yet reproduced). Return ONLY {"id": N} for the chosen suspicion."""
+What the run earns, read from what the real code actually prints:
+  - the genuine project code runs — the real classes, not a copy or a sketch of them;
+  - a log you added inside the real source prints while it runs;
+  - that printed value comes out wrong on /src/new but right on /src/old — the bug showing itself in
+    this change.
 
-REPRODUCER_SYS = """You are the REPRODUCER. You are handed ONE suspicion — an `observation` (something the
-suspector saw) and a `suspected_bug` (what it might cause; a guess, possibly imprecise). Your job is NOT to
-opine on whether it's "probably" a bug — it is to TRY TO REPRODUCE the bug: make it actually manifest, or
-show the observation literally is the bug. The verdict is the OUTCOME of that attempt, never your opinion.
+If you can't get the real code to misbehave, that's a fine answer too — the bug is probably not there, and
+nothing about a copy you've altered yourself would count, since the reward is only about how the real code
+behaves.
 
-Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the files AS THE PR LEAVES
-THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (- = base, + = post-PR).
-`sandbox_exec` runs code in a Java sandbox with BOTH trees mounted as normal checkouts (version='new'
-post-PR default, 'old' base) — work in /src/new, write a snippet/test, compile, run. Edit/compile freely:
-the tree auto-resets to pristine before the next suspicion, and `reset_workspace` resets it on demand.
+How you get there is up to you — add logging to the real files, write throwaway drivers, reset the
+workspace whenever you like (it's cleaned between bugs). Compile the real module with `javac -cp <deps>`
+rather than fighting Maven. When you've done your best, record what you found with record_verdict: whether
+it's real, and the run plus its output on both versions that shows it. If you notice a different bug while
+you're in there, jot it down with add_suspicion."""
 
-REPRODUCE BY EXECUTION — reading the code and asserting "the bug is there" is NOT reproduction. That is
-the imaginary opining that manufactures false findings. You must MAKE THE BUG ACTUALLY HAPPEN by running
-real code in `sandbox_exec`. Two ways:
-- TEST: write a small unit test / driver that exercises the suspected code and asserts the CORRECT
-  behavior; compile and RUN it. The bug is reproduced when the test FAILS — or fails to COMPILE, for an
-  API/signature/removed-method break (javac error is a real reproduction). The failing run IS the proof.
-- LOG: add a log/print at the suspected spot (or in a tiny driver that calls it), compile and RUN it, and
-  read the output. The bug is reproduced when the output shows the WRONG value/behavior — e.g. the log
-  category is the wrong class, the computed number is off, the branch taken is wrong.
-Either way you EXECUTE and read real output. (You may edit /src/new to add the log/test — it auto-resets.)
+SOLVER_SYS = """You're handed a bug that's already been shown to be real — in the real code's own logging
+you can see a value coming out wrong on /src/new and right on /src/old, with the driver that triggers it.
+Your task is to fix it: change the real code so the problem is gone.
 
-Then REFUTE — decisively — whenever you cannot make the bug manifest by running code:
-- the test PASSES / the output is correct — the code is right, record refuted;
-- you cannot construct an input/driver that triggers it (speculative "may/might/could");
-- it depends on an EXTERNAL library/service or runtime you cannot stand up;
-- the observation is factually true but harmless / idiomatic / in test or build tooling.
-A bug you only READ but never RAN is not a finding. Confirming a plausibility is how false findings survive.
+What the fix earns, checked by re-running that same reproduction against your changed code:
+  - with your fix in, that value now comes out right on /src/new;
+  - nothing else breaks — the other findings and the module's tests stay green;
+  - the smaller the change, the better — a tight fix at the root cause beats a sprawling one (the score
+    scales with 1 / lines changed).
 
-While exploring, if you OBSERVE a DIFFERENT candidate bug, record it with `add_suspicion`. For THIS
-suspicion, RECORD your decision by CALLING `record_verdict` — once, last — with verdict, repro_kind
-(test|log|none), reproduction (the command(s) you RAN and their actual output that manifests the bug),
-and a one-line evidence summary. The prose is not read; only the tool call is. confirmed REQUIRES
-repro_kind test or log carrying a real RUN — a confirmed with repro_kind=none is rejected."""
+You can change anything in the source to get there. The reproduction's driver and logging that grade you
+stay as they are — you don't need to touch them and editing them doesn't help. Work in /src/new with the
+sandbox; reset_workspace whenever you like. When you've done your best, record it with record_fix: the
+change you made (a diff of the real lines) and the rerun showing the value now right and everything still
+passing. If you genuinely can't fix it, that's a fine outcome — leave it for the author."""
 
-SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only. Each confirmed
-finding becomes a point with its file:line and the evidence. Add NO new claims of your own.
-
-CURATE the OPEN QUESTIONS (partials) hard — do not dump them all. MERGE any that restate the same
-underlying concern into ONE question; DROP any that are speculative, already answered by the diff, or
-rest on a false premise; keep only the few genuinely-uncertain, substantive ones, clearly hedged and
-never as definite claims. A short, sharp review beats a flood of vague questions — a reviewer who asks
-ten hedged questions about one concern is noise, and noise costs credibility.
-
-Output SUMMARY: then POINTS:, each point as - [path/File.java:line] <point>."""
+SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only — each one a bug the
+reproducer showed in the real code, some with a fix the solver verified. Turn each into a point with its
+file:line, what the bug is, and the fix if there is one. Add no new claims of your own. A short, sharp
+review beats a flood. Output SUMMARY: then POINTS:, each as - [path/File.java:line] <bug> [— fix: <fix>]."""
 
 
 SEV = {"critical": 4, "high": 3, "medium": 2, "low": 1}
@@ -339,6 +375,9 @@ class Suspicion:
     evidence: str = ""
     repro_kind: str = ""              # test / log / none — how the bug was reproduced by EXECUTION
     reproduction: str = ""            # the actual run: command(s) + their output manifesting the bug
+    fixed: bool = False               # solver verified a fix (only attempted on confirmed bugs)
+    fix_diff: str = ""                # the logic change the solver made to the real lines
+    fix_rerun: str = ""               # the rerun output proving the fix + nothing else broken
 
     def value(self) -> float:
         try:
@@ -394,7 +433,8 @@ def _read_tools():
     if not _TOOLS_READY:
         harness._register_subagents()    # registers search/grep/glob/file_editor/pr_files/pr_file_diff
         for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
-                       ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool)):
+                       ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool),
+                       ("record_fix", RecordFixTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -499,10 +539,34 @@ def reproduce(repo_dir, s):
     return {"verdict": "refuted", "evidence": (out or "")[-300:], "repro_kind": "none"}
 
 
+def solve(repo_dir, s):
+    # Separate agent: only runs on a REPRODUCED bug. Full source edit (unlike the reproducer); graded by
+    # re-running the reproducer's own check against its patch. Fresh, lean context — just the bug + how it
+    # was shown, not the reproducer's whole exploration.
+    _reset_fix()
+    _sandbox.reset_clean()   # pristine source — the solver fixes from clean, not the reproducer's logging
+    msg = (f"BUG TO FIX (already reproduced):\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
+           f"location: {s.location}\nhow it was shown ({s.repro_kind}): {s.evidence}\nreproduction:\n{s.reproduction}\n\n"
+           "Change the real code in /src/new so this stops happening, then confirm by re-running the "
+           "reproduction above against your change — the value should now come out right on /src/new with "
+           "nothing else broken. Keep the change as small as you can. When done, call record_fix (fixed, "
+           "fix_diff = your logic change, rerun = the output proving it). If you can't fix it, record fixed=false.")
+    out = _run_agent(SOLVER_SYS, msg, repo_dir,
+                     extra_tools=["sandbox_exec", "record_fix", "reset_workspace"])
+    if "fixed" in _FIX:
+        return dict(_FIX)
+    return {"fixed": False, "fix_diff": "", "rerun": (out or "")[-300:]}
+
+
 def synthesize(ctx, confirmed, partials):
-    body = "CONFIRMED FINDINGS (each REPRODUCED: the bug actually manifests):\n" + ("\n".join(
-        f"- [{s.location}] {s.suspected_bug}\n    observation: {s.observation}\n"
-        f"    reproduction ({s.repro_kind}): {s.evidence}" for s in confirmed) or "(none)")
+    def _one(s):
+        line = (f"- [{s.location}] {s.suspected_bug}\n    observation: {s.observation}\n"
+                f"    reproduction ({s.repro_kind}): {s.evidence}")
+        if s.fixed:
+            line += f"\n    fix: {s.fix_diff[:400]}"
+        return line
+    body = "CONFIRMED FINDINGS (each REPRODUCED in the real code; some with a verified fix):\n" + (
+        "\n".join(_one(s) for s in confirmed) or "(none)")
     if partials:
         body += "\n\nOPEN QUESTIONS (could not reproduce — include as hedged questions):\n" + "\n".join(
             f"- {s.suspected_bug} [{s.location}]" for s in partials)
@@ -540,10 +604,17 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=
         s.reproduction = str(res.get("reproduction", ""))[:600]
         checks += 1
         log(f"  check {checks}: [{s.id}] {s.status}/{s.repro_kind or '-'} (+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+        if s.status == "confirmed":           # reproduced -> hand to the SOLVER
+            fx = solve(repo_dir, s)
+            s.fixed = bool(fx.get("fixed"))
+            s.fix_diff = str(fx.get("fix_diff", ""))[:600]
+            s.fix_rerun = str(fx.get("rerun", ""))[:600]
+            log(f"    solve [{s.id}]: {'FIXED' if s.fixed else 'no fix'}")
     confirmed = [s for s in by_id.values() if s.status == "confirmed"]
     partials = [s for s in by_id.values() if s.status == "partial"]
     refuted = sum(1 for s in by_id.values() if s.status == "refuted")
-    log(f"=> confirmed {len(confirmed)} | partial {len(partials)} | refuted {refuted} | "
+    solved = sum(1 for s in confirmed if s.fixed)
+    log(f"=> confirmed {len(confirmed)} ({solved} fixed) | partial {len(partials)} | refuted {refuted} | "
         f"total suspicions {len(by_id)} | checks {checks}")
     review = synthesize(ctx, confirmed, partials)
     return review, list(by_id.values())
@@ -599,6 +670,7 @@ def run(repo, pr, conf_floor=0.4):
     os.makedirs("results/susp_runs", exist_ok=True)
     out = {"repo": repo, "pr": pr, "review": review,
            "confirmed": sum(1 for s in sus if s.status == "confirmed"),
+           "solved": sum(1 for s in sus if s.status == "confirmed" and s.fixed),
            "partial": sum(1 for s in sus if s.status == "partial"),
            "refuted": sum(1 for s in sus if s.status == "refuted"),
            "n_suspicions": len(sus),
