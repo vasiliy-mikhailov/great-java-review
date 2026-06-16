@@ -323,30 +323,34 @@ cause, at a location). Find out whether it's real by making the genuine code sho
 (with the change) and /src/old (without), both buildable/runnable, and a sandbox.
 
 Your score:
-    reward = clean · (0.15·ran + 0.85·shown)  +  (confirmed bugs you raise along the way)
+    reward = no_cheat · (0.15·ran + 0.85·shown)  +  (confirmed bugs you raise along the way)
 
-  clean  = 1 only if the only edits you made to the real source are added log lines AND your finding is
-           read from the genuine run's output. Edit the logic, or judge from a copy you changed, and
-           clean = 0 — the whole thing zeroes.
+  no_cheat = 1 only if you worked by MODIFYING EXISTING files (adding logging) and running the real code.
+           **You cannot create new files** — the sandbox blocks any command that writes a new source file:
+           it removes the file and WITHHOLDS the output, so a copy/stub/standalone driver earns you nothing
+           and tells you nothing. Add your logging into the real file and run an EXISTING test or entry point
+           that exercises it.
   ran    = 1 if you got the genuine project classes to compile and run (the real ones, not a copy/sketch).
-  shown  = 1 if a RUN settles it. REAL: a test you ran fails / won't compile, or a log you added prints the
-           wrong value — ideally wrong on /src/new, right on /src/old. NOT REAL: the test passes, the log
-           is right, or a grep shows the suspected code isn't there. Reading and concluding leaves shown = 0.
+  shown  = 1 if a RUN settles it. REAL: an existing test you ran fails / won't compile, or a log you added
+           to the real file prints the wrong value — ideally wrong on /src/new, right on /src/old. NOT REAL:
+           the test passes, the log is right, or a grep shows the suspected code isn't there. Reading and
+           concluding leaves shown = 0.
 
 Read the formula: reasoning your way to an answer earns nothing (shown stays 0); getting the real code to
-build and run is worth a little on its own (ran); a run that settles it is the bulk (shown); and a different
-real bug you notice and raise with add_suspicion pays too. Compile the real module with `javac -cp <deps>`,
-not Maven; add logs to the real files; write throwaway drivers; reset_workspace anytime (cleaned between
-bugs). Record with record_verdict(verdict, repro_kind test|log|grep, reproduction = the commands you ran +
-their output, evidence)."""
+build and run is worth a little on its own (ran); a run that settles it is the bulk (shown); a different real
+bug you notice and raise with add_suspicion pays too. Work in /src/new by adding logging to the real files
+and running the project's existing tests/build (`mvn`/`./mvnw`, or `javac -cp <deps>` against the real
+classes) — do NOT write copies or drivers (blocked). reset_workspace anytime (cleaned between bugs). Record
+with record_verdict(verdict, repro_kind test|log|grep, reproduction = the commands you ran + their output,
+evidence)."""
 
 SOLVER_SYS = """You're handed a bug already shown to be real — the reproducer's logging shows a value wrong
 on /src/new and right on /src/old, with the driver that triggers it. Fix the real code so it's gone.
 
 Your score:
-    reward = clean · (0.10·ran_fix  +  0.90 · fixed · (1 / lines_changed))
+    reward = no_cheat · (0.10·ran_fix  +  0.90 · fixed · (1 / lines_changed))
 
-  clean   = 1 only if you leave the reproducer's driver/logging/tests untouched (they grade you).
+  no_cheat = 1 only if you leave the reproducer's logging/tests untouched (they grade you).
   ran_fix = 1 if you got your patched code to build and run.
   fixed   = 1 if re-running the reproducer's check on your patch shows the value now correct AND the other
             findings + the module's tests still pass.
@@ -506,6 +510,7 @@ def reproduce(repo_dir, s):
     # context here overflowed max-model-len across the multi-turn agent — and was lost-in-the-middle.
     _reset_verdict()
     _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous reproducer wrote/built
+    _sandbox.set_no_new_files(True)   # no_cheat: reproducer may only MODIFY existing files (add logging)
     msg = (f"SUSPICION TO REPRODUCE:\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
            f"location: {s.location}\n\n"
            "Make the real code show you whether this is real, then say which way — but only from a run, not "
@@ -529,6 +534,7 @@ def solve(repo_dir, s):
     # was shown, not the reproducer's whole exploration.
     _reset_fix()
     _sandbox.reset_clean()   # pristine source — the solver fixes from clean, not the reproducer's logging
+    _sandbox.set_no_new_files(False)   # the solver may add files if a fix needs one (revisit if it cheats)
     msg = (f"BUG TO FIX (already reproduced):\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
            f"location: {s.location}\nhow it was shown ({s.repro_kind}): {s.evidence}\nreproduction:\n{s.reproduction}\n\n"
            "Change the real code in /src/new so this stops happening, then confirm by re-running the "

@@ -30,6 +30,15 @@ DEFAULT_JDK = 21
 
 _SESSION = {"name": None, "log": None, "base": None, "worktree": None}
 
+# no_cheat: when on, exec_ blocks the run (removes the files + WITHHOLDS the output) if the command
+# created any new source file — the reproducer may only MODIFY existing files (add logging) and run
+# existing tests, never write copies/stubs/drivers (the simulation hole). Set per-agent by the harness.
+_NO_NEW = {"on": False}
+
+
+def set_no_new_files(on: bool):
+    _NO_NEW["on"] = bool(on)
+
 
 def detect_jdk(repo_dir: str) -> int:
     """Pick the BUILD jdk from the repo's declared Java level — a WRONG jdk yields FALSE compile errors
@@ -87,6 +96,11 @@ def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = Non
     _run(f"docker rm -f {name} >/dev/null 2>&1; "
          f"docker run -d {netarg}-v {old_host}:/src/old -v {new_host}:/src/new -w /src/new "
          f"--name {name} {image} sleep infinity")
+    # snapshot the existing source files — exec_'s no_cheat guard treats any .java NOT in here as a
+    # new file the reproducer created (a copy/stub), and blocks it. git is unavailable in the sandbox
+    # (worktree .git not mounted), so a find-snapshot is how we tell new from modified.
+    _run(f"docker exec {name} bash -lc \"find /src/new -name '*.java' 2>/dev/null | sort > /tmp/.known_java\" "
+         f">/dev/null 2>&1")
     _SESSION.update(name=name, log=log_path, base=cbase, worktree=cnew)
     return name
 
@@ -129,6 +143,21 @@ def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int
     except subprocess.TimeoutExpired:
         rc, out = 124, "(ssh client timed out; inner timeout should have bounded the container)"
     out = out[-8000:]
+    if _NO_NEW["on"]:   # no_cheat: block + WITHHOLD output if the command created any new source file
+        guard = ("NEW=$( { comm -13 /tmp/.known_java <(find /src/new -name '*.java' 2>/dev/null | sort); "
+                 "find /tmp /root /home -name '*.java' 2>/dev/null; } | sort -u )\n"
+                 "if [ -n \"$NEW\" ]; then echo \"$NEW\" | xargs -r rm -f; echo __NEWFILES__; echo \"$NEW\"; fi\n")
+        try:
+            g = _run(f"docker exec -i {name} bash -lc 'bash -s'", stdin=guard, timeout=60)
+            gout = g.stdout or ""
+        except Exception:  # noqa: BLE001
+            gout = ""
+        if "__NEWFILES__" in gout:
+            files = gout.split("__NEWFILES__", 1)[1].strip()
+            rc, out = 1, ("[no_cheat] BLOCKED — your command created new source file(s); they were removed and "
+                          "the run output is withheld. You may ONLY modify EXISTING files (add logging) and run "
+                          "the project's existing tests/build — never write copies, stubs, or standalone drivers:\n"
+                          + files)
     if _SESSION["log"]:
         try:
             with open(_SESSION["log"], "a") as f:
