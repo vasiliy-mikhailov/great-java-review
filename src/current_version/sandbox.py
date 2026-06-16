@@ -73,19 +73,16 @@ def workdir(version: str = "new") -> str | None:
 
 
 def reset_clean():
-    """Reset BOTH mounted trees to pristine and wipe the in-container scratch, so each fact-check
-    starts from clean source regardless of what the previous prover wrote/compiled/edited. The git
-    reset MUST run harness-side (via _run): the worktree's .git points at a /work host path that does
-    not resolve inside the sandbox container. Cheap when nothing changed; clears any stray test files,
-    source edits, or build artifacts the previous check left in the shared worktree."""
-    wt, base, name = _SESSION.get("worktree"), _SESSION.get("base"), _SESSION.get("name")
-    for tree in (wt, base):
+    """Reset BOTH mounted trees to pristine (HEAD), so a fact-check starts from clean source no matter
+    what the prover wrote/compiled/edited — it works in /src/new like a normal checkout and we reset it.
+    The git reset MUST run harness-side (via _run): the worktree's .git points at a /work host path that
+    does not resolve inside the sandbox container. Cheap when nothing changed; clears stray test files,
+    source edits, and build artifacts. Exposed both as the auto-reset before each check AND the
+    reset_workspace tool the prover can call itself."""
+    for tree in (_SESSION.get("worktree"), _SESSION.get("base")):
         if tree:
             _run(f"git -C {tree} checkout -- . >/dev/null 2>&1; "
                  f"git -C {tree} clean -fdx >/dev/null 2>&1", timeout=180)
-    if name:   # fresh ephemeral scratch (NOT bind-mounted — writes here never touch /src)
-        _run(f"docker exec {name} sh -c 'rm -rf /scratch 2>/dev/null; mkdir -p /scratch' >/dev/null 2>&1",
-             timeout=60)
 
 
 def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:

@@ -187,14 +187,14 @@ class SandboxExecObservation(Observation):
     pass
 
 
-_SBX_DESC = ("Run bash in a Java sandbox container to PROVE a claim by EXECUTION. The container has "
-             "BOTH source trees mounted READ-ONLY-by-convention: /src/new (post-PR, cwd via version='new') "
-             "and /src/old (base). Write your test/snippet into the writable scratch dir /scratch (NOT into "
-             "/src), `javac` it (put `-d /scratch/out`, classpath the real tree if needed), `java` it — the "
-             "compiler resolves overloads/signatures/types exactly and the runtime shows whether it actually "
-             "throws/misbehaves. version='old' runs against the base tree (before/after comparison). NOTE: "
-             "/src is RESET to pristine and /scratch is WIPED between fact-checks, so do not modify the source "
-             "trees and do not rely on changes persisting — keep all your scratch in /scratch.")
+_SBX_DESC = ("Run bash in a Java sandbox container to PROVE a claim by EXECUTION. BOTH source trees are "
+             "mounted as normal checkouts: /src/new (post-PR, cwd via version='new') and /src/old (base). "
+             "Work in /src/new like a developer: write a tiny test/snippet next to the code, `javac` it "
+             "(classpath the real tree if needed), `java` it — the compiler resolves overloads/signatures/"
+             "types exactly and the runtime shows whether it actually throws/misbehaves. version='old' runs "
+             "against the base tree (before/after comparison). You may freely create/edit/compile files: the "
+             "tree is git-reset to pristine before the next suspicion, and you can reset it yourself anytime "
+             "with `reset_workspace` (e.g. to get a clean baseline).")
 
 
 class _SandboxExecExecutor(ToolExecutor):
@@ -215,6 +215,43 @@ class SandboxExecTool(ToolDefinition[SandboxExecAction, SandboxExecObservation])
                                                 destructiveHint=False, idempotentHint=False,
                                                 openWorldHint=True),
                     executor=_SandboxExecExecutor())]
+
+
+# --- reset_workspace: the prover resets the source trees to pristine itself ----------------
+# Work in /src/new like a normal checkout; when you want a clean slate (you edited a file to test
+# something, or you want a clean before/after baseline), call this — git checkout+clean both trees.
+class ResetWorkspaceAction(Action):
+    pass
+
+
+class ResetWorkspaceObservation(Observation):
+    pass
+
+
+_RESET_DESC = ("Reset BOTH source trees (/src/new and /src/old) to pristine HEAD — discards every edit, "
+               "stray file, and build artifact you made. Call it to get a clean slate: after an experiment "
+               "that modified files, or before a clean before/after comparison. You may write/compile/run "
+               "freely in /src/new; this (and the automatic reset before the next suspicion) cleans it up.")
+
+
+class _ResetWorkspaceExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        _sandbox.reset_clean()
+        return ResetWorkspaceObservation.from_text(text="workspace reset: /src/new and /src/old are pristine HEAD")
+
+
+class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[ResetWorkspaceTool]":  # noqa: ARG003
+        return [cls(description=_RESET_DESC, action_type=ResetWorkspaceAction,
+                    observation_type=ResetWorkspaceObservation,
+                    annotations=ToolAnnotations(title="reset_workspace", readOnlyHint=False,
+                                                destructiveHint=False, idempotentHint=True,
+                                                openWorldHint=False),
+                    executor=_ResetWorkspaceExecutor())]
 
 
 # --- prompts (the genome for this architecture) -----------------------------------------
@@ -253,8 +290,9 @@ to reason about whether it's "probably" a bug and opine — it is to PROVE, by r
 
 Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the files AS THE PR LEAVES
 THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (- = base, + = post-PR).
-`sandbox_exec` runs code in a Java sandbox with BOTH trees mounted (version='new' post-PR default, 'old'
-base) — write a snippet/test, compile, run.
+`sandbox_exec` runs code in a Java sandbox with BOTH trees mounted as normal checkouts (version='new'
+post-PR default, 'old' base) — work in /src/new, write a snippet/test, compile, run. Edit/compile freely:
+the tree auto-resets to pristine before the next suspicion, and `reset_workspace` resets it on demand.
 
 Build the CHEAPEST sufficient PROOF:
 - STATIC proof — when the defect is a literal fact: a read/grep shows the wrong value/symbol literally
@@ -364,7 +402,7 @@ def _read_tools():
     if not _TOOLS_READY:
         harness._register_subagents()    # registers search/grep/glob/file_editor/pr_files/pr_file_diff
         for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
-                       ("record_verdict", RecordVerdictTool)):
+                       ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -461,7 +499,7 @@ def fact_check(repo_dir, s):
            "falsifiable defect with add_suspicion. When proven, call `record_verdict` (verdict, proof_kind "
            "static|dynamic|none, proof = the file:line text or command+output, evidence) — once, last.")
     out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir,
-                     extra_tools=[CAPTURE, "sandbox_exec", "record_verdict"])
+                     extra_tools=[CAPTURE, "sandbox_exec", "record_verdict", "reset_workspace"])
     if _VERDICT.get("verdict") in ("confirmed", "refuted", "partial"):   # tool-captured: robust
         return dict(_VERDICT)
     j = _extract_json(out, "{")                                          # fallback: a JSON blob in text
