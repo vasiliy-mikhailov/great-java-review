@@ -107,16 +107,16 @@ class AddSuspicionTool(ToolDefinition[AddSuspicionAction, AddSuspicionObservatio
 # prose ("the logger issue — confirmed, uses ReflectiveHierarchyStep.class") the parse failed and the
 # verdict SILENTLY defaulted to "partial", losing real confirms. A tool call is robust to verbosity.
 class RecordVerdictAction(Action):
-    verdict: str = Field(description="confirmed | refuted. confirmed ONLY if you REPRODUCED the bug — the "
-                         "wrong value is literally there (static) or your test actually FAILED (dynamic). "
-                         "If the code is correct, or you could not reproduce it, the verdict is refuted. "
-                         "(partial only for a genuinely-substantive bug no read AND no runnable test could settle.)")
-    repro_kind: str = Field(description="static | dynamic | none. static = a read/grep shows the wrong "
-                            "value/symbol literally present (or absent). dynamic = you wrote & RAN a test "
-                            "in sandbox_exec that manifests the bug. none = you could not reproduce it.")
-    reproduction: str = Field(description="The reproduction itself: for static, the file:line + the exact "
-                       "text shown; for dynamic, the command you ran and its actual output (the failure). "
-                       "This must SHOW the bug, not assert it.")
+    verdict: str = Field(description="confirmed | refuted. confirmed ONLY if you REPRODUCED the bug by "
+                         "RUNNING code — a test that FAILED/won't compile, or output/logs showing the wrong "
+                         "behavior. If the run was clean, or you could not reproduce it, the verdict is "
+                         "refuted. (partial only for a genuinely-substantive bug no runnable repro could settle.)")
+    repro_kind: str = Field(description="test | log | none. test = you wrote & RAN a unit test/driver that "
+                            "FAILED (or failed to compile). log = you added logging/print, RAN it, and the "
+                            "output shows the wrong behavior. none = you did not run a reproduction.")
+    reproduction: str = Field(description="The actual RUN: the command(s) you executed in sandbox_exec and "
+                       "their real output — the failing assertion, the compile error, or the log line showing "
+                       "the wrong value. This must SHOW the bug happening, not assert it from reading.")
     evidence: str = Field(description="One-line summary: file:line + the concrete bug (or why not reproduced).")
 
 
@@ -125,12 +125,12 @@ class RecordVerdictObservation(Observation):
 
 
 _VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. You are a REPRODUCER, not a judge: "
-                 "verdict=confirmed REQUIRES that you REPRODUCED the bug — either `static` (a read/grep "
-                 "showing the wrong value literally present/absent) or `dynamic` (a test you wrote and RAN "
-                 "in sandbox_exec that actually fails / manifests the bug). If the code is correct, or the "
-                 "bug is speculative/idiomatic/in test-tooling and you cannot reproduce it, record refuted "
-                 "(repro_kind=none). Do not confirm a plausibility. "
-                 "Args: verdict, repro_kind (static/dynamic/none), reproduction (the actual evidence/test output), evidence.")
+                 "verdict=confirmed REQUIRES that you REPRODUCED the bug by RUNNING code — `test` (a unit "
+                 "test/driver you wrote and ran that FAILED or won't compile) or `log` (logging/print you "
+                 "added, ran, whose output shows the wrong behavior). Reading the code is NOT reproduction. "
+                 "If the run is clean, or you could not build a runnable repro, record refuted (repro_kind="
+                 "none). Do not confirm a plausibility. "
+                 "Args: verdict, repro_kind (test/log/none), reproduction (the command(s) run + real output), evidence.")
 
 
 class _RecordVerdictExecutor(ToolExecutor):
@@ -139,11 +139,11 @@ class _RecordVerdictExecutor(ToolExecutor):
         _VERDICT["repro_kind"] = str(action.repro_kind).lower().strip()
         _VERDICT["reproduction"] = str(action.reproduction)
         _VERDICT["evidence"] = str(action.evidence)
-        # guard: a 'confirmed' with no reproduction is exactly the failure mode we are killing — downgrade it.
-        if _VERDICT["verdict"] == "confirmed" and _VERDICT["repro_kind"] not in ("static", "dynamic"):
+        # guard: a 'confirmed' with no executed reproduction is the failure mode we are killing — downgrade it.
+        if _VERDICT["verdict"] == "confirmed" and _VERDICT["repro_kind"] not in ("test", "log"):
             _VERDICT["verdict"] = "refuted"
             return RecordVerdictObservation.from_text(
-                text="confirmed REQUIRES repro_kind=static|dynamic with a real reproduction; none given -> recorded refuted")
+                text="confirmed REQUIRES repro_kind=test|log with a real RUN; none given -> recorded refuted")
         return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['repro_kind']})")
 
 
@@ -288,29 +288,29 @@ THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (-
 post-PR default, 'old' base) — work in /src/new, write a snippet/test, compile, run. Edit/compile freely:
 the tree auto-resets to pristine before the next suspicion, and `reset_workspace` resets it on demand.
 
-Reproduce with the CHEAPEST sufficient method:
-- STATIC — when the bug is a literal fact: a read/grep shows the wrong value/symbol literally PRESENT (a
-  wrong class/constant/logger name, an off-by-one constant) or a required thing literally ABSENT (an
-  unregistered attribute, a missing guard). The reading IS the reproduction: the bug is on the page. Use
-  this for mechanical slips — no test needed.
-- DYNAMIC — when the bug is BEHAVIORAL or NUMERIC (a comparator-contract violation, a precision loss, an
-  NPE, a wrong result, a locale surprise): WRITE a tiny test that asserts the correct behavior, compile and
-  RUN it in `sandbox_exec`. A FAILING run REPRODUCES the bug = confirmed. A PASSING run = refuted. Construct
-  the concrete failing input; if you cannot make a test fail, the bug is not real.
+REPRODUCE BY EXECUTION — reading the code and asserting "the bug is there" is NOT reproduction. That is
+the imaginary opining that manufactures false findings. You must MAKE THE BUG ACTUALLY HAPPEN by running
+real code in `sandbox_exec`. Two ways:
+- TEST: write a small unit test / driver that exercises the suspected code and asserts the CORRECT
+  behavior; compile and RUN it. The bug is reproduced when the test FAILS — or fails to COMPILE, for an
+  API/signature/removed-method break (javac error is a real reproduction). The failing run IS the proof.
+- LOG: add a log/print at the suspected spot (or in a tiny driver that calls it), compile and RUN it, and
+  read the output. The bug is reproduced when the output shows the WRONG value/behavior — e.g. the log
+  category is the wrong class, the computed number is off, the branch taken is wrong.
+Either way you EXECUTE and read real output. (You may edit /src/new to add the log/test — it auto-resets.)
 
-Then REFUTE — decisively — whenever you cannot reproduce it:
-- the code is correct / intentional / by-design / guarded — your own analysis saying "this is correct" or
-  "this is intended" IS a refutation, record it as refuted;
-- the bug is speculative ("may/might/could") and you cannot build a test that actually fails;
-- it depends on an EXTERNAL library/service or behavior you cannot read or run;
+Then REFUTE — decisively — whenever you cannot make the bug manifest by running code:
+- the test PASSES / the output is correct — the code is right, record refuted;
+- you cannot construct an input/driver that triggers it (speculative "may/might/could");
+- it depends on an EXTERNAL library/service or runtime you cannot stand up;
 - the observation is factually true but harmless / idiomatic / in test or build tooling.
-An un-reproduced worry is NOT a finding. Confirming a plausibility is exactly how false findings survive.
+A bug you only READ but never RAN is not a finding. Confirming a plausibility is how false findings survive.
 
 While exploring, if you OBSERVE a DIFFERENT candidate bug, record it with `add_suspicion`. For THIS
 suspicion, RECORD your decision by CALLING `record_verdict` — once, last — with verdict, repro_kind
-(static|dynamic|none), reproduction (the actual file:line text OR the command + its run output), and a
-one-line evidence summary. The prose is not read; only the tool call is. confirmed REQUIRES repro_kind
-static or dynamic carrying a real reproduction — a confirmed with repro_kind=none is rejected."""
+(test|log|none), reproduction (the command(s) you RAN and their actual output that manifests the bug),
+and a one-line evidence summary. The prose is not read; only the tool call is. confirmed REQUIRES
+repro_kind test or log carrying a real RUN — a confirmed with repro_kind=none is rejected."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only. Each confirmed
 finding becomes a point with its file:line and the evidence. Add NO new claims of your own.
@@ -337,8 +337,8 @@ class Suspicion:
     confidence: float
     status: str = "pending"           # pending / confirmed / refuted / partial
     evidence: str = ""
-    repro_kind: str = ""              # static / dynamic / none — how the bug was reproduced
-    reproduction: str = ""            # the reproduction itself (file:line text, or command + run output)
+    repro_kind: str = ""              # test / log / none — how the bug was reproduced by EXECUTION
+    reproduction: str = ""            # the actual run: command(s) + their output manifesting the bug
 
     def value(self) -> float:
         try:
@@ -481,14 +481,13 @@ def reproduce(repo_dir, s):
     _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous reproducer wrote/built
     msg = (f"SUSPICION TO REPRODUCE:\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
            f"location: {s.location}\n\n"
-           "Try to REPRODUCE the suspected bug — make it actually manifest. Build the cheapest sufficient "
-           "reproduction: STATIC (read/grep shows the wrong value/symbol literally present or absent) for a "
-           "mechanical slip; DYNAMIC (write a test in /src/new that asserts the correct behavior, compile and "
-           "RUN it via `sandbox_exec` — a FAILING run reproduces the bug = confirmed, a PASSING run = refuted) "
-           "for a behavioral/numeric bug. If the code is correct/intended, or the bug is speculative/external/"
-           "idiomatic and you cannot reproduce it — REFUTE. Record any NEW bug you observe with add_suspicion. "
-           "When done, call `record_verdict` (verdict, repro_kind static|dynamic|none, reproduction = the "
-           "file:line text or command+output, evidence) — once, last.")
+           "Try to REPRODUCE the bug by RUNNING code — reading is not reproduction. In `sandbox_exec`: either "
+           "TEST (write a unit test/driver exercising the code, compile and run it — a FAILING run or compile "
+           "error reproduces the bug) or LOG (add a log/print at the spot or in a driver, run it, read the "
+           "output showing the wrong value/behavior). A clean run, or no runnable repro you can build, means "
+           "REFUTE. You may edit /src/new (it auto-resets). Record any NEW bug you observe with add_suspicion. "
+           "When done, call `record_verdict` (verdict, repro_kind test|log|none, reproduction = the command(s) "
+           "run + their real output, evidence) — once, last.")
     out = _run_agent(REPRODUCER_SYS, msg, repo_dir,
                      extra_tools=[CAPTURE, "sandbox_exec", "record_verdict", "reset_workspace"])
     if _VERDICT.get("verdict") in ("confirmed", "refuted", "partial"):   # tool-captured: robust
