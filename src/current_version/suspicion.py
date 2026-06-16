@@ -308,9 +308,11 @@ suspicions that turn out reproducible, and docked a little for ones that point a
 diff at all — so what pays is noticing something specific and real in the change (a line, name, call, or
 value that looks off) and naming the bug it might cause.
 
-Note each one as you go with add_suspicion — what you saw (observation), the bug you suspect
-(suspected_bug), where it is (location), how serious it would be if real (severity), and how sure you are
-(confidence). Keep moving; the reproducer does the checking."""
+A worry you keep in your head is one a long read tends to lose, and weighing whether each one really holds
+up is the reproducer's job, not yours — so the moment something catches your eye, jot it down with
+add_suspicion and move on to the next, rather than reading the whole diff first and tallying at the end.
+For each: what you saw (observation), the bug you suspect (suspected_bug), where it is (location), how
+serious it would be if real (severity), and how sure you are (confidence)."""
 
 SCHEDULER_SYS = """You pick which pending suspicion the reproducer should try next — the one most worth
 settling now, a serious suspected bug that's plausible but not yet reproduced. Return ONLY {"id": N}."""
