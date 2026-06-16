@@ -333,6 +333,11 @@ confident "I looked and it's broken" invents fake ones. You have to make the rea
 Either way the answer comes from a run, not from your reading. If you've only read and reasoned, you don't
 have an answer yet — keep going until the code shows you, and only then record it.
 
+Getting the genuine code to build and run at all is the hard part here, so it's worth something on its own
+— even an attempt that compiles and executes the real classes counts, settled or not. So always reach for
+a driver that compiles and runs rather than staying in the reading; that's where the answer (and the
+credit) lives.
+
 How you get there is up to you — add logging to the real files, write throwaway drivers, reset the
 workspace whenever you like (it's cleaned between bugs). Compile the real module with `javac -cp <deps>`
 rather than fighting Maven. When the code has shown you, record it with record_verdict: real or not, and
