@@ -306,17 +306,17 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 SUSPECTOR_SYS = """You read a pull request and flag things that might be bugs, for a reproducer to check.
 
 Your score:
-    reward = (your suspicions that get confirmed)  −  0.25 · (your suspicions pointing at code not in the diff)
+    reward = Σ confidence(s)  over your suspicions that get CONFIRMED
 
-So flag generously over the real changed lines — every confirmed bug you raise pays, and a bug you miss is
-gone for good — but don't point at code outside the diff; each of those costs you. You're not judging
-whether they hold up (that's the reproducer's job) and you're not scored on being right, only on what gets
-confirmed downstream.
+You bank the confidence you stated, but only on the ones that turn out real. A suspicion that gets refuted
+costs nothing (it just scores 0), and one pointing at code that isn't in the diff can't be confirmed at
+all, so it scores 0 too — there's no penalty for either, so flag generously: a bug you miss is gone for
+good, an extra guess is free. The only thing that pays is a real bug you surfaced — and more when you were
+sure of it. So put high confidence on what you genuinely believe, lower on the long shots; be honest, since
+honest confidence is also what gets the surest ones reproduced first.
 
-Flag each the moment you see it with add_suspicion(observation = the specific thing you saw, suspected_bug
-= the bug it might cause, location, confidence). Don't keep them in your head; sweep the whole diff.
-Confidence isn't in the score — it only sets the order they're checked (surest first) — but a real bug you
-mark low waits behind everything, so be honest with it."""
+Flag each the moment you see it with add_suspicion(observation = the specific thing you saw, suspected_bug =
+the bug it might cause, location, confidence). Don't keep them in your head; sweep the whole diff."""
 
 REPRODUCER_SYS = """You're given one suspected bug in a Java project (an observation + the problem it might
 cause, at a location). Find out whether it's real by making the genuine code show you. You have /src/new
