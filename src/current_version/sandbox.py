@@ -72,6 +72,22 @@ def workdir(version: str = "new") -> str | None:
     return _SESSION.get("base") if version == "old" else _SESSION.get("worktree")
 
 
+def reset_clean():
+    """Reset BOTH mounted trees to pristine and wipe the in-container scratch, so each fact-check
+    starts from clean source regardless of what the previous prover wrote/compiled/edited. The git
+    reset MUST run harness-side (via _run): the worktree's .git points at a /work host path that does
+    not resolve inside the sandbox container. Cheap when nothing changed; clears any stray test files,
+    source edits, or build artifacts the previous check left in the shared worktree."""
+    wt, base, name = _SESSION.get("worktree"), _SESSION.get("base"), _SESSION.get("name")
+    for tree in (wt, base):
+        if tree:
+            _run(f"git -C {tree} checkout -- . >/dev/null 2>&1; "
+                 f"git -C {tree} clean -fdx >/dev/null 2>&1", timeout=180)
+    if name:   # fresh ephemeral scratch (NOT bind-mounted — writes here never touch /src)
+        _run(f"docker exec {name} sh -c 'rm -rf /scratch 2>/dev/null; mkdir -p /scratch' >/dev/null 2>&1",
+             timeout=60)
+
+
 def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
     """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
     old = base); return (exit_code, output). Output is combined stdout+stderr, tail-capped. The

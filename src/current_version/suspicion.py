@@ -187,14 +187,14 @@ class SandboxExecObservation(Observation):
     pass
 
 
-_SBX_DESC = ("Run bash in a Java sandbox container to VERIFY a claim by EXECUTION. The "
-             "container has BOTH full source trees mounted: /src/new (post-PR code, the "
-             "default cwd via version='new') and /src/old (base). Write a tiny program/test "
-             "reproducing the suspected behavior, `javac` it, `java` it; or just compile the "
-             "real changed file in place — the compiler resolves overloads/signatures/types "
-             "exactly and the runtime shows whether it actually throws/misbehaves. Pass "
-             "version='old' to run against the base tree (e.g. before/after comparison). Use "
-             "it whenever a claim is checkable by running code rather than only reading it.")
+_SBX_DESC = ("Run bash in a Java sandbox container to PROVE a claim by EXECUTION. The container has "
+             "BOTH source trees mounted READ-ONLY-by-convention: /src/new (post-PR, cwd via version='new') "
+             "and /src/old (base). Write your test/snippet into the writable scratch dir /scratch (NOT into "
+             "/src), `javac` it (put `-d /scratch/out`, classpath the real tree if needed), `java` it — the "
+             "compiler resolves overloads/signatures/types exactly and the runtime shows whether it actually "
+             "throws/misbehaves. version='old' runs against the base tree (before/after comparison). NOTE: "
+             "/src is RESET to pristine and /scratch is WIPED between fact-checks, so do not modify the source "
+             "trees and do not rely on changes persisting — keep all your scratch in /scratch.")
 
 
 class _SandboxExecExecutor(ToolExecutor):
@@ -449,6 +449,7 @@ def fact_check(repo_dir, s):
     # sandbox sees the real repo). Passing the whole ~150k-char PR context here overflowed
     # max-model-len across the multi-turn agent — and was lost-in-the-middle and costly anyway.
     _reset_verdict()
+    _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous prover wrote/built
     msg = (f"SUSPICION TO PROVE:\nclaim: {s.claim}\nlocation: {s.location}\n"
            f"expected: {s.expected or '(not stated — derive it, grounded)'}\n"
            f"actual:   {s.actual or '(not stated — pin the concrete differing thing)'}\n\n"
