@@ -301,6 +301,103 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
                     executor=_ResetWorkspaceExecutor())]
 
 
+# --- run_java + edit_file: the REPRODUCER's structured tools (replaces sandbox_exec) -----------------
+# sandbox_exec (arbitrary bash) let the reproducer write a COPY of a class and "reproduce" off it. Take it
+# away and give exactly two levers: edit_file (modify an EXISTING file — add logging) and run_java (run
+# mvn/gradle/java/javac, no shell). A copy/stub/driver is then structurally impossible — no tool creates a file.
+class RunJavaAction(Action):
+    command: str = Field(description="a build/run command — mvn / ./mvnw / gradle / ./gradlew / java / javac "
+                         "against the REAL files. No shell redirection, pipes, or file-writing; to change "
+                         "code use edit_file.")
+    version: str = Field(default="new", description="'new' (post-PR, default) or 'old' (base).")
+
+
+class RunJavaObservation(Observation):
+    pass
+
+
+_RUNJAVA_DESC = ("Run the project's tests/build or compile/run the REAL classes: mvn / ./mvnw / gradle / "
+                 "./gradlew / java / javac. Returns exit code + output. Runs only those programs and rejects "
+                 "shell redirection / file-writing — you cannot create files here (use edit_file to modify an "
+                 "existing one). This is how you exercise the real code after adding logging.")
+_RUNJAVA_OK = {"mvn", "./mvnw", "mvnw", "gradle", "./gradlew", "gradlew", "java", "javac"}
+_RUNJAVA_BAD = (">", "|", ";", "&&", "||", "`", "$(", "<<", "cat ", "tee", " cp ", " mv ", "touch ",
+                "mkdir", "echo ", "printf", "ln ", "dd ", "rsync")
+
+
+class _RunJavaExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        cmd = str(action.command).strip()
+        first = cmd.split()[0] if cmd else ""
+        if first not in _RUNJAVA_OK or any(b in cmd for b in _RUNJAVA_BAD):
+            return RunJavaObservation.from_text(text="rejected: run_java only runs mvn/gradle/java/javac with no "
+                "shell redirection or file-writing. To change code use edit_file (existing files only).")
+        rc, out = _sandbox.exec_(cmd, version=getattr(action, "version", "new"))
+        return RunJavaObservation.from_text(text=f"exit={rc}\n{out}")
+
+
+class RunJavaTool(ToolDefinition[RunJavaAction, RunJavaObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[RunJavaTool]":  # noqa: ARG003
+        return [cls(description=_RUNJAVA_DESC, action_type=RunJavaAction, observation_type=RunJavaObservation,
+                    annotations=ToolAnnotations(title="run_java", readOnlyHint=False, destructiveHint=False,
+                                                idempotentHint=False, openWorldHint=True),
+                    executor=_RunJavaExecutor())]
+
+
+class EditFileAction(Action):
+    path: str = Field(description="path of an EXISTING file relative to the source root (e.g. "
+                      "core/runtime/src/main/java/io/quarkus/runtime/Foo.java) to modify.")
+    find: str = Field(description="exact existing text to replace (must appear verbatim in the file).")
+    replace: str = Field(description="the new text (e.g. the same line plus a log statement).")
+    version: str = Field(default="new", description="'new' (post-PR, default) or 'old' (base).")
+
+
+class EditFileObservation(Observation):
+    pass
+
+
+_EDIT_DESC = ("Modify an EXISTING source file by replacing exact text — e.g. add a log line. It CANNOT create "
+              "files and refuses if the file or the find-text is absent, so you can only instrument the real "
+              "code, never write a copy. Pair with run_java to exercise it.")
+
+
+class _EditFileExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        root = _sandbox.workdir(getattr(action, "version", "new"))
+        if not root:
+            return EditFileObservation.from_text(text="no sandbox session")
+        p = os.path.normpath(os.path.join(root, str(action.path)))
+        if not p.startswith(os.path.normpath(root) + os.sep):
+            return EditFileObservation.from_text(text="refused: path escapes the source tree.")
+        if not os.path.isfile(p):
+            return EditFileObservation.from_text(text=f"refused: {action.path} does not exist — edit_file only "
+                "MODIFIES existing files, it cannot create new ones.")
+        try:
+            s = open(p, errors="ignore").read()
+        except Exception as e:  # noqa: BLE001
+            return EditFileObservation.from_text(text=f"refused: cannot read {action.path}: {e}")
+        if str(action.find) not in s:
+            return EditFileObservation.from_text(text=f"refused: the find-text was not found in {action.path}.")
+        open(p, "w").write(s.replace(str(action.find), str(action.replace), 1))
+        return EditFileObservation.from_text(text=f"edited {action.path} (1 replacement).")
+
+
+class EditFileTool(ToolDefinition[EditFileAction, EditFileObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[EditFileTool]":  # noqa: ARG003
+        return [cls(description=_EDIT_DESC, action_type=EditFileAction, observation_type=EditFileObservation,
+                    annotations=ToolAnnotations(title="edit_file", readOnlyHint=False, destructiveHint=False,
+                                                idempotentHint=False, openWorldHint=False),
+                    executor=_EditFileExecutor())]
+
+
 # --- prompts (the genome for this architecture) -----------------------------------------
 
 SUSPECTOR_SYS = """You read a pull request and flag things that might be bugs, for a reproducer to check.
@@ -320,29 +417,32 @@ the bug it might cause, location, confidence). Don't keep them in your head; swe
 
 REPRODUCER_SYS = """You're given one suspected bug in a Java project (an observation + the problem it might
 cause, at a location). Find out whether it's real by making the genuine code show you. You have /src/new
-(with the change) and /src/old (without), both buildable/runnable, and a sandbox.
+(with the change) and /src/old (without), both buildable/runnable.
+
+Your tools are deliberately narrow: read tools to navigate; `edit_file` to add a log line into an EXISTING
+file (it cannot create files); `run_java` to run the project's tests/build or javac/java the real classes
+(mvn/./mvnw/gradle/./gradlew/java/javac only — no shell, no redirection). There is no way to write a new
+file, so a copy/stub/standalone driver simply isn't possible — you instrument and run the real code or you
+have nothing.
 
 Your score:
     reward = no_cheat · (0.15·ran + 0.85·shown)  +  (confirmed bugs you raise along the way)
 
-  no_cheat = 1 only if you worked by MODIFYING EXISTING files (adding logging) and running the real code.
-           **You cannot create new files** — the sandbox blocks any command that writes a new source file:
-           it removes the file and WITHHOLDS the output, so a copy/stub/standalone driver earns you nothing
-           and tells you nothing. Add your logging into the real file and run an EXISTING test or entry point
-           that exercises it.
-  ran    = 1 if you got the genuine project classes to compile and run (the real ones, not a copy/sketch).
+  no_cheat = 1 because you can only touch the real code (the tools allow nothing else); it is 0 only if you
+           settle a verdict without a run.
+  ran    = 1 if you got the genuine project classes to compile and run (an existing test, or javac/java of
+           the real classes — not a sketch).
   shown  = 1 if a RUN settles it. REAL: an existing test you ran fails / won't compile, or a log you added
-           to the real file prints the wrong value — ideally wrong on /src/new, right on /src/old. NOT REAL:
-           the test passes, the log is right, or a grep shows the suspected code isn't there. Reading and
-           concluding leaves shown = 0.
+           with edit_file to the real file prints the wrong value — ideally wrong on /src/new, right on
+           /src/old. NOT REAL: the test passes, the log is right, or a grep shows the suspected code isn't
+           there. Reading and concluding leaves shown = 0.
 
 Read the formula: reasoning your way to an answer earns nothing (shown stays 0); getting the real code to
 build and run is worth a little on its own (ran); a run that settles it is the bulk (shown); a different real
-bug you notice and raise with add_suspicion pays too. Work in /src/new by adding logging to the real files
-and running the project's existing tests/build (`mvn`/`./mvnw`, or `javac -cp <deps>` against the real
-classes) — do NOT write copies or drivers (blocked). reset_workspace anytime (cleaned between bugs). Record
-with record_verdict(verdict, repro_kind test|log|grep, reproduction = the commands you ran + their output,
-evidence)."""
+bug you notice and raise with add_suspicion pays too. The loop is: edit_file to add a log to the real file →
+run_java an existing test/entry point that exercises it → read the output. reset_workspace anytime (cleaned
+between bugs). Record with record_verdict(verdict, repro_kind test|log|grep, reproduction = the commands you
+ran + their output, evidence)."""
 
 SOLVER_SYS = """You're handed a bug already shown to be real — the reproducer's logging shows a value wrong
 on /src/new and right on /src/old, with the driver that triggers it. Fix the real code so it's gone.
@@ -432,7 +532,7 @@ def _read_tools():
         harness._register_subagents()    # registers search/grep/glob/file_editor/pr_files/pr_file_diff
         for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
                        ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool),
-                       ("record_fix", RecordFixTool)):
+                       ("record_fix", RecordFixTool), ("run_java", RunJavaTool), ("edit_file", EditFileTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -441,17 +541,26 @@ def _read_tools():
     return [Tool(name=n) for n in ("search", "grep", "glob", "file_editor", "pr_files", "pr_file_diff")]
 
 
+# read tools that can only READ (no file_editor — which can `create` a copy). The reproducer gets these
+# plus edit_file (modify existing) + run_java (run, no shell) — so a copy/stub/driver has no tool to exist.
+_READONLY_BASE = ("search", "grep", "glob", "pr_files", "pr_file_diff")
+
+
 CAPTURE = "add_suspicion"
 
 
-def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new"):
+def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new", base=None):
     """Run a tool-using agent to completion; return its final (post-think) text. The read
     tools (search/grep/glob/file_editor) are rooted at the agent's workspace, which we point
     at the POST-PR tree by default (version='new') so added/renamed files are on disk and
     searchable — base-only was the dominant cause of under-confirming. `version='old'` (or no
-    live sandbox session) falls back to the base checkout."""
+    live sandbox session) falls back to the base checkout. `base` overrides the read-tool set —
+    the reproducer passes _READONLY_BASE (no file_editor) so it cannot create a copy."""
     ws = _sandbox.workdir(version) or str(repo_dir)
-    tools = _read_tools() + [Tool(name=n) for n in extra_tools]
+    base_tools = [Tool(name=n) for n in base] if base is not None else _read_tools()
+    if base is not None:
+        _read_tools()    # ensure run_java/edit_file/etc are registered even when overriding the base set
+    tools = base_tools + [Tool(name=n) for n in extra_tools]
     # PER-TURN output cap = 32768 (NOT a limit on the review — a turn emits a verdict + a few tool
     # calls). The base 131072 reserves half the 262144 window for output, leaving only ~11k tokens
     # of condenser margin (120000 + 131072 = 251072) — one big tool read overshoots → vLLM 400 (the
@@ -510,18 +619,20 @@ def reproduce(repo_dir, s):
     # context here overflowed max-model-len across the multi-turn agent — and was lost-in-the-middle.
     _reset_verdict()
     _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous reproducer wrote/built
-    _sandbox.set_no_new_files(True)   # no_cheat: reproducer may only MODIFY existing files (add logging)
+    _sandbox.set_no_new_files(True)   # no_cheat backstop; the real guarantee is the tool set below (no shell)
     msg = (f"SUSPICION TO REPRODUCE:\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
            f"location: {s.location}\n\n"
            "Make the real code show you whether this is real, then say which way — but only from a run, not "
            "from reading. Real: a test you ran fails / won't compile, or a log you added prints the wrong "
            "value (ideally wrong on /src/new, right on /src/old). Not real: the test you ran passes, the log "
            "is right, or a grep shows the suspected code isn't even there. If you've only read it, you don't "
-           "have an answer yet. You may edit /src/new to add logs (it auto-resets). Record any NEW bug you "
-           "observe with add_suspicion. When the code has shown you, call `record_verdict` (verdict, "
-           "repro_kind test|log|grep, reproduction = the command(s) run + their real output, evidence).")
-    out = _run_agent(REPRODUCER_SYS, msg, repo_dir,
-                     extra_tools=[CAPTURE, "sandbox_exec", "record_verdict", "reset_workspace"])
+           "have an answer yet. Your tools: `edit_file` to add a log line to an EXISTING file, and `run_java` "
+           "to run the project's tests/build or javac/java the real classes (it auto-resets between checks). "
+           "Record any NEW bug you observe with add_suspicion. When the code has shown you, call "
+           "`record_verdict` (verdict, repro_kind test|log|grep, reproduction = the command(s) run + their "
+           "real output, evidence).")
+    out = _run_agent(REPRODUCER_SYS, msg, repo_dir, base=_READONLY_BASE,
+                     extra_tools=[CAPTURE, "run_java", "edit_file", "record_verdict", "reset_workspace"])
     if _VERDICT.get("verdict") in ("confirmed", "refuted", "inconclusive"):   # tool-captured: robust
         return dict(_VERDICT)
     print(f"  [verdict] no record_verdict for S[{s.id}] — inconclusive (nothing run)", flush=True)
