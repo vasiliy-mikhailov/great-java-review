@@ -45,11 +45,10 @@ def _reset_store():
     _STORE.clear()
 
 
-def _store_add(claim, location, severity, confidence, expected="", suspected=""):
+def _store_add(observation, suspected_bug, location, severity, confidence):
     sid = len(_STORE)
-    _STORE.append({"id": sid, "claim": str(claim), "location": str(location),
-                   "severity": str(severity).lower(), "confidence": confidence,
-                   "expected": str(expected), "suspected": str(suspected)})
+    _STORE.append({"id": sid, "observation": str(observation), "suspected_bug": str(suspected_bug),
+                   "location": str(location), "severity": str(severity).lower(), "confidence": confidence})
     return sid
 
 
@@ -61,34 +60,32 @@ def _reset_verdict():
 
 
 class AddSuspicionAction(Action):
-    claim: str = Field(description="The suspected PROBLEM, in one line.")
-    location: str = Field(description="File.java:line or area where it is.")
-    expected: str = Field(default="", description="OPTIONAL one-line hint: what correct behavior SHOULD be "
-                          "(the norm/contract/precedent). Fill from a glance if obvious; leave blank if not.")
-    suspected: str = Field(default="", description="OPTIONAL one-line hint: what you SUSPECT this code does "
-                           "wrong instead — a GUESS, not verified. Glance-fill or leave blank. The prover "
-                           "establishes the real behavior.")
-    severity: str = Field(description="critical | high | medium | low (impact IF the problem is real).")
-    confidence: float = Field(description="0-1, your prior that it is real, before fact-checking.")
+    observation: str = Field(description="What you LITERALLY SEE in the code that looks off — the concrete "
+                             "factual thing (a specific line, name, call, value). Not a judgment; you must "
+                             "have actually seen it.")
+    suspected_bug: str = Field(description="The bug you SUSPECT this causes — the hypothesized problem, one "
+                               "line. A guess for the reproducer to reproduce or drop; you need not be sure.")
+    location: str = Field(description="File.java:line or area where the observation is.")
+    severity: str = Field(description="critical | high | medium | low (impact IF the bug is real).")
+    confidence: float = Field(description="0-1, your prior that it is a real bug, pre-reproduction.")
 
 
 class AddSuspicionObservation(Observation):
     pass
 
 
-_ADD_DESC = ("Record ONE suspicion — a candidate DEFECT for a prover to check later, NOT a confirmed "
-             "finding. Raise it the MOMENT something looks off; do not verify it yourself. Optionally add "
-             "one-line hints: `expected` (what correct behavior should be) and `suspected` (what you guess "
-             "the code does wrong) — glance-fill or leave blank, the prover pins down the real behavior. "
-             "Skip pure chores ('verify X') and pure speculation ('might be slow'). Call once per suspicion. "
-             "Args: claim, location, [expected], [suspected], severity (critical/high/medium/low), confidence (0-1).")
+_ADD_DESC = ("Record ONE suspicion — an OBSERVATION (something you literally saw that looks off) plus the "
+             "suspected_bug it might cause. A candidate for the REPRODUCER to reproduce later, NOT a confirmed "
+             "finding. Raise it the MOMENT something looks off; do not verify it yourself. Skip pure chores "
+             "('verify X') and pure speculation ('might be slow'). Call once per suspicion. "
+             "Args: observation, suspected_bug, location, severity (critical/high/medium/low), confidence (0-1).")
 
 
 class _AddSuspicionExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
-        sid = _store_add(action.claim, action.location, action.severity, action.confidence,
-                         action.expected, action.suspected)
-        return AddSuspicionObservation.from_text(text=f"recorded suspicion #{sid}: {str(action.claim)[:60]}")
+        sid = _store_add(action.observation, action.suspected_bug, action.location,
+                         action.severity, action.confidence)
+        return AddSuspicionObservation.from_text(text=f"recorded suspicion #{sid}: {str(action.suspected_bug)[:60]}")
 
 
 class AddSuspicionTool(ToolDefinition[AddSuspicionAction, AddSuspicionObservation]):
@@ -105,50 +102,49 @@ class AddSuspicionTool(ToolDefinition[AddSuspicionAction, AddSuspicionObservatio
                     executor=_AddSuspicionExecutor())]
 
 
-# --- record_verdict: the fact-checker's decision is CAPTURED BY A TOOL, not parsed from prose ---
+# --- record_verdict: the reproducer's decision is CAPTURED BY A TOOL, not parsed from prose ---
 # The loop used to regex the final message for {"verdict":...}; when the model wrote its decision in
 # prose ("the logger issue — confirmed, uses ReflectiveHierarchyStep.class") the parse failed and the
-# verdict SILENTLY defaulted to "partial", losing real confirms (richer post-PR context made the model
-# more discursive, exposing this). A tool call is robust to verbosity — same fix add_suspicion already is.
+# verdict SILENTLY defaulted to "partial", losing real confirms. A tool call is robust to verbosity.
 class RecordVerdictAction(Action):
-    verdict: str = Field(description="confirmed | refuted. confirmed ONLY if your PROOF shows actual != "
-                         "expected (a real defect). If the proof shows they match, or you could not build "
-                         "a proof, the verdict is refuted. (partial only for a genuinely-substantive issue "
-                         "that no static read AND no runnable test could settle.)")
-    proof_kind: str = Field(description="static | dynamic | none. static = a read/grep shows the wrong "
+    verdict: str = Field(description="confirmed | refuted. confirmed ONLY if you REPRODUCED the bug — the "
+                         "wrong value is literally there (static) or your test actually FAILED (dynamic). "
+                         "If the code is correct, or you could not reproduce it, the verdict is refuted. "
+                         "(partial only for a genuinely-substantive bug no read AND no runnable test could settle.)")
+    repro_kind: str = Field(description="static | dynamic | none. static = a read/grep shows the wrong "
                             "value/symbol literally present (or absent). dynamic = you wrote & RAN a test "
-                            "in sandbox_exec and report its result. none = you could not prove it.")
-    proof: str = Field(description="The PROOF itself: for static, the file:line + the exact text shown; "
-                       "for dynamic, the command you ran and its actual output (pass/fail). This must "
-                       "demonstrate actual vs expected, not assert it.")
-    evidence: str = Field(description="One-line summary: file:line + the concrete defect (or why refuted).")
+                            "in sandbox_exec that manifests the bug. none = you could not reproduce it.")
+    reproduction: str = Field(description="The reproduction itself: for static, the file:line + the exact "
+                       "text shown; for dynamic, the command you ran and its actual output (the failure). "
+                       "This must SHOW the bug, not assert it.")
+    evidence: str = Field(description="One-line summary: file:line + the concrete bug (or why not reproduced).")
 
 
 class RecordVerdictObservation(Observation):
     pass
 
 
-_VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. You are a PROVER, not a judge: "
-                 "verdict=confirmed REQUIRES a proof that `actual` != `expected` — either `static` (a "
-                 "read/grep showing the wrong value literally present/absent) or `dynamic` (a test you "
-                 "wrote and RAN in sandbox_exec, reporting its pass/fail output). If the code matches "
-                 "expected, or the concern is speculative/idiomatic/in test-tooling and you cannot build a "
-                 "proof, record refuted (proof_kind=none). Do not confirm a plausibility. "
-                 "Args: verdict, proof_kind (static/dynamic/none), proof (the actual evidence/test output), evidence.")
+_VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. You are a REPRODUCER, not a judge: "
+                 "verdict=confirmed REQUIRES that you REPRODUCED the bug — either `static` (a read/grep "
+                 "showing the wrong value literally present/absent) or `dynamic` (a test you wrote and RAN "
+                 "in sandbox_exec that actually fails / manifests the bug). If the code is correct, or the "
+                 "bug is speculative/idiomatic/in test-tooling and you cannot reproduce it, record refuted "
+                 "(repro_kind=none). Do not confirm a plausibility. "
+                 "Args: verdict, repro_kind (static/dynamic/none), reproduction (the actual evidence/test output), evidence.")
 
 
 class _RecordVerdictExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
         _VERDICT["verdict"] = str(action.verdict).lower().strip()
-        _VERDICT["proof_kind"] = str(action.proof_kind).lower().strip()
-        _VERDICT["proof"] = str(action.proof)
+        _VERDICT["repro_kind"] = str(action.repro_kind).lower().strip()
+        _VERDICT["reproduction"] = str(action.reproduction)
         _VERDICT["evidence"] = str(action.evidence)
-        # guard: a 'confirmed' with no proof is exactly the failure mode we are killing — downgrade it.
-        if _VERDICT["verdict"] == "confirmed" and _VERDICT["proof_kind"] not in ("static", "dynamic"):
+        # guard: a 'confirmed' with no reproduction is exactly the failure mode we are killing — downgrade it.
+        if _VERDICT["verdict"] == "confirmed" and _VERDICT["repro_kind"] not in ("static", "dynamic"):
             _VERDICT["verdict"] = "refuted"
             return RecordVerdictObservation.from_text(
-                text="confirmed REQUIRES proof_kind=static|dynamic with real proof; none given -> recorded refuted")
-        return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['proof_kind']})")
+                text="confirmed REQUIRES repro_kind=static|dynamic with a real reproduction; none given -> recorded refuted")
+        return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['repro_kind']})")
 
 
 class RecordVerdictTool(ToolDefinition[RecordVerdictAction, RecordVerdictObservation]):
@@ -256,37 +252,35 @@ class ResetWorkspaceTool(ToolDefinition[ResetWorkspaceAction, ResetWorkspaceObse
 
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-GENERATOR_SYS = """You raise SUSPICIONS about a Java pull request — candidate issues for a PROVER to
-check later, NOT confirmed findings. The PR diff is provided and your workspace is the POST-PR code;
-glance with search/grep/file_editor where a quick look helps.
+SUSPECTOR_SYS = """You are the SUSPECTOR. You scan a Java pull request and record SUSPICIONS — each an
+OBSERVATION (something you literally see that looks off) plus the suspected_bug it might cause. These are
+candidates for a REPRODUCER to reproduce later, NOT confirmed findings. The PR diff is provided and your
+workspace is the POST-PR code; glance with search/grep/file_editor where a quick look helps.
 
-Cast a WIDE net: OVER-suspect. A suspicion costs nothing — a later prover refutes the wrong ones — but a
+Cast a WIDE net: OVER-suspect. A suspicion costs nothing — the reproducer drops the wrong ones — but a
 missed issue is gone. For every place a strong reviewer would pause — a possible correctness bug, broken
 contract, missing null/error handling, concurrency hazard, resource leak, wrong API/overload use,
 copy-paste slip (a class/constant/field/logger name carried wrong from a sibling), off-by-one, inverted
-condition, behavior change, untested path, etc. — fire a suspicion.
+condition, behavior change, untested path, etc. — record a suspicion.
 
-Work FAST and SHALLOW. You only HYPOTHESIZE; you do NOT prove and you do NOT pre-judge. Do NOT deep-read to
-verify, do NOT build proofs, and DO NOT decide whether a suspicion "holds up" or is "reasonable" — that is
-the prover's job, and doing it here is wasted work that loses suspicions. The MOMENT something looks off,
-call add_suspicion and move on. Never keep a numbered list in your head to emit at the end — record each
-the instant you notice it, or a long think / compaction loses them.
+Work FAST and SHALLOW. You only OBSERVE and SUSPECT; you do NOT prove and you do NOT pre-judge. Do NOT
+deep-read to verify, do NOT reproduce anything, and DO NOT decide whether a suspicion "holds up" or is
+"reasonable" — that is the reproducer's job, and doing it here is wasted work that loses suspicions. The
+MOMENT something looks off, call add_suspicion and move on. Never keep a numbered list in your head to emit
+at the end — record each the instant you notice it, or a long think / compaction loses them.
 
-add_suspicion takes claim + location (required). You MAY add one-line throwaway hints — expected (what
-correct behavior should be) and suspected (what you guess the code does wrong) — but only if they are
-obvious at a glance; otherwise LEAVE THEM BLANK, never read deeply to fill them. Plus severity
-(critical/high/medium/low impact IF true) and confidence (0-1 prior it's real). When you have swept the
-diff, finish."""
+add_suspicion takes: observation (the concrete thing you SEE — a specific line/name/call/value, factual,
+not a judgment), suspected_bug (one line — the bug you suspect it causes), location, severity (critical/
+high/medium/low impact IF real), confidence (0-1 prior it's real). When you have swept the diff, finish."""
 
-SCHEDULER_SYS = """You pick which pending SUSPICION to fact-check next. Choose the one whose
-verification is most valuable now — high severity AND genuinely uncertain (a high-impact claim that is
-plausible but not yet confirmed). Return ONLY {"id": N} for the chosen suspicion."""
+SCHEDULER_SYS = """You pick which pending SUSPICION the reproducer should try next. Choose the one most
+valuable to settle now — high severity AND genuinely uncertain (a high-impact suspected bug that is
+plausible but not yet reproduced). Return ONLY {"id": N} for the chosen suspicion."""
 
-FACT_CHECKER_SYS = """You are a PROVER. You are handed ONE suspicion — a defect HYPOTHESIS: what behavior
-is `expected` (the norm/contract) and what the code is `suspected` to do wrong instead (an unverified
-guess; it may be blank or imprecise — that's fine, you pin it down). Your job is NOT to opine on whether
-it's "probably" a bug — it is to PROVE, by reproduction, what the code ACTUALLY does and whether that
-actual behavior differs from `expected`. The verdict is the OUTCOME of that proof, never your opinion.
+REPRODUCER_SYS = """You are the REPRODUCER. You are handed ONE suspicion — an `observation` (something the
+suspector saw) and a `suspected_bug` (what it might cause; a guess, possibly imprecise). Your job is NOT to
+opine on whether it's "probably" a bug — it is to TRY TO REPRODUCE the bug: make it actually manifest, or
+show the observation literally is the bug. The verdict is the OUTCOME of that attempt, never your opinion.
 
 Your workspace IS the POST-PR code: `search`/`grep`/`glob`/`file_editor` read the files AS THE PR LEAVES
 THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (- = base, + = post-PR).
@@ -294,30 +288,29 @@ THEM (added/renamed files ARE on disk). `pr_file_diff` shows the exact change (-
 post-PR default, 'old' base) — work in /src/new, write a snippet/test, compile, run. Edit/compile freely:
 the tree auto-resets to pristine before the next suspicion, and `reset_workspace` resets it on demand.
 
-Build the CHEAPEST sufficient PROOF:
-- STATIC proof — when the defect is a literal fact: a read/grep shows the wrong value/symbol literally
-  PRESENT (a wrong class/constant/logger name, an off-by-one constant) or a required thing literally
-  ABSENT (an unregistered attribute, a missing guard). The reading IS the proof: actual != expected, on
-  the page. Use this for mechanical slips — no test needed.
-- DYNAMIC proof — when the defect is BEHAVIORAL or NUMERIC (a comparator-contract violation, a precision
-  loss, an NPE, a wrong result, a locale surprise): WRITE a tiny test that asserts `expected`, compile and
-  RUN it in `sandbox_exec`, and read the result. A FAILING test (actual != expected, shown by the run) =
-  confirmed. A PASSING test = refuted. Construct the concrete failing input; if you cannot make a test
-  fail, the defect is not real.
+Reproduce with the CHEAPEST sufficient method:
+- STATIC — when the bug is a literal fact: a read/grep shows the wrong value/symbol literally PRESENT (a
+  wrong class/constant/logger name, an off-by-one constant) or a required thing literally ABSENT (an
+  unregistered attribute, a missing guard). The reading IS the reproduction: the bug is on the page. Use
+  this for mechanical slips — no test needed.
+- DYNAMIC — when the bug is BEHAVIORAL or NUMERIC (a comparator-contract violation, a precision loss, an
+  NPE, a wrong result, a locale surprise): WRITE a tiny test that asserts the correct behavior, compile and
+  RUN it in `sandbox_exec`. A FAILING run REPRODUCES the bug = confirmed. A PASSING run = refuted. Construct
+  the concrete failing input; if you cannot make a test fail, the bug is not real.
 
-Then REFUTE — decisively — whenever you cannot produce such a proof:
-- the code matches `expected` (correct / intentional / by-design / guarded) — your own analysis saying
-  "this is correct" or "this is intended" IS a refutation, record it as refuted;
-- the concern is speculative ("may/might/could") and you cannot build a test that actually fails;
-- the claim depends on an EXTERNAL library/service or behavior you cannot read or run;
+Then REFUTE — decisively — whenever you cannot reproduce it:
+- the code is correct / intentional / by-design / guarded — your own analysis saying "this is correct" or
+  "this is intended" IS a refutation, record it as refuted;
+- the bug is speculative ("may/might/could") and you cannot build a test that actually fails;
+- it depends on an EXTERNAL library/service or behavior you cannot read or run;
 - the observation is factually true but harmless / idiomatic / in test or build tooling.
-An un-disproven worry is NOT a finding. Confirming a plausibility is exactly how false findings survive.
+An un-reproduced worry is NOT a finding. Confirming a plausibility is exactly how false findings survive.
 
-While reading, if you NOTICE a DIFFERENT falsifiable defect (with its own expected≠actual), record it
-with `add_suspicion`. For THIS suspicion, RECORD your decision by CALLING `record_verdict` — once, last —
-with verdict, proof_kind (static|dynamic|none), proof (the actual file:line text OR the command + its
-run output), and a one-line evidence summary. The prose is not read; only the tool call is. confirmed
-REQUIRES proof_kind static or dynamic carrying real proof — a confirmed with proof_kind=none is rejected."""
+While exploring, if you OBSERVE a DIFFERENT candidate bug, record it with `add_suspicion`. For THIS
+suspicion, RECORD your decision by CALLING `record_verdict` — once, last — with verdict, repro_kind
+(static|dynamic|none), reproduction (the actual file:line text OR the command + its run output), and a
+one-line evidence summary. The prose is not read; only the tool call is. confirmed REQUIRES repro_kind
+static or dynamic carrying a real reproduction — a confirmed with repro_kind=none is rejected."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only. Each confirmed
 finding becomes a point with its file:line and the evidence. Add NO new claims of your own.
@@ -337,16 +330,15 @@ SEV = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 @dataclass
 class Suspicion:
     id: int
-    claim: str
+    observation: str                  # what the suspector literally saw
+    suspected_bug: str                # the bug it might cause (hypothesis)
     location: str
     severity: str
     confidence: float
-    expected: str = ""
-    suspected: str = ""
     status: str = "pending"           # pending / confirmed / refuted / partial
     evidence: str = ""
-    proof_kind: str = ""              # static / dynamic / none — how a confirm was proven
-    proof: str = ""                   # the proof itself (file:line text, or command + run output)
+    repro_kind: str = ""              # static / dynamic / none — how the bug was reproduced
+    reproduction: str = ""            # the reproduction itself (file:line text, or command + run output)
 
     def value(self) -> float:
         try:
@@ -451,16 +443,16 @@ def _store_to_suspicions(by_id):
     for d in _STORE:
         if d["id"] not in by_id:
             try:
-                by_id[d["id"]] = Suspicion(id=d["id"], claim=d["claim"], location=d["location"],
-                                           severity=d["severity"], confidence=float(d["confidence"]),
-                                           expected=d.get("expected", ""), suspected=d.get("suspected", ""))
+                by_id[d["id"]] = Suspicion(id=d["id"], observation=d["observation"],
+                                           suspected_bug=d["suspected_bug"], location=d["location"],
+                                           severity=d["severity"], confidence=float(d["confidence"]))
             except Exception:  # noqa: BLE001
                 pass
 
 
 def generate(repo_dir, ctx):
-    _run_agent(GENERATOR_SYS, "PULL REQUEST:\n" + ctx +
-               "\n\nRaise the suspicions now — call add_suspicion once for each.",
+    _run_agent(SUSPECTOR_SYS, "PULL REQUEST:\n" + ctx +
+               "\n\nRecord the suspicions now — call add_suspicion once for each (observation + suspected_bug).",
                repo_dir, extra_tools=[CAPTURE])
     by_id = {}
     _store_to_suspicions(by_id)
@@ -468,7 +460,7 @@ def generate(repo_dir, ctx):
 
 
 def schedule(pending):
-    lst = "\n".join(f"[{s.id}] sev={s.severity} conf={s.confidence} :: {s.claim} ({s.location})"
+    lst = "\n".join(f"[{s.id}] sev={s.severity} conf={s.confidence} :: {s.suspected_bug} ({s.location})"
                     for s in pending)
     try:
         obj = _extract_json(_llm_call(SCHEDULER_SYS, "PENDING SUSPICIONS:\n" + lst +
@@ -481,42 +473,40 @@ def schedule(pending):
     return max(pending, key=lambda s: s.value())          # fallback: highest value
 
 
-def fact_check(repo_dir, s):
-    # LEAN context (root-cause fix for the 400 that crashed 6222): a fact-check verifies ONE
-    # suspicion, so it gets the suspicion and reads the actual code ON DEMAND via the tools (the
-    # sandbox sees the real repo). Passing the whole ~150k-char PR context here overflowed
-    # max-model-len across the multi-turn agent — and was lost-in-the-middle and costly anyway.
+def reproduce(repo_dir, s):
+    # LEAN context (root-cause fix for the 400 that crashed 6222): a reproduction targets ONE
+    # suspicion, reading the actual code ON DEMAND via the tools. Passing the whole ~150k-char PR
+    # context here overflowed max-model-len across the multi-turn agent — and was lost-in-the-middle.
     _reset_verdict()
-    _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous prover wrote/built
-    msg = (f"SUSPICION TO PROVE:\nclaim: {s.claim}\nlocation: {s.location}\n"
-           f"expected:  {s.expected or '(not stated — derive the norm/contract)'}\n"
-           f"suspected: {s.suspected or '(not stated — figure out what the code actually does here)'}\n\n"
-           "PROVE what the code ACTUALLY does and whether it differs from expected. Build the cheapest "
-           "sufficient proof: STATIC (read/grep shows "
-           "the wrong value/symbol literally present or absent) for a mechanical slip; DYNAMIC (write a test "
-           "asserting `expected`, compile and RUN it via `sandbox_exec` — a FAILING run = confirmed, a PASSING "
-           "run = refuted) for a behavioral/numeric claim. If the code matches expected, or the worry is "
-           "speculative/external/idiomatic and you cannot build a failing proof — REFUTE. Record any NEW "
-           "falsifiable defect with add_suspicion. When proven, call `record_verdict` (verdict, proof_kind "
-           "static|dynamic|none, proof = the file:line text or command+output, evidence) — once, last.")
-    out = _run_agent(FACT_CHECKER_SYS, msg, repo_dir,
+    _sandbox.reset_clean()   # pristine source for THIS check — wipe what the previous reproducer wrote/built
+    msg = (f"SUSPICION TO REPRODUCE:\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
+           f"location: {s.location}\n\n"
+           "Try to REPRODUCE the suspected bug — make it actually manifest. Build the cheapest sufficient "
+           "reproduction: STATIC (read/grep shows the wrong value/symbol literally present or absent) for a "
+           "mechanical slip; DYNAMIC (write a test in /src/new that asserts the correct behavior, compile and "
+           "RUN it via `sandbox_exec` — a FAILING run reproduces the bug = confirmed, a PASSING run = refuted) "
+           "for a behavioral/numeric bug. If the code is correct/intended, or the bug is speculative/external/"
+           "idiomatic and you cannot reproduce it — REFUTE. Record any NEW bug you observe with add_suspicion. "
+           "When done, call `record_verdict` (verdict, repro_kind static|dynamic|none, reproduction = the "
+           "file:line text or command+output, evidence) — once, last.")
+    out = _run_agent(REPRODUCER_SYS, msg, repo_dir,
                      extra_tools=[CAPTURE, "sandbox_exec", "record_verdict", "reset_workspace"])
     if _VERDICT.get("verdict") in ("confirmed", "refuted", "partial"):   # tool-captured: robust
         return dict(_VERDICT)
     j = _extract_json(out, "{")                                          # fallback: a JSON blob in text
     if isinstance(j, dict) and str(j.get("verdict", "")).lower() in ("confirmed", "refuted", "partial"):
         return {"verdict": str(j["verdict"]).lower(), "evidence": str(j.get("evidence", ""))}
-    print(f"  [verdict] no record_verdict + no JSON for S[{s.id}] — defaulting refuted (no proof)", flush=True)
-    return {"verdict": "refuted", "evidence": (out or "")[-300:], "proof_kind": "none"}
+    print(f"  [verdict] no record_verdict + no JSON for S[{s.id}] — defaulting refuted (not reproduced)", flush=True)
+    return {"verdict": "refuted", "evidence": (out or "")[-300:], "repro_kind": "none"}
 
 
 def synthesize(ctx, confirmed, partials):
-    body = "CONFIRMED FINDINGS (each PROVEN: actual behavior != expected):\n" + ("\n".join(
-        f"- [{s.location}] {s.claim}\n    expected: {s.expected}\n"
-        f"    proof ({s.proof_kind}): {s.evidence}" for s in confirmed) or "(none)")
+    body = "CONFIRMED FINDINGS (each REPRODUCED: the bug actually manifests):\n" + ("\n".join(
+        f"- [{s.location}] {s.suspected_bug}\n    observation: {s.observation}\n"
+        f"    reproduction ({s.repro_kind}): {s.evidence}" for s in confirmed) or "(none)")
     if partials:
-        body += "\n\nOPEN QUESTIONS (partial — include as hedged questions):\n" + "\n".join(
-            f"- {s.claim} [{s.location}]" for s in partials)
+        body += "\n\nOPEN QUESTIONS (could not reproduce — include as hedged questions):\n" + "\n".join(
+            f"- {s.suspected_bug} [{s.location}]" for s in partials)
     txt = _llm_call(SYNTHESIZER_SYS, "PULL REQUEST (context):\n" + ctx[:8000] + "\n\n" + body +
                     "\n\nWrite the review.")
     return final_review(_post_think(txt))
@@ -533,24 +523,24 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=
     log(f"generated {len(by_id)} suspicions")
     for s in sorted(by_id.values(), key=lambda x: -x.value()):
         mark = "" if s.confidence >= conf_floor else "  (below conf floor, won't check)"
-        log(f"   S[{s.id}] v={s.value():.1f} sev={s.severity} conf={s.confidence} :: {s.claim[:72]}{mark}")
+        log(f"   S[{s.id}] v={s.value():.1f} sev={s.severity} conf={s.confidence} :: {s.suspected_bug[:72]}{mark}")
     checks = 0
     while checks < max_checks:
-        _store_to_suspicions(by_id)            # pick up any new suspicions recorded by fact-checks
-        # gate on CONFIDENCE (is it worth verifying), not severity — a certain low-impact bug is
-        # still a finding. Severity only sets the order (schedule()). The fact-check is the filter.
+        _store_to_suspicions(by_id)            # pick up any new suspicions the reproducer recorded
+        # gate on CONFIDENCE (is it worth checking), not severity — a certain low-impact bug is
+        # still a finding. Severity only sets the order (schedule()). The reproduction is the filter.
         pending = [s for s in by_id.values() if s.status == "pending" and s.confidence >= conf_floor]
         if not pending:
             break
         s = schedule(pending)
         before = len(_STORE)
-        res = fact_check(repo_dir, s)
+        res = reproduce(repo_dir, s)
         s.status = str(res.get("verdict", "refuted")).lower()
         s.evidence = str(res.get("evidence", ""))[:600]
-        s.proof_kind = str(res.get("proof_kind", ""))
-        s.proof = str(res.get("proof", ""))[:600]
+        s.repro_kind = str(res.get("repro_kind", ""))
+        s.reproduction = str(res.get("reproduction", ""))[:600]
         checks += 1
-        log(f"  check {checks}: [{s.id}] {s.status}/{s.proof_kind or '-'} (+{len(_STORE) - before} new) — {s.claim[:62]}")
+        log(f"  check {checks}: [{s.id}] {s.status}/{s.repro_kind or '-'} (+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
     confirmed = [s for s in by_id.values() if s.status == "confirmed"]
     partials = [s for s in by_id.values() if s.status == "partial"]
     refuted = sum(1 for s in by_id.values() if s.status == "refuted")
@@ -595,7 +585,7 @@ def gen_probe(repo, pr):
     by_id = generate(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
     print(f"\n=== GEN PROBE {repo}#{pr}: {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
     for s in sorted(by_id.values(), key=lambda x: -x.value()):
-        print(f"  S[{s.id}] sev={s.severity} conf={s.confidence} :: {s.claim[:80]}")
+        print(f"  S[{s.id}] sev={s.severity} conf={s.confidence} :: {s.suspected_bug[:80]}")
     return by_id
 
 

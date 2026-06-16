@@ -16,7 +16,7 @@ print(f"context chars: {len(ctx)}")
 
 c = yaml.safe_load(open("config.yaml"))["qwen"]
 model = f"hosted_vllm/{c['model']}"; base = os.environ["QWEN_BASE_URL"]; key = os.environ["QWEN_API_KEY"]
-msgs = [{"role": "system", "content": S.GENERATOR_SYS},
+msgs = [{"role": "system", "content": S.SUSPECTOR_SYS},
         {"role": "user", "content": "PULL REQUEST:\n" + ctx +
          "\n\nRaise the suspicions now — call add_suspicion once for each."}]
 tool = [{"type": "function", "function": {"name": "add_suspicion",
