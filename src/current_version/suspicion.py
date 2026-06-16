@@ -645,7 +645,9 @@ def gen_probe(repo, pr):
 def run(repo, pr, conf_floor=0.4):
     d, pi, tag = _setup(repo, pr)
     os.makedirs("results/probes", exist_ok=True)
-    _sandbox.start(repo, pr, log_path=f"results/probes/{tag}.log")
+    jdk = _sandbox.detect_jdk(d)
+    print(f"=== sandbox JDK for {repo}#{pr}: {jdk} ===", flush=True)
+    _sandbox.start(repo, pr, jdk=jdk, log_path=f"results/probes/{tag}.log")
     try:
         review, sus = run_suspicion_review(d, pi, conf_floor=conf_floor)
     finally:

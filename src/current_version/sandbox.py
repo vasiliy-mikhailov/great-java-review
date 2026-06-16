@@ -31,6 +31,30 @@ DEFAULT_JDK = 21
 _SESSION = {"name": None, "log": None, "base": None, "worktree": None}
 
 
+def detect_jdk(repo_dir: str) -> int:
+    """Pick the BUILD jdk from the repo's declared Java level — a WRONG jdk yields FALSE compile errors
+    that poison every verdict (quarkus#6913: source 1.8 but built JDK 21 -> `package sun.misc does not
+    exist` + enforcer reject). Read maven.compiler.{release,target,source} / <java.version> from the
+    poms, take the highest, and map to an available image. <=8 builds on 11 (JDK 11 has sun.misc and can
+    target 8; most 'java 8' enforcers want 11+); 11->11; 12-17->17; >=18->21. Default 21 if undeclared."""
+    import glob as _glob, re as _re
+    levels = []
+    poms = _glob.glob(os.path.join(repo_dir, "**", "pom.xml"), recursive=True)[:400]
+    for p in poms:
+        try:
+            t = open(p, errors="ignore").read()
+        except Exception:  # noqa: BLE001
+            continue
+        for m in _re.findall(r"maven\.compiler\.(?:release|target|source)>\s*(?:1\.)?(\d{1,2})", t):
+            levels.append(int(m))
+        for m in _re.findall(r"<java\.version>\s*(?:1\.)?(\d{1,2})", t):
+            levels.append(int(m))
+    if not levels:
+        return DEFAULT_JDK
+    lvl = max(levels)
+    return 11 if lvl <= 11 else 17 if lvl <= 17 else 21
+
+
 def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
     """Run one docker command against the daemon — locally (default) or over a single SSH
     call (SANDBOX_SSH_HOST set). Local mode talks to the host socket from inside the harness
