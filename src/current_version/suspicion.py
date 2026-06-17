@@ -577,12 +577,23 @@ def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new",
     try:
         conv.send_message(user_msg)
         conv.run()
-        return _post_think(_final_text(conv.state.events))
-    finally:
-        try:
-            conv.close()
-        except Exception:  # noqa: BLE001
-            pass
+    except Exception as e:  # noqa: BLE001
+        # A single transient LLM error (e.g. vLLM 400 on a malformed/truncated tool-call JSON, or a
+        # context-budget reject) must NOT crash the whole run — that throws away every other suspicion's
+        # work, the same waste as a wall-clock truncation. Log it and fall through to whatever partial
+        # output the agent produced; the caller (reproduce/solve) then records inconclusive / no-fix and
+        # the pipeline moves to the next suspicion.
+        print(f"  [agent error] {type(e).__name__}: {str(e)[:160]} — continuing with partial output", flush=True)
+    text = ""
+    try:
+        text = _post_think(_final_text(conv.state.events))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        conv.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return text
 
 
 def _llm_call(system_prompt, user_msg, profile="qwen"):
