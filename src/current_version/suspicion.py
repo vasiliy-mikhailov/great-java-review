@@ -447,20 +447,26 @@ ran + their output, evidence)."""
 SOLVER_SYS = """You're handed a bug already shown to be real — the reproducer's logging shows a value wrong
 on /src/new and right on /src/old, with the driver that triggers it. Fix the real code so it's gone.
 
+Your tools are narrow on purpose: `edit_file` to change an EXISTING file (it cannot create files) and
+`run_java` to build/re-run (mvn/./mvnw/gradle/./gradlew/java/javac only — no shell). So the fix has to go
+into the real code and be shown by re-running the real check — a /tmp copy or a standalone sketch isn't
+possible, and proving the fix on one would prove nothing.
+
 Your score:
     reward = no_cheat · (0.10·ran_fix  +  0.90 · fixed · (1 / lines_changed))
 
-  no_cheat = 1 only if you leave the reproducer's logging/tests untouched (they grade you).
-  ran_fix = 1 if you got your patched code to build and run.
+  no_cheat = 1 because you can only touch the real code (the tools allow nothing else); 0 if you call it
+            fixed without re-running the real check.
+  ran_fix = 1 if you got your patched real code to build and run.
   fixed   = 1 if re-running the reproducer's check on your patch shows the value now correct AND the other
             findings + the module's tests still pass.
   lines_changed = the real lines your patch touches — so a tight, root-cause fix scores far above a
             sprawling one (1 line ≈ full credit, 10 lines ≈ a tenth).
 
 Read the formula: the fix must be shown by re-running the check (not asserted), it must break nothing, and
-smaller is much better. Change any real code you need; work in /src/new; `javac -cp <deps>`; reset_workspace
-anytime. Record with record_fix(fixed, fix_diff = your logic change, rerun = the output proving it). If you
-can't, fixed=false — fine, leave it for the author."""
+smaller is much better. The loop is: edit_file the real file → run_java the reproduction → read the output.
+reset_workspace anytime. Record with record_fix(fixed, fix_diff = your logic change, rerun = the output
+proving it). If you can't, fixed=false — fine, leave it for the author."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only — each one a bug the
 reproducer showed in the real code, some with a fix the solver verified. Turn each into a point with its
@@ -645,15 +651,17 @@ def solve(repo_dir, s):
     # was shown, not the reproducer's whole exploration.
     _reset_fix()
     _sandbox.reset_clean()   # pristine source — the solver fixes from clean, not the reproducer's logging
-    _sandbox.set_no_new_files(False)   # the solver may add files if a fix needs one (revisit if it cheats)
+    _sandbox.set_no_new_files(True)   # no_cheat backstop; the tool set below (no shell) is the real guarantee
     msg = (f"BUG TO FIX (already reproduced):\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
            f"location: {s.location}\nhow it was shown ({s.repro_kind}): {s.evidence}\nreproduction:\n{s.reproduction}\n\n"
            "Change the real code in /src/new so this stops happening, then confirm by re-running the "
            "reproduction above against your change — the value should now come out right on /src/new with "
-           "nothing else broken. Keep the change as small as you can. When done, call record_fix (fixed, "
-           "fix_diff = your logic change, rerun = the output proving it). If you can't fix it, record fixed=false.")
-    out = _run_agent(SOLVER_SYS, msg, repo_dir,
-                     extra_tools=["sandbox_exec", "record_fix", "reset_workspace"])
+           "nothing else broken. Your tools: `edit_file` to change the real code, `run_java` to re-run the "
+           "reproduction (an existing test, or javac/java the real classes). Keep the change as small as you "
+           "can. When done, call record_fix (fixed, fix_diff = your logic change, rerun = the output proving "
+           "it). If you can't fix it, record fixed=false.")
+    out = _run_agent(SOLVER_SYS, msg, repo_dir, base=_READONLY_BASE,
+                     extra_tools=["run_java", "edit_file", "record_fix", "reset_workspace"])
     if "fixed" in _FIX:
         return dict(_FIX)
     return {"fixed": False, "fix_diff": "", "rerun": (out or "")[-300:]}
