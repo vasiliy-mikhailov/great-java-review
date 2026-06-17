@@ -781,6 +781,9 @@ def gen_probe(repo, pr):
 def run(repo, pr, conf_floor=0.4):
     d, pi, tag = _setup(repo, pr)
     os.makedirs("results/probes", exist_ok=True)
+    open(f"results/probes/{tag}.log", "w").close()   # truncate per run (as root) — a re-runner's `rm` can't
+    # delete this root-owned file, so without this the probe log ACCUMULATES across runs and a stale
+    # pre-structural-tools prefix (with cat-copies) poisons the copy-cheat audit. Mirror the reasoning-log truncate.
     jdk = _sandbox.detect_jdk(d)
     print(f"=== sandbox JDK for {repo}#{pr}: {jdk} ===", flush=True)
     _sandbox.start(repo, pr, jdk=jdk, log_path=f"results/probes/{tag}.log")
