@@ -147,6 +147,35 @@ class _NoViz(ConversationVisualizerBase):
         return self
 
 
+class _DialogViz(ConversationVisualizerBase):
+    """Like _NoViz (no blocking Rich console), but tees each tool RESULT to $REASONING_LOG so the
+    live dialogue is COMPLETE. The llm tap (llm.py) already streams the model's thinking + the tool
+    CALL; this adds what the tool RETURNED (run_java exit/output, edit_file edited/refused, repo_map
+    modules, add_suspicion recorded/duplicate, record_verdict/fix). So `tail -f` shows the whole
+    conversation as it happens — a stuck/looping/rejected agent is visible immediately instead of
+    reconstructed from three logs after the fact. Writes are tiny appends (non-blocking, capped)."""
+
+    def on_event(self, event):
+        if type(event).__name__ != "ObservationEvent":
+            return None
+        path = os.environ.get("REASONING_LOG")
+        if not path:
+            return None
+        try:
+            d = event.model_dump()
+            txt = _to_text(d.get("content") or d.get("observation") or "")
+            tool = d.get("tool_name") or getattr(event, "tool_name", "") or ""
+            if txt.strip():
+                with open(path, "a") as f:
+                    f.write(f"\n[result{(' ' + tool) if tool else ''}] {txt.strip()[:600]}\n")
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    def create_sub_visualizer(self, *a, **k):
+        return self
+
+
 def _changed_files_content(repo_dir, pr_input, max_chars=240000):   # ~64k tokens
     """Read the full BASE content of the PR's changed files and return it as a block, so the
     ORCHESTRATOR has the changed files directly in context. New files don't exist at base

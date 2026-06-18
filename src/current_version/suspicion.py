@@ -686,7 +686,7 @@ def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new",
     # 6222 crash). 32768 gives the prompt a ~109k-token margin and satisfies the P14 invariant.
     llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": 32768})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
-    conv = Conversation(agent=agent, workspace=ws, visualizer=harness._NoViz, persistence_dir=None)
+    conv = Conversation(agent=agent, workspace=ws, visualizer=harness._DialogViz, persistence_dir=None)
     try:
         conv.send_message(user_msg)
         conv.run()
