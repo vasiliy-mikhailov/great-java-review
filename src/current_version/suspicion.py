@@ -52,6 +52,58 @@ def _store_add(observation, suspected_bug, location, confidence):
     return sid
 
 
+# --- dedup-on-register -------------------------------------------------------------------------------
+# Two investigators (mr + repo) plus the reproducer all file suspicions, so the worklist fills with
+# near-duplicates (same root cause, different words) that would waste the reproduce budget. Every
+# registration runs a cheap dedup SUBAGENT: is this the SAME underlying bug as one already on the list?
+DEDUP_SYS = ("You decide whether a NEW code-review suspicion is the SAME underlying bug as one already on a "
+             "list — same root cause / location / fix, even if worded differently. Reply with ONLY the integer "
+             "id of the existing suspicion it duplicates, or the bare word NEW if it is genuinely distinct.")
+
+
+def _dedup_against_store(observation, suspected_bug, location):
+    """Return the id of an existing suspicion this duplicates, or None. Fail-open (None) on any error
+    so a flaky dedup call never silently drops a real suspicion."""
+    if not _STORE:
+        return None
+    existing = "\n".join(f"#{d['id']} [{d['location']}] {d['suspected_bug']}" for d in _STORE[-100:])
+    msg = (f"EXISTING SUSPICIONS:\n{existing}\n\nNEW SUSPICION:\n[{location}] {suspected_bug}\n"
+           f"observation: {observation}\n\nIs the NEW one the same bug as an existing one? "
+           "Reply ONLY an existing id number, or NEW.")
+    try:
+        ans = (_llm_call(DEDUP_SYS, msg) or "").strip()
+    except Exception:  # noqa: BLE001
+        return None
+    if "new" in ans.lower():
+        return None
+    m = re.search(r"\d+", ans)
+    if m:
+        i = int(m.group())
+        if any(d["id"] == i for d in _STORE):
+            return i
+    return None
+
+
+def _register_suspicion(observation, suspected_bug, location, confidence):
+    """Dedup then add. Returns (id, is_duplicate). On a duplicate, keep the HIGHER confidence on the
+    existing entry (so a surer re-sighting raises its scheduling priority) and do not add a new row."""
+    try:
+        conf = float(confidence)
+    except Exception:  # noqa: BLE001
+        conf = 0.5
+    dup = _dedup_against_store(observation, suspected_bug, location)
+    if dup is not None:
+        for d in _STORE:
+            if d["id"] == dup:
+                try:
+                    d["confidence"] = max(float(d.get("confidence") or 0.0), conf)
+                except Exception:  # noqa: BLE001
+                    pass
+                break
+        return dup, True
+    return _store_add(observation, suspected_bug, location, conf), False
+
+
 _VERDICT = {}   # the reproducer writes its verdict here via the record_verdict tool (not parsed prose)
 
 
@@ -89,7 +141,10 @@ _ADD_DESC = ("Record ONE suspicion — an OBSERVATION (something you literally s
 
 class _AddSuspicionExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
-        sid = _store_add(action.observation, action.suspected_bug, action.location, action.confidence)
+        sid, dup = _register_suspicion(action.observation, action.suspected_bug, action.location, action.confidence)
+        if dup:
+            return AddSuspicionObservation.from_text(
+                text=f"duplicate of suspicion #{sid} — merged, not re-added (its confidence kept at the higher value)")
         return AddSuspicionObservation.from_text(text=f"recorded suspicion #{sid}: {str(action.suspected_bug)[:60]}")
 
 
@@ -398,9 +453,66 @@ class EditFileTool(ToolDefinition[EditFileAction, EditFileObservation]):
                     executor=_EditFileExecutor())]
 
 
+# --- repo_map: investigate_repo's orientation tool ---------------------------------------------------
+# The whole-repo investigator needs to inject context: which modules exist and which are EXERCISABLE
+# (have a test source root). Bias the sweep toward tested modules — those are where a suspicion can be
+# CONFIRMED by a run, which is the only kind of suspicion that densifies the execution reward.
+class RepoMapAction(Action):
+    subpath: str = Field(default="", description="optional subdirectory to map; empty = repo root.")
+
+
+class RepoMapObservation(Observation):
+    pass
+
+
+_REPOMAP_DESC = ("Map the repository's Java modules so you can pick where to hunt: lists each module (a dir "
+                 "with src/main/java) and whether it has tests (src/test/java) — prefer TESTED modules, since "
+                 "only there can a suspicion be confirmed by a run. Optional subpath to drill into one area.")
+
+
+class _RepoMapExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        root = _sandbox.workdir("new") or _sandbox.workdir("old")
+        if not root:
+            return RepoMapObservation.from_text(text="no checkout available")
+        base = os.path.normpath(os.path.join(root, getattr(action, "subpath", "") or ""))
+        if not base.startswith(os.path.normpath(root)):
+            return RepoMapObservation.from_text(text="refused: subpath escapes the repo")
+        mods, skip = [], {".git", "target", "build", "node_modules", ".idea"}
+        for dp, dns, _fns in os.walk(base):
+            dns[:] = [d for d in dns if d not in skip]
+            if dp.replace("\\", "/").endswith("src/main/java"):
+                mod = dp[: -len("/src/main/java")]
+                rel = os.path.relpath(mod, root)
+                tested = os.path.isdir(os.path.join(mod, "src", "test", "java"))
+                mods.append((rel, tested))
+                if len(mods) >= 400:
+                    break
+        if not mods:
+            return RepoMapObservation.from_text(text=f"no Maven/Gradle Java modules found under {action.subpath or '.'}")
+        tested = [m for m, t in mods if t]
+        untested = [m for m, t in mods if not t]
+        txt = (f"{len(mods)} modules ({len(tested)} with tests). TESTED (prefer these — confirmable by a run):\n"
+               + "\n".join(f"  {m}" for m in tested[:120])
+               + (f"\nUNTESTED ({len(untested)}, harder to confirm):\n" + "\n".join(f"  {m}" for m in untested[:40]) if untested else ""))
+        return RepoMapObservation.from_text(text=txt[:6000])
+
+
+class RepoMapTool(ToolDefinition[RepoMapAction, RepoMapObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[RepoMapTool]":  # noqa: ARG003
+        return [cls(description=_REPOMAP_DESC, action_type=RepoMapAction, observation_type=RepoMapObservation,
+                    annotations=ToolAnnotations(title="repo_map", readOnlyHint=True, destructiveHint=False,
+                                                idempotentHint=True, openWorldHint=False),
+                    executor=_RepoMapExecutor())]
+
+
 # --- prompts (the genome for this architecture) -----------------------------------------
 
-SUSPECTOR_SYS = """You read a pull request and flag things that might be bugs, for a reproducer to check.
+INVESTIGATE_MR_SYS = """You read a pull request and flag things that might be bugs, for a reproducer to check.
 
 Your score:
     reward = Σ confidence(s)  over your suspicions that get CONFIRMED
@@ -538,7 +650,8 @@ def _read_tools():
         harness._register_subagents()    # registers search/grep/glob/file_editor/pr_files/pr_file_diff
         for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
                        ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool),
-                       ("record_fix", RecordFixTool), ("run_java", RunJavaTool), ("edit_file", EditFileTool)):
+                       ("record_fix", RecordFixTool), ("run_java", RunJavaTool), ("edit_file", EditFileTool),
+                       ("repo_map", RepoMapTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -614,13 +727,31 @@ def _store_to_suspicions(by_id):
                 pass
 
 
-def generate(repo_dir, ctx):
-    _run_agent(SUSPECTOR_SYS, "PULL REQUEST:\n" + ctx +
+INVESTIGATE_REPO_SYS = """You investigate a whole Java repository to find real bugs — not tied to any diff.
+Real reviewers find bugs everywhere, and every confirmable bug you surface is valuable.
+
+Where to look: call repo_map first to see the modules. Spend your time in modules that HAVE TESTS — a
+suspicion there can be confirmed by running the real code, which is what makes it worth raising; a bug in
+code nothing can exercise is a guess. Read the actual source (search/grep/glob/file_editor), and the moment
+you SEE something off — a contract violation, a copy-paste slip, a wrong comparison/operator, an off-by-one,
+a resource leak, a mis-handled edge case — record it with add_suspicion (observation + suspected_bug +
+location + confidence). Don't verify it yourself; the reproducer will. Cast a wide net and let confidence
+rank them. Don't flag style, naming, or pure speculation — only concrete things you actually saw in the code."""
+
+
+def investigate_mr(repo_dir, ctx):
+    """Diff-anchored investigator: read the PR and flag suspicions on the change."""
+    _run_agent(INVESTIGATE_MR_SYS, "PULL REQUEST:\n" + ctx +
                "\n\nRecord the suspicions now — call add_suspicion once for each (observation + suspected_bug).",
                repo_dir, extra_tools=[CAPTURE])
-    by_id = {}
-    _store_to_suspicions(by_id)
-    return by_id
+
+
+def investigate_repo(repo_dir):
+    """Whole-repo investigator: sweep the codebase (biased to tested/exercisable modules) for bugs."""
+    _run_agent(INVESTIGATE_REPO_SYS,
+               "Investigate this repository for real bugs. Start with repo_map to find the tested modules, "
+               "then read their source and record each suspicion with add_suspicion.",
+               repo_dir, base=("search", "grep", "glob", "file_editor"), extra_tools=[CAPTURE, "repo_map"])
 
 
 def schedule(pending):
@@ -695,15 +826,21 @@ def synthesize(ctx, confirmed, inconclusive):
     return final_review(_post_think(txt))
 
 
-def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print):
+def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print, mode=None):
     # LEAN context (Q2 / v10): the model gets the diff + the changed-files LIST and pulls full
     # file content on demand via pr_file_diff/file_editor — no pre-loaded blob. Verified: the lean
     # generator terminates cleanly (6222: 23 suspicions in ~9min, vs the fat blob's 17 — higher
     # recall) and the lean fact-check verifies one suspicion without overflowing the window.
     ctx = pr_input
+    mode = (mode or os.environ.get("INVESTIGATE_MODE", "mr")).lower()   # mr | repo | both
     _reset_store()
-    by_id = generate(repo_dir, ctx)           # generator writes suspicions to the store
-    log(f"generated {len(by_id)} suspicions")
+    if mode in ("mr", "both"):
+        investigate_mr(repo_dir, ctx)         # diff-anchored investigator -> store (deduped on register)
+    if mode in ("repo", "both"):
+        investigate_repo(repo_dir)            # whole-repo investigator -> store (deduped on register)
+    by_id = {}
+    _store_to_suspicions(by_id)
+    log(f"generated {len(by_id)} suspicions (mode={mode})")
     for s in sorted(by_id.values(), key=lambda x: -x.confidence):   # surest first — confidence is the order
         mark = "" if s.confidence >= conf_floor else "  (below conf floor, won't check)"
         log(f"   S[{s.id}] conf={s.confidence} :: {s.suspected_bug[:80]}{mark}")
@@ -771,8 +908,14 @@ def gen_probe(repo, pr):
     d, pi, _tag = _setup(repo, pr)
     _reset_store()
     t0 = _t.time()
-    by_id = generate(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
-    print(f"\n=== GEN PROBE {repo}#{pr}: {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
+    mode = os.environ.get("INVESTIGATE_MODE", "mr").lower()
+    if mode in ("mr", "both"):
+        investigate_mr(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
+    if mode in ("repo", "both"):
+        investigate_repo(d)
+    by_id = {}
+    _store_to_suspicions(by_id)
+    print(f"\n=== GEN PROBE {repo}#{pr} (mode={mode}): {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
     for s in sorted(by_id.values(), key=lambda x: -x.confidence):
         print(f"  S[{s.id}] conf={s.confidence} :: {s.suspected_bug[:80]}")
     return by_id
