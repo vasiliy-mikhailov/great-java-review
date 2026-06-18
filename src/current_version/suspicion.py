@@ -680,11 +680,12 @@ def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new",
     if base is not None:
         _read_tools()    # ensure run_java/edit_file/etc are registered even when overriding the base set
     tools = base_tools + [Tool(name=n) for n in extra_tools]
-    # PER-TURN output cap = 32768 (NOT a limit on the review — a turn emits a verdict + a few tool
-    # calls). The base 131072 reserves half the 262144 window for output, leaving only ~11k tokens
-    # of condenser margin (120000 + 131072 = 251072) — one big tool read overshoots → vLLM 400 (the
-    # 6222 crash). 32768 gives the prompt a ~109k-token margin and satisfies the P14 invariant.
-    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion", "max_output_tokens": 32768})
+    # NO per-turn output cap beyond the model's window. The old 32768 throttle was a thinking limit
+    # in disguise — it cut deep reasoning short, the exact give-up-and-emit-noise failure we now
+    # forbid (P15). Use the full 131072; the condenser bounds the prompt, and if a turn ever overruns
+    # the window the resilience catch in this function survives the 400 (records inconclusive, the run
+    # continues) rather than the old crash. Let the model think as deep as the problem needs.
+    llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion"})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
     conv = Conversation(agent=agent, workspace=ws, visualizer=harness._DialogViz, persistence_dir=None)
     try:
