@@ -156,15 +156,22 @@ class _DialogViz(ConversationVisualizerBase):
     reconstructed from three logs after the fact. Writes are tiny appends (non-blocking, capped)."""
 
     def on_event(self, event):
-        if type(event).__name__ != "ObservationEvent":
+        if "Observation" not in type(event).__name__:   # ObservationEvent + UserReject/AgentError
             return None
         path = os.environ.get("REASONING_LOG")
         if not path:
             return None
         try:
-            d = event.model_dump()
-            txt = _to_text(d.get("content") or d.get("observation") or "")
-            tool = d.get("tool_name") or getattr(event, "tool_name", "") or ""
+            tool = getattr(event, "tool_name", "") or ""
+            txt = ""
+            obs = getattr(event, "observation", None)   # the Observation object carries the text
+            if obs is not None:
+                try:
+                    txt = "".join(getattr(p, "text", "") for p in (obs.to_llm_content or []))
+                except Exception:  # noqa: BLE001
+                    txt = ""
+            if not txt.strip():
+                txt = str(event)                        # __str__ = "Tool: X\nResult: <preview>" (guaranteed)
             if txt.strip():
                 with open(path, "a") as f:
                     f.write(f"\n[result{(' ' + tool) if tool else ''}] {txt.strip()[:600]}\n")
