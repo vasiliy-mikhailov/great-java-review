@@ -905,14 +905,24 @@ def gen_probe(repo, pr):
     """FAST inner-loop eval: run ONLY the generator and report how many suspicions it records
     and how long it took — so generator tuning (token cap / prompt) doesn't pay for fact-check."""
     import time as _t
-    d, pi, _tag = _setup(repo, pr)
+    d, pi, tag = _setup(repo, pr)
     _reset_store()
-    t0 = _t.time()
     mode = os.environ.get("INVESTIGATE_MODE", "mr").lower()
-    if mode in ("mr", "both"):
-        investigate_mr(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
-    if mode in ("repo", "both"):
-        investigate_repo(d)
+    # investigate_repo's repo_map + version-aware reads need a live session (the post-PR worktree),
+    # so start the per-PR sandbox even for the generator-only probe; reproduce/solve are skipped.
+    os.makedirs("results/probes", exist_ok=True)
+    open(f"results/probes/{tag}.log", "w").close()
+    jdk = _sandbox.detect_jdk(d)
+    print(f"=== sandbox JDK for {repo}#{pr}: {jdk} ===", flush=True)
+    _sandbox.start(repo, pr, jdk=jdk, log_path=f"results/probes/{tag}.log")
+    t0 = _t.time()
+    try:
+        if mode in ("mr", "both"):
+            investigate_mr(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
+        if mode in ("repo", "both"):
+            investigate_repo(d)
+    finally:
+        _sandbox.stop()
     by_id = {}
     _store_to_suspicions(by_id)
     print(f"\n=== GEN PROBE {repo}#{pr} (mode={mode}): {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
