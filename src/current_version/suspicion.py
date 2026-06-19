@@ -38,11 +38,20 @@ from llm_client import get_llm, final_review              # noqa: E402
 # notice it, so it survives the agent's context compaction and any output-parse failure
 # (the JSON-array-at-the-end approach lost suspicions on both). The loop owns it; reset per PR.
 
-_STORE = []   # list of dicts {id, claim, location, severity, confidence}
+# --- THE REGISTRY: three linked entry types, each stage writes the next ------------------------------
+# suspicion (investigator) -> bug (reproducer: PROVEN by a unit test it ran) -> solution (solver: verified
+# fix). Each is a first-class entry with its own attributes; an agent reads the prior stage's entries and
+# appends to the next. The PR writer reads all three. _STORE holds suspicions as dicts (the add_suspicion
+# tool writes plain dicts, deduped); _BUGS / _SOLUTIONS hold dataclass entries.
+_STORE = []        # suspicions: {id, observation, suspected_bug, location, confidence}
+_BUGS = []         # proven bugs (Bug entries) — one per reproduced suspicion
+_SOLUTIONS = []    # verified fixes (Solution entries) — one per solved bug
 
 
 def _reset_store():
     _STORE.clear()
+    _BUGS.clear()
+    _SOLUTIONS.clear()
 
 
 def _store_add(observation, suspected_bug, location, confidence):
@@ -50,6 +59,40 @@ def _store_add(observation, suspected_bug, location, confidence):
     _STORE.append({"id": sid, "observation": str(observation), "suspected_bug": str(suspected_bug),
                    "location": str(location), "confidence": confidence})
     return sid
+
+
+def _add_bug(suspicion, verdict, validation=""):
+    """Promote a gate-passed suspicion into a Bug registry entry from the reproducer's verdict dict."""
+    b = Bug(id=len(_BUGS), suspicion_id=suspicion.id, observation=suspicion.observation,
+            suspected_bug=suspicion.suspected_bug, location=suspicion.location,
+            repro_kind=str(verdict.get("repro_kind", "")), evidence=str(verdict.get("evidence", ""))[:600],
+            reproduction=str(verdict.get("reproduction", ""))[:2000],
+            test_path=str(verdict.get("test_path", "")), test_src=str(verdict.get("test_src", "")),
+            test_cmd=str(verdict.get("test_cmd", "")), validation=str(validation),
+            build_edit_path=str(verdict.get("build_edit_path", "")),
+            build_edit_src=str(verdict.get("build_edit_src", "")))
+    _BUGS.append(b)
+    return b
+
+
+def _add_solution(bug, fix):
+    """Record the solver's outcome for a bug as a Solution registry entry, with the reward computed from
+    MEASURED inputs (not the model's self-report):
+        reward = passes · 0.9^lines_changed · (test_changed ? 0 : 1)
+    passes requires a real test that the solver turned green (a grep-only bug has no test -> 0). lines_changed
+    is the production patch size measured from git in solve(); test_changed is whether the solver edited the
+    test itself (disk vs the materialized test). Touch the test -> 0; the smaller the real fix, the higher."""
+    diff = str(fix.get("fix_diff", ""))
+    fixed = bool(fix.get("fixed"))
+    lines = int(fix.get("lines_changed", 0) or 0)
+    test_changed = bool(fix.get("test_changed", False))
+    passes = fixed and bool(bug.test_src)          # only a real, test-backed fix counts
+    reward = (1.0 if passes else 0.0) * (0.9 ** max(0, lines)) * (0.0 if test_changed else 1.0)
+    sol = Solution(id=len(_SOLUTIONS), bug_id=bug.id, fixed=fixed, fix_diff=diff[:2000],
+                   fix_rerun=str(fix.get("rerun", ""))[:1500], lines_changed=lines,
+                   test_changed=test_changed, reward=round(reward, 4))
+    _SOLUTIONS.append(sol)
+    return sol
 
 
 # --- dedup-on-register -------------------------------------------------------------------------------
@@ -172,18 +215,25 @@ class RecordVerdictAction(Action):
                          "value. refuted: the test you ran PASSED / the log shows the right value (or a grep "
                          "proves the suspected code/symbol isn't even there). Reading the code and deciding "
                          "doesn't settle it either way.")
-    repro_kind: str = Field(description="regression_test | test | log | grep — how you SHOWED it by running "
-                            "something, BEST first. regression_test = a NEW @Test you wrote (create_test or "
-                            "added into an existing *Test.java) that FAILS on the bug — the strongest proof, "
-                            "and the artifact the PR ships. test = an existing test/driver you compiled and ran "
-                            "that fails/won't compile. log = logging/print you added and ran that shows the "
-                            "wrong value. grep = a search proving the suspected code isn't present. (If you "
-                            "only read and reasoned, you haven't shown it — say so honestly, don't pick a kind.)")
-    test_path: str = Field(default="", description="if repro_kind=regression_test: the path of the test file "
-                           "you wrote/added the @Test to (e.g. foo/src/test/java/.../BarBugTest.java). Empty "
-                           "otherwise.")
-    test_src: str = Field(default="", description="if repro_kind=regression_test: the FULL source of the test "
-                          "class (or the exact @Test method you added) — captured so it can ship in the PR.")
+    repro_kind: str = Field(description="regression_test | test | log | grep. To CONFIRM a bug you MUST have a "
+                            "unit test that FAILS on it — regression_test (a @Test you wrote via create_test or "
+                            "into an existing *Test.java) or test (an existing test that now fails). log/grep "
+                            "show nothing manifesting, so they can ONLY support a refuted verdict (a right log, "
+                            "or a grep proving the suspected code isn't there) — never a confirm.")
+    test_path: str = Field(default="", description="for a confirm: the path of the failing test file (e.g. "
+                           "foo/src/test/java/.../BarBugTest.java).")
+    test_src: str = Field(default="", description="for a confirm: the test source (the @Test or full class). The "
+                          "harness ALSO reads the real file from disk via test_path, so make test_path exactly "
+                          "right — that on-disk file is what ships, what the fix step re-runs, and what the gate "
+                          "re-runs on /src/old.")
+    test_cmd: str = Field(default="", description="for a confirm: the exact run_java command that runs JUST this "
+                          "test (e.g. 'mvn -q test -Dtest=BarBugTest -pl modules/core'). The gate re-runs it on "
+                          "/src/new (must fail) and /src/old (should pass) — the flip that proves the test is real.")
+    build_edit_path: str = Field(default="", description="if you edited a build file to add a TEST-scope dep "
+                          "(e.g. mockito-core) the test needs, its path (e.g. pom.xml or modules/core/pom.xml). "
+                          "Empty if you added no dependency.")
+    build_edit_src: str = Field(default="", description="if build_edit_path is set: the FULL new content of that "
+                          "build file — captured so the fix step (and the PR) keep the test compilable.")
     reproduction: str = Field(description="The actual RUN: the command(s) you executed and their real output — "
                        "the failing test, the compile error, the log value, or the empty grep. The output, not "
                        "a description of it.")
@@ -194,14 +244,13 @@ class RecordVerdictObservation(Observation):
     pass
 
 
-_VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. You only get to call it — either "
-                 "way — by SHOWING it with a run. confirmed: best is a NEW regression @Test you wrote that "
-                 "FAILS on the bug (repro_kind=regression_test, give test_path + test_src); also valid is an "
-                 "existing test that failed, a compile error, or a log of the wrong value. refuted: a test "
-                 "that ran and passed, a log of the right value, or a grep proving the suspected code isn't "
-                 "there. Reading the code and concluding settles nothing — the easy 'I looked and it's fine' "
-                 "is exactly what doesn't count. Args: verdict, repro_kind (regression_test/test/log/grep), "
-                 "test_path + test_src (for regression_test), reproduction (command(s) run + real output), evidence.")
+_VERDICT_DESC = ("Record your decision on the one suspicion, ONCE, LAST. A bug is CONFIRMED only by a unit "
+                 "test that FAILS on it (repro_kind=regression_test|test, with test_path + test_src + "
+                 "test_cmd) — a grep/log shows nothing manifesting and can only support REFUTED (a right log, "
+                 "or a grep proving the code isn't there). No failing test → not a confirm. Reading and "
+                 "concluding settles nothing. The confirm then passes a gate (re-run on /src/old for the flip, "
+                 "+ a critic) before it becomes a bug. Args: verdict, repro_kind, test_path + test_src + "
+                 "test_cmd (confirm), reproduction (command(s) run + real output), evidence.")
 
 
 class _RecordVerdictExecutor(ToolExecutor):
@@ -210,22 +259,35 @@ class _RecordVerdictExecutor(ToolExecutor):
         _VERDICT["repro_kind"] = str(action.repro_kind).lower().strip()
         _VERDICT["test_path"] = str(getattr(action, "test_path", ""))
         _VERDICT["test_src"] = str(getattr(action, "test_src", ""))
+        _VERDICT["build_edit_path"] = str(getattr(action, "build_edit_path", ""))
+        _VERDICT["build_edit_src"] = str(getattr(action, "build_edit_src", ""))
+        _VERDICT["test_cmd"] = str(getattr(action, "test_cmd", ""))
         _VERDICT["reproduction"] = str(action.reproduction)
         _VERDICT["evidence"] = str(action.evidence)
-        # symmetric guard: NEITHER verdict counts without a real run. No run -> inconclusive (re-decide),
-        # never a free 'refuted by reading'. This closes the easy way out the model was taking.
+        # AUTHORITATIVE capture: read the test (and build) file from the worktree as it stands NOW — the model
+        # just compiled and ran it, so disk holds the REAL, complete file. This overrides whatever the model
+        # pasted, which is often only the injected @Test snippet (writing that as the whole file later
+        # corrupts it — missing package/imports/class). Disk is the truth; the pasted args are a fallback.
+        _disk_test = _read_worktree_file(_VERDICT["test_path"])
+        if _disk_test:
+            _VERDICT["test_src"] = _disk_test
+        _disk_build = _read_worktree_file(_VERDICT["build_edit_path"])
+        if _disk_build:
+            _VERDICT["build_edit_src"] = _disk_build
+        # symmetric guard: NEITHER verdict counts without a real run. No run -> inconclusive.
         if _VERDICT["repro_kind"] not in ("regression_test", "test", "log", "grep"):
             _VERDICT["verdict"] = "inconclusive"
             return RecordVerdictObservation.from_text(
-                text="a verdict has to be SHOWN by a run — refuting too. You only read it, so this is "
-                     "inconclusive. Run something (best: a regression test you wrote that fails; or an "
-                     "existing test, a log, or a grep proving the code isn't there) and record again.")
-        # a regression_test verdict must actually carry the test it claims — else it's a log/test in disguise.
-        if _VERDICT["repro_kind"] == "regression_test" and not _VERDICT["test_src"].strip():
-            _VERDICT["repro_kind"] = "test"
+                text="a verdict has to be SHOWN by a run. Inconclusive — run something and record again.")
+        # CONFIRM requires a failing unit test. grep/log can only refute (they show nothing manifesting); a
+        # confirm without a real failing test (test_src) is not a bug — the reproducer earns nothing for it.
+        if _VERDICT["verdict"] == "confirmed" and (
+                _VERDICT["repro_kind"] not in ("regression_test", "test") or not _VERDICT["test_src"].strip()):
+            _VERDICT["verdict"] = "inconclusive"
             return RecordVerdictObservation.from_text(
-                text="regression_test needs test_src (the actual @Test source you ran). Recorded as 'test' "
-                     "instead — re-record with test_path + test_src if you did write a new failing test.")
+                text="a bug is CONFIRMED only by a unit test that FAILS on it — write a @Test that goes red on "
+                     "the bug (test_path + test_src + test_cmd) and record again. A grep/log can only support "
+                     "'refuted'; on its own it is inconclusive, not a confirm.")
         return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['repro_kind']})")
 
 
@@ -661,57 +723,66 @@ a src/test/ root (the ONE file you may create — never src/main, so you can't s
 `run_java` it (mvn test -Dtest=…/gradle test --tests …) and read it fail. A log added to the real file is a
 weaker fallback when a test is genuinely impractical; just reading and concluding shows nothing.
 
+Real code is coupled — the method you want to hit pulls in clients, services, or I/O — and that is what
+MOCKING is for, not a reason to retreat to grep. Mock the COLLABORATORS (never the class under test) to
+isolate it AND to drive the path you need: make a mocked dependency throw so a catch block runs, or return a
+crafted value to reach a branch. Mockito is the tool — `mock(Dep.class)` + `when(dep.f()).thenThrow(...)`;
+for statics like `System.exit`, `mockStatic(System.class)` (needs mockito-inline / Mockito 5+), or
+`system-lambda`'s `catchSystemExit(...)`, or a `SecurityManager` whose `checkExit` throws (JDK-only, no
+dependency). Check the pom/build for mockito-core / mockito-inline / system-lambda first; if Mockito is NOT
+present, you MAY add it yourself — `edit_file` the pom.xml (or build.gradle) to add `org.mockito:mockito-core`
+at TEST scope (a recent 5.x has static mocking built in: `testImplementation`/`<scope>test</scope>`). Adding
+a test-scoped test library is normal PR work and allowed; only ever touch TEST scope, never a production
+dependency. The rule: never mock the class or the method whose bug you're proving — the assertion has to run
+the REAL buggy code. A bug that "needs real infrastructure" almost always just needs its collaborators mocked.
+
 Your tools are deliberately narrow: read tools to navigate; `edit_file` (modify an EXISTING file — add a
 @Test or a log line); `create_test` (a NEW test under src/test/ only); `run_java` (mvn/./mvnw/gradle/./gradlew/
 java/javac only — no shell, no redirection). You cannot write production code, so a copy/stub/standalone
 driver isn't possible — you exercise the real class or you have nothing.
 
 Your score:
-    reward = no_cheat · (0.15·ran + 0.85·shown)  +  (confirmed bugs you raise along the way)
+    reward = no_cheat · (0.2·ran + 0.8·shown)  +  (confirmed bugs you raise along the way)
 
-  no_cheat = 1 because you can only touch the real code + a real test (the tools allow nothing else); 0 only
-           if you settle a verdict without a run.
+  no_cheat = 1 because you can only touch the real code + a real test (the tools allow nothing else); 0 if
+           you settle a verdict without a run.
   ran    = 1 if you got the genuine project classes (and your test) to compile and run — not a sketch.
-  shown  = how convincingly a RUN settles it, BEST first:
-             regression_test — a NEW @Test you wrote that fails on /src/new (and, ideally, passes on /src/old):
-                               full credit, and it's what the fix is graded against and what ships. AIM HERE.
-             test            — an existing test you ran fails / won't compile.
-             log             — a log you added to the real file prints the wrong value on /src/new.
-             (refuted is also "shown": the test passes, the log is right, or a grep proves the code isn't there.)
-           Reading and concluding leaves shown = 0.
+  shown  = 1 ONLY if you wrote a unit test that FAILS on the bug AND it survives the gate (below). A log or a
+           grep shows nothing manifesting — it can only support a REFUTE, never a confirm, and earns shown=0.
+           So: no failing test → no confirm → no reward. Reading and concluding leaves shown=0 too.
+
+The gate (every confirm passes it before it becomes a bug): your test is re-run on BOTH trees — a genuine
+regression FAILS on /src/new and PASSES on /src/old (so give an accurate `test_cmd` that runs just your
+test); if it can't flip (e.g. a pre-existing bug failing on both), a critic agent checks the test actually
+demonstrates the suspicion. `assert(false)` and tests that fail on a compile/setup error are rejected — they
+earn nothing. So make the test genuinely exercise the suspected behaviour.
 
 The loop: write the failing @Test (edit_file into an existing *Test.java, or create_test for a new one) →
-run_java it → watch it go red → record. A weaker log path exists but earns less. A different real bug you
-notice along the way pays too — raise it with add_suspicion. reset_workspace anytime (cleaned between bugs).
-Record with record_verdict(verdict, repro_kind regression_test|test|log|grep, test_path + test_src when you
-wrote one, reproduction = the commands you ran + their output, evidence)."""
+run_java it → watch it go red → record. A different real bug you notice along the way pays too — raise it
+with add_suspicion. reset_workspace anytime. Record with record_verdict(verdict, repro_kind=regression_test|
+test for a confirm — grep/log only refute, test_path + test_src + test_cmd, reproduction = the commands you
+ran + their output, evidence)."""
 
-SOLVER_SYS = """You're handed a bug already shown to be real — the reproducer wrote a regression test that
-FAILS on it (red on /src/new). Your job: fix the real production code so that test goes GREEN, changing
-nothing else.
+SOLVER_SYS = """A unit test was written that fails because of one real bug. Your job is simple: fix the
+production code so that test passes.
 
-Your tools are narrow on purpose: `edit_code` to change an EXISTING production file — it REFUSES src/test, so
-you cannot weaken the test that grades you; the test is the fixed yardstick — and `run_java` to re-run it
-(mvn/./mvnw/gradle/./gradlew/java/javac only — no shell). So the fix has to land in the real class and be
-shown by the test turning green — a /tmp copy, a stub, or editing the test isn't possible, and would prove
-nothing anyway.
+You have `edit_file` to change existing source and `run_java` to re-run the test (mvn/./mvnw/gradle/./gradlew/
+java/javac — no shell). Work the natural loop: edit the code, run the test, read the output, repeat until it
+is green.
 
-Your score:
-    reward = no_cheat · (0.10·ran_fix  +  0.90 · fixed · (1 / lines_changed))
+Two things shape your score:
+    reward = passes · 0.9^(lines_changed) · test_untouched
 
-  no_cheat = 1 because you can only touch the real production code (edit_code refuses the test); 0 if you
-            call it fixed without re-running the test.
-  ran_fix = 1 if you got your patched real code + the test to build and run.
-  fixed   = 1 if re-running the reproducer's regression test on your patch shows it now PASSES (was failing)
-            AND the other findings + the module's tests still pass.
-  lines_changed = the real lines your patch touches — so a tight, root-cause fix scores far above a
-            sprawling one (1 line ≈ full credit, 10 lines ≈ a tenth).
+  passes         — the test now passes and nothing else breaks. Show it by re-running, not by asserting.
+  0.9^lines      — the fewer production lines you change, the better (0 lines = 1.0, 5 ≈ 0.59, 10 ≈ 0.35), so
+                   look for the tight, root-cause fix rather than a broad rewrite.
+  test_untouched — 1 if you leave the test exactly as written, 0 if you change even a single line of it.
+                   Changing the test to make it pass isn't a fix, so a touched test scores nothing. You can
+                   edit it, but please don't — fix the code instead.
 
-Read the formula: the fix must be shown by the test going green (not asserted), it must break nothing, and
-smaller is much better. The loop is: edit_code the real file → run_java the regression test → read the
-output (edit_code re-replaces to undo a bad edit). Record with record_fix(fixed, fix_diff = your logic
-change, rerun = the output proving the test passes). If you can't, fixed=false — fine, leave it for the
-author."""
+So: the smallest real production change that turns the test green, with the test left alone. Record with
+record_fix(fixed, fix_diff = your change, rerun = the test output that shows it passing). If you can't,
+fixed=false — that's fine, leave it for the author."""
 
 SYNTHESIZER_SYS = """You write the final Java code review from CONFIRMED findings only — each one a bug the
 reproducer showed in the real code, some with a fix the solver verified. Turn each into a point with its
@@ -719,22 +790,48 @@ file:line, what the bug is, and the fix if there is one. Add no new claims of yo
 review beats a flood. Output SUMMARY: then POINTS:, each as - [path/File.java:line] <bug> [— fix: <fix>]."""
 
 
+# --- registry entry types: suspicion -> bug -> solution ---------------------------------------------
 @dataclass
 class Suspicion:
+    """Stage 1 — the investigator's hypothesis. Confidence is the only priority signal."""
     id: int
-    observation: str                  # what the suspector literally saw
+    observation: str                  # what the investigator literally saw
     suspected_bug: str                # the bug it might cause (hypothesis)
     location: str
-    confidence: float                 # how sure the model is — the ONLY priority signal (check surest first)
-    status: str = "pending"           # pending / confirmed / refuted / inconclusive
-    evidence: str = ""
-    repro_kind: str = ""              # regression_test / test / log — how the verdict was reached by EXECUTION
-    test_path: str = ""               # regression test file the reproducer wrote (for the PR)
-    test_src: str = ""                # the regression test source (fail-before / pass-after); ships in the PR
-    reproduction: str = ""            # the actual run: command(s) + their output
-    fixed: bool = False               # solver verified a fix (only attempted on confirmed bugs)
-    fix_diff: str = ""                # the logic change the solver made to the real lines
-    fix_rerun: str = ""               # the rerun output proving the fix + nothing else broken
+    confidence: float
+    status: str = "pending"           # pending / proven / refuted / inconclusive (proven => a Bug exists)
+
+
+@dataclass
+class Bug:
+    """Stage 2 — a suspicion PROVEN by a failing unit test that passed the gate (flip / critic)."""
+    id: int
+    suspicion_id: int                 # the Suspicion this was promoted from
+    observation: str
+    suspected_bug: str
+    location: str
+    repro_kind: str = ""              # regression_test / test — confirmed only by a failing unit test
+    evidence: str = ""                # one-line: file:line + what the run showed
+    reproduction: str = ""            # the actual run: command(s) + output proving it fails
+    test_path: str = ""               # the unit/regression test file (ships in the PR)
+    test_src: str = ""                # full test source captured from disk (fail-before / pass-after)
+    test_cmd: str = ""                # the command that runs just this test (gate re-runs it on both trees)
+    validation: str = ""             # how the gate cleared it: "flip" or "critic …"
+    build_edit_path: str = ""         # build file edited to add a test-scope dep (e.g. mockito), if any
+    build_edit_src: str = ""          # full new content of that build file (re-applied for the solver + PR)
+
+
+@dataclass
+class Solution:
+    """Stage 3 — the solver's verified fix for a Bug."""
+    id: int
+    bug_id: int                       # the Bug this fixes
+    fixed: bool = False               # the regression test now passes, nothing else broken
+    fix_diff: str = ""                # the production-code change
+    fix_rerun: str = ""              # rerun output proving the test is green
+    lines_changed: int = 0            # MEASURED production lines the patch touches (git, excl. test + dep)
+    test_changed: bool = False        # solver edited the test itself (any line) -> reward 0
+    reward: float = 0.0               # passes · 0.9^lines_changed · (test_changed ? 0 : 1)
 
 
 def _extract_json(text, opener):
@@ -910,12 +1007,18 @@ def reproduce(repo_dir, s):
            "FAILS on the bug. Write a @Test that asserts the correct behaviour the bug violates: add it to an "
            "existing *Test.java for that class with `edit_file`, or `create_test` a new *Test.java under "
            "src/test/ when none fits; then `run_java` it (mvn test -Dtest=… / gradle test --tests …) and "
-           "watch it go red on /src/new (ideally green on /src/old). A log added to the real file is a weaker "
-           "fallback; the test passing / a right log / an empty grep means refuted. If you've only read it, "
-           "you don't have an answer yet. `run_java` auto-resets between checks. Record any NEW bug you "
-           "observe with add_suspicion. When shown, call `record_verdict` (verdict, repro_kind "
-           "regression_test|test|log|grep, test_path + test_src if you wrote a test, reproduction = the "
-           "command(s) run + their real output, evidence).")
+           "watch it go red on /src/new and (ideally) green on /src/old. A failing test is the ONLY way to "
+           "confirm — a log or grep can only REFUTE. If the code is coupled (needs a client, service, or I/O) "
+           "or the path is an exception/exit, MOCK the collaborators — that's the path: Mockito "
+           "`mock(Dep.class)` + `when(...).thenThrow(...)` to drive the catch, `mockStatic(System.class)` / "
+           "`catchSystemExit` / a `SecurityManager` for System.exit. If Mockito isn't on the test classpath, "
+           "you MAY add `org.mockito:mockito-core` at TEST scope to the pom/build with `edit_file`. Mock the "
+           "dependencies, never the class under test. Your confirm then passes a gate: the test is re-run on "
+           "/src/old (real regression = red on new, green on old) and a critic checks it demonstrates the bug "
+           "— so it must genuinely exercise the suspected behaviour (no assert(false)). If you've only read "
+           "it, you don't have an answer. Record any NEW bug with add_suspicion. When done, call "
+           "`record_verdict` (verdict, repro_kind=regression_test|test to confirm — grep/log only refute, "
+           "test_path + test_src + test_cmd = the command that runs just your test, reproduction, evidence).")
     out = _run_agent(REPRODUCER_SYS, msg, repo_dir, base=_READONLY_BASE,
                      extra_tools=[CAPTURE, "run_java", "edit_file", "create_test", "record_verdict",
                                   "reset_workspace"])
@@ -923,6 +1026,21 @@ def reproduce(repo_dir, s):
         return dict(_VERDICT)
     print(f"  [verdict] no record_verdict for S[{s.id}] — inconclusive (nothing run)", flush=True)
     return {"verdict": "inconclusive", "evidence": (out or "")[-300:], "repro_kind": "none"}
+
+
+def _read_worktree_file(rel):
+    """Read a file from the POST-PR worktree by repo-relative path, or '' if missing/escaping. Used to
+    capture the actual test/build file at record_verdict time (disk is authoritative over pasted args)."""
+    root = _sandbox.workdir("new")
+    if not (root and str(rel).strip()):
+        return ""
+    p = os.path.normpath(os.path.join(root, str(rel)))
+    if not p.startswith(os.path.normpath(root) + os.sep) or not os.path.isfile(p):
+        return ""
+    try:
+        return open(p, errors="ignore").read()
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _materialize_test(s):
@@ -946,50 +1064,145 @@ def _materialize_test(s):
         return False
 
 
-def solve(repo_dir, s):
-    # Separate agent: only runs on a REPRODUCED bug. Full source edit (unlike the reproducer); graded by
-    # re-running the reproducer's own regression test against its patch. Fresh, lean context — just the bug
-    # + how it was shown + the test, not the reproducer's whole exploration.
+_BUILD_FILES = ("pom.xml", "build.gradle", "build.gradle.kts")
+
+
+def _materialize_build_edit(s):
+    """Re-apply the reproducer's build-file edit (e.g. adding mockito-core at test scope) into the clean
+    worktree so the solver's re-run of the regression test still compiles. reset_clean() reverts the tracked
+    pom/build, dropping the dep; we overwrite it with the captured content. Restricted to build files, and the
+    target must already exist (we only restore a tracked build file, never create one). Returns True if written."""
+    if not (s.build_edit_src.strip() and s.build_edit_path.strip()):
+        return False
+    if os.path.basename(s.build_edit_path) not in _BUILD_FILES:
+        return False
+    root = _sandbox.workdir("new")
+    if not root:
+        return False
+    p = os.path.normpath(os.path.join(root, s.build_edit_path))
+    if not p.startswith(os.path.normpath(root) + os.sep) or not os.path.isfile(p):
+        return False
+    try:
+        open(p, "w").write(s.build_edit_src)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def solve(repo_dir, bug):
+    # Reads a Bug from the registry and writes a Solution. Only runs on a PROVEN bug. Full source edit
+    # (unlike the reproducer); graded by re-running the bug's own regression test against its patch. Fresh,
+    # lean context — just the bug + how it was shown + the test, not the reproducer's whole exploration.
     _reset_fix()
     _sandbox.reset_clean()   # pristine source — the solver fixes from clean, not the reproducer's logging
-    _materialize_test(s)     # put the reproducer's regression test back (reset_clean wiped the untracked file)
+    _materialize_test(bug)   # put the bug's regression test back (reset_clean wiped the untracked file)
+    _materialize_build_edit(bug)  # re-apply the test-scope dep edit (e.g. mockito) reset_clean reverted
     _sandbox.set_no_new_files(True)   # no_cheat backstop; the tool set below (no shell) is the real guarantee
-    test_block = (f"regression test ({s.test_path}):\n{s.test_src}\n\n" if s.test_src else "")
-    msg = (f"BUG TO FIX (already reproduced):\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\n"
-           f"location: {s.location}\nhow it was shown ({s.repro_kind}): {s.evidence}\nreproduction:\n{s.reproduction}\n\n"
+    test_block = (f"the failing test ({bug.test_path}):\n{bug.test_src}\n\n" if bug.test_src else "")
+    msg = (f"BUG TO FIX:\nobservation: {bug.observation}\nsuspected_bug: {bug.suspected_bug}\n"
+           f"location: {bug.location}\nhow it was shown ({bug.repro_kind}): {bug.evidence}\nreproduction:\n{bug.reproduction}\n\n"
            f"{test_block}"
-           "Change the real production code in /src/new so this stops happening, then confirm by re-running "
-           "the reproducer's check above against your change — the regression test should now PASS (it fails "
-           "now) with nothing else broken. Your tools: `edit_code` to change the real code (it refuses "
-           "src/test, so you fix the class, not the test), `run_java` to re-run the test. Keep the change as "
-           "small as you can. When done, call record_fix (fixed, fix_diff = your logic change, rerun = the "
-           "output proving the test passes). If you can't fix it, record fixed=false.")
-    # NOTE: no reset_workspace for the solver — a reset would wipe the materialized regression test (its
-    # yardstick). It gets a clean tree + the test already; edit_code re-replaces to undo a bad edit.
+           "A unit test fails because of this bug. Fix the production code in /src/new so the test passes — "
+           "re-run it to confirm it goes green, changing nothing else. Tools: `edit_file` (change existing "
+           "source), `run_java` (re-run the test). Keep the change small, and don't edit the test itself — a "
+           "changed test scores zero. When the test passes, call record_fix (fixed, fix_diff = your change, "
+           "rerun = the passing test output). If you can't, record fixed=false.")
+    # No reset_workspace for the solver — a reset would wipe the materialized test (the thing it must pass).
     out = _run_agent(SOLVER_SYS, msg, repo_dir, base=_READONLY_BASE,
-                     extra_tools=["run_java", "edit_code", "record_fix"])
-    if "fixed" in _FIX:
-        return dict(_FIX)
-    return {"fixed": False, "fix_diff": "", "rerun": (out or "")[-300:]}
+                     extra_tools=["run_java", "edit_file", "record_fix"])
+    fix = dict(_FIX) if "fixed" in _FIX else {"fixed": False, "fix_diff": "", "rerun": (out or "")[-300:]}
+    # MEASURED reward inputs (not the model's self-report). lines_changed = production lines in the worktree
+    # diff, excluding the materialized test (src/test) and the re-applied dep (build_edit_path). test_changed
+    # = did the solver edit the test itself, vs the test we materialized (disk != bug.test_src).
+    stats = _sandbox.diff_numstat("new")
+    fix["lines_changed"] = sum(n for p, n in stats
+                               if "/src/test/" not in ("/" + p) and p != bug.build_edit_path)
+    fix["test_changed"] = bool(bug.test_src) and (_read_worktree_file(bug.test_path) != bug.test_src)
+    return fix
 
 
-def synthesize(ctx, confirmed, inconclusive):
-    def _one(s):
-        line = (f"- [{s.location}] {s.suspected_bug}\n    observation: {s.observation}\n"
-                f"    reproduction ({s.repro_kind}): {s.evidence}")
-        if s.test_path:
-            line += f"\n    regression test: {s.test_path}"
-        if s.fixed:
-            line += f"\n    fix: {s.fix_diff[:400]}"
+def synthesize(ctx, bugs, solutions, open_suspicions):
+    """The PR writer: reads the registry (bugs + their solutions) and prints the review."""
+    sol_by_bug = {sol.bug_id: sol for sol in solutions}
+    def _one(bug):
+        line = (f"- [{bug.location}] {bug.suspected_bug}\n    observation: {bug.observation}\n"
+                f"    proven by ({bug.repro_kind}): {bug.evidence}")
+        if bug.test_path:
+            line += f"\n    regression test: {bug.test_path}"
+        sol = sol_by_bug.get(bug.id)
+        if sol and sol.fixed:
+            line += f"\n    fix ({sol.lines_changed} lines): {sol.fix_diff[:400]}"
         return line
-    body = "CONFIRMED FINDINGS (each REPRODUCED in the real code; some with a verified fix):\n" + (
-        "\n".join(_one(s) for s in confirmed) or "(none)")
-    if inconclusive:
+    body = "PROVEN BUGS (each reproduced in the real code; some with a verified fix):\n" + (
+        "\n".join(_one(b) for b in bugs) or "(none)")
+    if open_suspicions:
         body += "\n\nOPEN QUESTIONS (couldn't be settled by a run — include as hedged questions):\n" + "\n".join(
-            f"- {s.suspected_bug} [{s.location}]" for s in inconclusive)
+            f"- {s.suspected_bug} [{s.location}]" for s in open_suspicions)
     txt = _llm_call(SYNTHESIZER_SYS, "PULL REQUEST (context):\n" + ctx[:8000] + "\n\n" + body +
                     "\n\nWrite the review.")
     return final_review(_post_think(txt))
+
+
+# --- the gate between reproduce and bug: a failing test must really demonstrate the suspicion -----------
+# Two overlapping slices (swiss-cheese): (1) an EXECUTABLE flip — a genuine regression test FAILS on /src/new
+# and PASSES on /src/old; assert(false) fails on both, so it can't flip. (2) a CRITIC subagent for the cases
+# the flip can't settle (pre-existing bugs that fail on both, or a test that won't compile on /src/old).
+TEST_CRITIC_SYS = ("You judge whether a FAILING Java test genuinely demonstrates a specific suspected bug, or "
+                   "is a fake/irrelevant pass-the-gate test. REJECT if it is trivial (asserts false / fail() / "
+                   "asserts a constant), if it fails on a COMPILE or SETUP error rather than the asserted "
+                   "behaviour, or if it exercises something unrelated to the suspicion. APPROVE only if the "
+                   "test runs the real class named in the suspicion and fails because of the suspected wrong "
+                   "behaviour. Reply ONLY 'APPROVE' or 'REJECT: <one-line reason>'.")
+
+
+def _flip_check(verdict):
+    """Run the reproducer's test on BOTH trees. A real regression FAILS on /src/new and PASSES on /src/old.
+    Returns (ran, new_fails, old_passes); ran=False when we can't run it (no test_cmd / bad cmd / no worktree)."""
+    cmd = str(verdict.get("test_cmd", "")).strip()
+    tp, ts = str(verdict.get("test_path", "")), str(verdict.get("test_src", ""))
+    first = cmd.split()[0] if cmd else ""
+    if not (cmd and tp and ts and _is_test_path(tp)) or first not in _RUNJAVA_OK or any(b in cmd for b in _RUNJAVA_BAD):
+        return (False, False, False)
+    rc_new, _ = _sandbox.exec_(cmd, version="new")          # test is on /src/new (the reproducer left it)
+    root_old = _sandbox.workdir("old")
+    if not root_old:
+        return (False, rc_new != 0, False)
+    p = os.path.normpath(os.path.join(root_old, tp))
+    if not p.startswith(os.path.normpath(root_old) + os.sep):
+        return (False, rc_new != 0, False)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "w").write(ts)                               # materialize the test into /src/old too
+    except Exception:  # noqa: BLE001
+        return (False, rc_new != 0, False)
+    rc_old, _ = _sandbox.exec_(cmd, version="old")
+    return (True, rc_new != 0, rc_old == 0)
+
+
+def _validate_test_agent(s, verdict):
+    """Critic subagent: does this failing test really demonstrate the suspicion? Fail-OPEN on an LLM error
+    (don't lose a real bug to a flaky call — the solver's reward is the backstop)."""
+    msg = (f"SUSPICION:\nobservation: {s.observation}\nsuspected_bug: {s.suspected_bug}\nlocation: {s.location}\n\n"
+           f"FAILING TEST ({verdict.get('test_path','')}):\n{str(verdict.get('test_src',''))[:4000]}\n\n"
+           f"IT FAILED WITH:\n{str(verdict.get('reproduction',''))[:1500]}\n\nDoes it genuinely demonstrate the bug?")
+    try:
+        ans = (_llm_call(TEST_CRITIC_SYS, msg) or "").strip()
+    except Exception:  # noqa: BLE001
+        return True, "critic-error (fail-open)"
+    if ans.upper().startswith("APPROVE"):
+        return True, "critic approved"
+    return False, ("critic " + ans[:100])
+
+
+def _validate_bug(s, verdict):
+    """Gate a confirmed verdict before it becomes a Bug. Flip first (executable, ungameable); fall back to the
+    critic when the flip can't settle it. Returns (approved, reason)."""
+    ran, new_fails, old_passes = _flip_check(verdict)
+    if ran and not new_fails:
+        return False, "test does not fail on /src/new"        # not actually red -> nothing demonstrated
+    if ran and new_fails and old_passes:
+        return True, "flip"                                   # red on new, green on old -> real regression
+    return _validate_test_agent(s, verdict)                   # no decisive flip -> ask the critic
 
 
 def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print, mode=None):
@@ -1010,38 +1223,56 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=
     for s in sorted(by_id.values(), key=lambda x: -x.confidence):   # surest first — confidence is the order
         mark = "" if s.confidence >= conf_floor else "  (below conf floor, won't check)"
         log(f"   S[{s.id}] conf={s.confidence} :: {s.suspected_bug[:80]}{mark}")
+
+    # PHASE 2 — REPRODUCE: drain pending suspicions (surest first); a proven one becomes a Bug in _BUGS.
     checks = 0
     while checks < max_checks:
         _store_to_suspicions(by_id)            # pick up any new suspicions the reproducer recorded
-        # confidence is the only signal: check what the model is SUREST of first, down to the floor.
         pending = [s for s in by_id.values() if s.status == "pending" and s.confidence >= conf_floor]
         if not pending:
             break
         s = schedule(pending)
         before = len(_STORE)
         res = reproduce(repo_dir, s)
-        s.status = str(res.get("verdict", "inconclusive")).lower()
-        s.evidence = str(res.get("evidence", ""))[:600]
-        s.repro_kind = str(res.get("repro_kind", ""))
-        s.test_path = str(res.get("test_path", ""))
-        s.test_src = str(res.get("test_src", ""))
-        s.reproduction = str(res.get("reproduction", ""))[:600]
+        verdict = str(res.get("verdict", "inconclusive")).lower()
         checks += 1
-        log(f"  check {checks}: [{s.id}] {s.status}/{s.repro_kind or '-'} (+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
-        if s.status == "confirmed":           # reproduced -> hand to the SOLVER
-            fx = solve(repo_dir, s)
-            s.fixed = bool(fx.get("fixed"))
-            s.fix_diff = str(fx.get("fix_diff", ""))[:600]
-            s.fix_rerun = str(fx.get("rerun", ""))[:600]
-            log(f"    solve [{s.id}]: {'FIXED' if s.fixed else 'no fix'}")
-    confirmed = [s for s in by_id.values() if s.status == "confirmed"]
-    inconclusive = [s for s in by_id.values() if s.status == "inconclusive"]
+        if verdict == "confirmed":
+            ok, how = _validate_bug(s, res)    # GATE: the test must really demonstrate the bug
+            if ok:
+                s.status = "proven"
+                bug = _add_bug(s, res, validation=how)
+                log(f"  check {checks}: [S{s.id}] PROVEN -> Bug[{bug.id}] ({bug.repro_kind}; {how}) "
+                    f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+            else:
+                s.status = "inconclusive"      # test rejected by the gate -> not a bug
+                log(f"  check {checks}: [S{s.id}] REJECTED test ({how}) — not a bug "
+                    f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+        else:
+            s.status = verdict                 # refuted / inconclusive
+            log(f"  check {checks}: [S{s.id}] {verdict}/{res.get('repro_kind') or '-'} "
+                f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+
+    # PHASE 3 — SOLVE: the solver reads each Bug from the registry and writes a Solution. It ONLY attempts a
+    # bug the reproducer proved WITH A UNIT TEST (test_src present) — there's a failing test to turn green.
+    # A grep/log-only bug gives the solver nothing to verify against, so it's left for the author, not guessed.
+    for bug in list(_BUGS):
+        if not bug.test_src.strip():
+            log(f"    skip Bug[{bug.id}] (S{bug.suspicion_id}): no unit test ({bug.repro_kind}) — "
+                "not handed to the solver, left for the author")
+            continue
+        fx = solve(repo_dir, bug)
+        sol = _add_solution(bug, fx)
+        log(f"    solve Bug[{bug.id}] (S{bug.suspicion_id}): {'FIXED' if sol.fixed else 'no fix'} "
+            f"({sol.lines_changed} lines, reward={sol.reward}{', TEST TOUCHED!' if sol.test_changed else ''})")
+
+    # PHASE 4 — PR: the writer reads the registry (bugs + solutions) and the open suspicions.
+    open_suspicions = [s for s in by_id.values() if s.status == "inconclusive"]
     refuted = sum(1 for s in by_id.values() if s.status == "refuted")
-    solved = sum(1 for s in confirmed if s.fixed)
-    log(f"=> confirmed {len(confirmed)} ({solved} fixed) | inconclusive {len(inconclusive)} | "
-        f"refuted {refuted} | total {len(by_id)} | checks {checks}")
-    review = synthesize(ctx, confirmed, inconclusive)
-    return review, list(by_id.values())
+    solved = sum(1 for sol in _SOLUTIONS if sol.fixed)
+    log(f"=> bugs {len(_BUGS)} ({solved} fixed) | inconclusive {len(open_suspicions)} | "
+        f"refuted {refuted} | suspicions {len(by_id)} | checks {checks}")
+    review = synthesize(ctx, _BUGS, _SOLUTIONS, open_suspicions)
+    return review, {"suspicions": list(by_id.values()), "bugs": list(_BUGS), "solutions": list(_SOLUTIONS)}
 
 
 def _setup(repo, pr):
@@ -1109,20 +1340,24 @@ def run(repo, pr, conf_floor=0.4):
     print(f"=== sandbox JDK for {repo}#{pr}: {jdk} ===", flush=True)
     _sandbox.start(repo, pr, jdk=jdk, log_path=f"results/probes/{tag}.log")
     try:
-        review, sus = run_suspicion_review(d, pi, conf_floor=conf_floor)
+        review, reg = run_suspicion_review(d, pi, conf_floor=conf_floor)
     finally:
         _sandbox.stop()
     os.makedirs("results/susp_runs", exist_ok=True)
+    suspicions, bugs, solutions = reg["suspicions"], reg["bugs"], reg["solutions"]
+    # The registry, dumped as three linked entry lists: suspicion -> bug (suspicion_id) -> solution (bug_id).
     out = {"repo": repo, "pr": pr, "review": review,
-           "confirmed": sum(1 for s in sus if s.status == "confirmed"),
-           "solved": sum(1 for s in sus if s.status == "confirmed" and s.fixed),
-           "inconclusive": sum(1 for s in sus if s.status == "inconclusive"),
-           "refuted": sum(1 for s in sus if s.status == "refuted"),
-           "n_suspicions": len(sus),
-           "suspicions": [asdict(s) for s in sus]}
+           "n_suspicions": len(suspicions),
+           "bugs": len(bugs),
+           "solved": sum(1 for sol in solutions if sol.fixed),
+           "inconclusive": sum(1 for s in suspicions if s.status == "inconclusive"),
+           "refuted": sum(1 for s in suspicions if s.status == "refuted"),
+           "registry": {"suspicions": [asdict(s) for s in suspicions],
+                        "bugs": [asdict(b) for b in bugs],
+                        "solutions": [asdict(sol) for sol in solutions]}}
     json.dump(out, open(f"results/susp_runs/{tag}.json", "w"), indent=1)
     print("\n=== REVIEW ===\n" + review)
-    return review, sus
+    return review, reg
 
 
 if __name__ == "__main__":

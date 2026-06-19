@@ -130,6 +130,27 @@ def reset_clean():
                  f"git -C {tree} clean -fdx >/dev/null 2>&1", timeout=180)
 
 
+def diff_numstat(version: str = "new"):
+    """Per-file (added+deleted) line counts in the worktree vs HEAD: list of (path, lines). Runs harness-side
+    (the worktree .git resolves under /work). Used to MEASURE the solver's production patch size for the
+    reward — honest, not the model's self-reported diff."""
+    tree = _SESSION.get("base") if version == "old" else _SESSION.get("worktree")
+    if not tree:
+        return []
+    try:
+        r = _run(f"git -C {tree} diff --numstat", timeout=60)
+    except Exception:  # noqa: BLE001
+        return []
+    rows = []
+    for ln in (r.stdout or "").splitlines():
+        parts = ln.split("\t")
+        if len(parts) == 3:
+            a, d, path = parts
+            n = (int(a) if a.isdigit() else 0) + (int(d) if d.isdigit() else 0)
+            rows.append((path, n))
+    return rows
+
+
 def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
     """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
     old = base); return (exit_code, output). Output is combined stdout+stderr, tail-capped. The
