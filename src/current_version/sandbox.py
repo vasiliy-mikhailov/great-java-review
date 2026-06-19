@@ -31,9 +31,13 @@ DEFAULT_JDK = 21
 _SESSION = {"name": None, "log": None, "base": None, "worktree": None}
 
 # no_cheat: when on, exec_ blocks the run (removes the files + WITHHOLDS the output) if the command
-# created any new source file — the reproducer may only MODIFY existing files (add logging) and run
-# existing tests, never write copies/stubs/drivers (the simulation hole). Set per-agent by the harness.
+# created any new source file — EXCEPT a legitimate regression test under src/test/ named *Test/*Tests/*IT
+# (that's the one artifact the reproducer is allowed to author, via create_test; it can't be a production
+# stub). A new file under src/main, or any *.java dropped in /tmp /root /home, is still a copy/stub/driver
+# and stays blocked. Set per-agent by the harness.
 _NO_NEW = {"on": False}
+# matches a new file we ALLOW: under a src/test/ root with a JUnit *Test/*Tests/*IT name.
+_TEST_NEW_OK = r"/src/test/.*(Test|Tests|IT)\.java$"
 
 
 def set_no_new_files(on: bool):
@@ -144,7 +148,9 @@ def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int
         rc, out = 124, "(ssh client timed out; inner timeout should have bounded the container)"
     out = out[-8000:]
     if _NO_NEW["on"]:   # no_cheat: block + WITHHOLD output if the command created any new source file
-        guard = ("NEW=$( { comm -13 /tmp/.known_java <(find /src/new -name '*.java' 2>/dev/null | sort); "
+        # ... except a legit regression test under src/test/ (allowed: it's create_test's one artifact).
+        guard = ("NEW=$( { comm -13 /tmp/.known_java <(find /src/new -name '*.java' 2>/dev/null | sort) "
+                 f"| grep -vE '{_TEST_NEW_OK}'; "
                  "find /tmp /root /home -name '*.java' 2>/dev/null; } | sort -u )\n"
                  "if [ -n \"$NEW\" ]; then echo \"$NEW\" | xargs -r rm -f; echo __NEWFILES__; echo \"$NEW\"; fi\n")
         try:
