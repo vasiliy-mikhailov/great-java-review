@@ -103,8 +103,8 @@ def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = Non
     # snapshot the existing source files — exec_'s no_cheat guard treats any .java NOT in here as a
     # new file the reproducer created (a copy/stub), and blocks it. git is unavailable in the sandbox
     # (worktree .git not mounted), so a find-snapshot is how we tell new from modified.
-    _run(f"docker exec {name} bash -lc \"find /src/new -name '*.java' 2>/dev/null | sort > /tmp/.known_java\" "
-         f">/dev/null 2>&1")
+    _run(f"docker exec {name} bash -lc \"find /src/new -type f -name '*.java' ! -path '*/.java/*' 2>/dev/null "
+         f"| sort > /tmp/.known_java\" >/dev/null 2>&1")
     _SESSION.update(name=name, log=log_path, base=cbase, worktree=cnew)
     return name
 
@@ -151,14 +151,33 @@ def diff_numstat(version: str = "new"):
     return rows
 
 
+# Cosmetic / lint Maven plugins that NEVER affect whether code compiles or a test passes, but routinely
+# false-fail the build (e.g. impsort-maven-plugin 1.0.1 crashes on JDK 21 with a missing plexus class).
+# Auto-skip them on every Maven run so verification sees real compile/test results, not toolchain noise.
+# Unknown -D properties are ignored by Maven, so appending the whole set is safe. (bump-java-version lesson.)
+_MVN_SKIPS = (" -Dimpsort.skip=true -Dspotless.check.skip=true -Dspotless.apply.skip=true"
+              " -Dcheckstyle.skip=true -Dlicense.skip=true -Denforcer.skip=true -Drat.skip=true"
+              " -Dmaven.javadoc.skip=true -Dpmd.skip=true -Dcpd.skip=true -Dspotbugs.skip=true"
+              " -Dfindbugs.skip=true -Dformat.skip=true -Dfmt.skip=true -Dforbiddenapis.skip=true"
+              " -Danimal.sniffer.skip=true -Dgpg.skip=true -Dmaven.source.skip=true")
+_MVN_FIRST = {"mvn", "./mvnw", "mvnw"}
+
+
+def _augment_maven(command: str) -> str:
+    """Append cosmetic-plugin skip flags to a Maven invocation; pass gradle/java/javac through unchanged."""
+    parts = command.split()
+    return command + _MVN_SKIPS if parts and parts[0] in _MVN_FIRST else command
+
+
 def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
     """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
-    old = base); return (exit_code, output). Output is combined stdout+stderr, tail-capped. The
-    probe is wrapped in an INNER `timeout -k` so it self-exits even if the client is interrupted.
-    """
+    old = base); return (exit_code, full combined stdout+stderr — no truncation, download chatter stripped).
+    A Maven command is auto-augmented to skip cosmetic/lint plugins. The probe is wrapped in an INNER
+    `timeout -k` so it self-exits even if the client is interrupted."""
     name = _SESSION["name"]
     if not name:
         return 127, "sandbox not started (call start())"
+    command = _augment_maven(command)
     wd = "/src/old" if version == "old" else "/src/new"
     inner = f"cd {wd} && timeout -k 5 {timeout_s} bash -s"
     remote = f"docker exec -i {name} bash -lc '{inner}'"
@@ -167,24 +186,34 @@ def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int
         rc, out = r.returncode, (r.stdout or "") + (r.stderr or "")
     except subprocess.TimeoutExpired:
         rc, out = 124, "(ssh client timed out; inner timeout should have bounded the container)"
-    out = out[-8000:]
-    if _NO_NEW["on"]:   # no_cheat: block + WITHHOLD output if the command created any new source file
-        # ... except a legit regression test under src/test/ (allowed: it's create_test's one artifact).
-        guard = ("NEW=$( { comm -13 /tmp/.known_java <(find /src/new -name '*.java' 2>/dev/null | sort) "
+    # Send the FULL build/test output to the model — NO arbitrary truncation. An 8000-char tail dropped the
+    # end of the stack trace / surefire failure detail, the exact signal it needs (same lesson as no reasoning
+    # or wall-clock caps: don't starve it). The only thing stripped is Maven's dependency-download/progress
+    # chatter — transfer noise, not diagnostics — which is what would otherwise bloat the window on a cold
+    # cache; the condenser (P14) bounds accumulated history and the _run_agent catch survives a rare overflow.
+    out = "\n".join(ln for ln in out.splitlines()
+                    if not ln.lstrip().startswith(("Downloading from", "Downloaded from", "Progress (")))
+    if _NO_NEW["on"]:
+        # no_cheat backstop — runs AFTER the command and NEVER withholds the compiler/test output (blinding the
+        # model to its own compile errors is the very failure that broke the loop, and the operator already
+        # rejected the withhold-output guard as whack-a-mole). The real no_cheat is the tool set (no shell, no
+        # production-file create) + the scorer re-running genuine code, so a stray production .java essentially
+        # can't arise here. We only remove a genuinely-stray NEW source file — not a test, not Maven build
+        # output (target/), not the JVM prefs dir (~/.java) — and APPEND a visible note; rc + output stand.
+        guard = ("NEW=$( { comm -13 /tmp/.known_java "
+                 "<(find /src/new -type f -name '*.java' ! -path '*/target/*' ! -path '*/.java/*' 2>/dev/null | sort) "
                  f"| grep -vE '{_TEST_NEW_OK}'; "
-                 "find /tmp /root /home -name '*.java' 2>/dev/null; } | sort -u )\n"
-                 "if [ -n \"$NEW\" ]; then echo \"$NEW\" | xargs -r rm -f; echo __NEWFILES__; echo \"$NEW\"; fi\n")
+                 "find /tmp -type f -name '*.java' ! -path '*/.java/*' 2>/dev/null; } | sort -u )\n"
+                 "if [ -n \"$NEW\" ]; then echo \"$NEW\" | xargs -r rm -f; echo __STRAY__; echo \"$NEW\"; fi\n")
         try:
             g = _run(f"docker exec -i {name} bash -lc 'bash -s'", stdin=guard, timeout=60)
             gout = g.stdout or ""
         except Exception:  # noqa: BLE001
             gout = ""
-        if "__NEWFILES__" in gout:
-            files = gout.split("__NEWFILES__", 1)[1].strip()
-            rc, out = 1, ("[no_cheat] BLOCKED — your command created new source file(s); they were removed and "
-                          "the run output is withheld. You may ONLY modify EXISTING files (add logging) and run "
-                          "the project's existing tests/build — never write copies, stubs, or standalone drivers:\n"
-                          + files)
+        if "__STRAY__" in gout:
+            files = gout.split("__STRAY__", 1)[1].strip()
+            out = out + ("\n[no_cheat] removed a stray non-test source file — a copy/stub doesn't count, fix and "
+                         "test the REAL class:\n" + files)
     if _SESSION["log"]:
         try:
             with open(_SESSION["log"], "a") as f:

@@ -174,7 +174,9 @@ class _DialogViz(ConversationVisualizerBase):
                 txt = str(event)                        # __str__ = "Tool: X\nResult: <preview>" (guaranteed)
             if txt.strip():
                 with open(path, "a") as f:
-                    f.write(f"\n[result{(' ' + tool) if tool else ''}] {txt.strip()[:600]}\n")
+                    # log the TAIL, not the head — a build/test result's summary (Tests run / BUILD / the
+                    # failure + stack trace) is at the END; the old head-600 showed only download chatter.
+                    f.write(f"\n[result{(' ' + tool) if tool else ''}] {txt.strip()[-8000:]}\n")
         except Exception:  # noqa: BLE001
             pass
         return None
