@@ -1360,8 +1360,51 @@ def run(repo, pr, conf_floor=0.4):
     return review, reg
 
 
+def _setup_head(repo):
+    """Whole-repo HEAD review (no PR): checkout the latest default branch, build a minimal context."""
+    from current_version.repo import ensure_repo_head
+    d, sha = ensure_repo_head(repo)
+    if d is None:
+        raise RuntimeError(f"could not checkout HEAD for {repo} — clone it first (clone_head)")
+    d = str(d)
+    pi = (f"Repository: {repo}\nReviewing the LATEST default-branch HEAD ({(sha or '')[:12]}) for real bugs — "
+          "whole-repo, no pull request. Find concrete bugs in the current code.")
+    tag = repo.replace('/', '__') + '__head'
+    os.makedirs("results/reasoning", exist_ok=True)
+    os.environ["REASONING_LOG"] = f"results/reasoning/{tag}.log"
+    open(os.environ["REASONING_LOG"], "w").close()
+    return d, pi, tag, sha
+
+
+def run_head(repo, conf_floor=0.4):
+    """Hunt bugs in a repo's latest HEAD (mode=repo) and write the registry — same gated pipeline, no PR."""
+    d, pi, tag, sha = _setup_head(repo)
+    os.makedirs("results/probes", exist_ok=True)
+    open(f"results/probes/{tag}.log", "w").close()
+    jdk = _sandbox.detect_jdk(d)
+    print(f"=== HEAD bug-hunt {repo}@{(sha or '')[:12]} | JDK {jdk} ===", flush=True)
+    _sandbox.start(repo, "head", jdk=jdk, log_path=f"results/probes/{tag}.log", new_ref="HEAD")
+    try:
+        review, reg = run_suspicion_review(d, pi, conf_floor=conf_floor, mode="repo")
+    finally:
+        _sandbox.stop()
+    os.makedirs("results/susp_runs", exist_ok=True)
+    suspicions, bugs, solutions = reg["suspicions"], reg["bugs"], reg["solutions"]
+    out = {"repo": repo, "head_sha": sha, "review": review,
+           "n_suspicions": len(suspicions), "bugs": len(bugs),
+           "solved": sum(1 for s in solutions if s.fixed),
+           "registry": {"suspicions": [asdict(s) for s in suspicions],
+                        "bugs": [asdict(b) for b in bugs],
+                        "solutions": [asdict(s) for s in solutions]}}
+    json.dump(out, open(f"results/susp_runs/{tag}.json", "w"), indent=1)
+    print("\n=== REVIEW ===\n" + review)
+    return review, reg
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 3 and sys.argv[3] == "gen":
+    if len(sys.argv) > 2 and sys.argv[2] == "head":          # suspicion.py <repo> head  -> whole-repo HEAD hunt
+        run_head(sys.argv[1])
+    elif len(sys.argv) > 3 and sys.argv[3] == "gen":
         gen_probe(sys.argv[1], int(sys.argv[2]))
     else:
         run(sys.argv[1], int(sys.argv[2]))

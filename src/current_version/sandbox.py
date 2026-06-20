@@ -79,7 +79,7 @@ def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
     return subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
 
 
-def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = None) -> str:
+def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = None, new_ref: str | None = None) -> str:
     """Per-session JDK sandbox with BOTH versions mounted: the base tree (prev) at /src/old and a
     pr-<pr>-head worktree (post-PR) at /src/new — so tools read/compile whichever version is the
     target. Default cwd is /src/new (what you verify). Idempotent."""
@@ -93,9 +93,10 @@ def start(repo: str, pr: str, jdk: int = DEFAULT_JDK, log_path: str | None = Non
     slug = repo.replace('/', '__')
     old_host, new_host = f"{host_work}/data/repos/{slug}", f"{host_work}/data/repos/{slug}__new-{pr}"
     cbase, cnew = f"/work/data/repos/{slug}", f"/work/data/repos/{slug}__new-{pr}"
-    # create the post-PR worktree from the pr-head ref (fall back to base if the ref is missing)
+    # post-side worktree: a PR head ref by default, or any ref (HEAD for whole-repo HEAD bug-hunt)
+    ref = new_ref or f"pr-{pr}-head"
     _run(f"git -C {cbase} worktree remove -f {cnew} >/dev/null 2>&1; git -C {cbase} worktree prune >/dev/null 2>&1; "
-         f"git -C {cbase} worktree add -f {cnew} pr-{pr}-head >/dev/null 2>&1 || "
+         f"git -C {cbase} worktree add -f {cnew} {ref} >/dev/null 2>&1 || "
          f"git -C {cbase} worktree add -f {cnew} HEAD >/dev/null 2>&1")
     _run(f"docker rm -f {name} >/dev/null 2>&1; "
          f"docker run -d {netarg}-v {old_host}:/src/old -v {new_host}:/src/new -w /src/new "

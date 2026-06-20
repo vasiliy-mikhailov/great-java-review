@@ -56,3 +56,28 @@ def ensure_repo(repo, sha):
         if subprocess.run(["git", "-C", str(d), "checkout", "--quiet", sha], capture_output=True).returncode != 0:
             return None
     return d
+
+
+def _default_branch(d):
+    r = subprocess.run(["git", "-C", str(d), "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                       capture_output=True, text=True)
+    return (r.stdout.strip().replace("origin/", "") or "main")
+
+
+def ensure_repo_head(repo, fetch=False):
+    """Check the repo out at its default branch's latest HEAD (whole-repo bug-hunt, no PR). Returns (dir, sha).
+    fetch=False is network-free (uses the local origin/<default> a serial prep already warmed) so the 2 sweep
+    lanes never hit GitHub concurrently (single-worker rule, P5); the clone_head prep does all fetching."""
+    d = ROOT / "data" / "repos" / repo.replace("/", "__")
+    if not d.exists():
+        if subprocess.run(["git", "clone", "--quiet", f"https://github.com/{repo}", str(d)]).returncode != 0:
+            return None, None
+    if fetch:
+        subprocess.run(["git", "-C", str(d), "remote", "set-head", "origin", "-a"], capture_output=True)
+        b = _default_branch(d)
+        subprocess.run(["git", "-C", str(d), "fetch", "--quiet", "origin", b], capture_output=True)
+    b = _default_branch(d)
+    subprocess.run(["git", "-C", str(d), "checkout", "--quiet", b], capture_output=True)
+    subprocess.run(["git", "-C", str(d), "reset", "--hard", "--quiet", f"origin/{b}"], capture_output=True)
+    sha = subprocess.run(["git", "-C", str(d), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    return d, sha
