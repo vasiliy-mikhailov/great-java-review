@@ -723,6 +723,14 @@ a src/test/ root (the ONE file you may create — never src/main, so you can't s
 `run_java` it (mvn test -Dtest=…/gradle test --tests …) and read it fail. A log added to the real file is a
 weaker fallback when a test is genuinely impractical; just reading and concluding shows nothing.
 
+CRUCIAL — what your @Test ASSERTS must be the GENUINELY-CORRECT behaviour, not a convenient one. You author
+both the test and (later) the fix, so a green test only proves they AGREE with each other, NOT that the
+expectation is right. Before you assert, REASON about the correct behaviour from authority: the type/library
+SPEC (Javadoc, the JLS), the serialization/round-trip contract (a value the code WRITES must read back), and
+how SIBLING code handles the same case. Example: gson serialises `Locale.ROOT` to `""`, so deserialising `""`
+must round-trip to `Locale.ROOT` — asserting that it THROWS encodes the wrong spec, and the resulting "fix"
+is wrong-but-green. If the right behaviour is genuinely a judgment call, take the spec/round-trip answer.
+
 Real code is coupled — the method you want to hit pulls in clients, services, or I/O — and that is what
 MOCKING is for, not a reason to retreat to grep. Mock the COLLABORATORS (never the class under test) to
 isolate it AND to drive the path you need: make a mocked dependency throw so a catch block runs, or return a
@@ -763,8 +771,16 @@ with add_suspicion. reset_workspace anytime. Record with record_verdict(verdict,
 test for a confirm — grep/log only refute, test_path + test_src + test_cmd, reproduction = the commands you
 ran + their output, evidence)."""
 
-SOLVER_SYS = """A unit test was written that fails because of one real bug. Your job is simple: fix the
-production code so that test passes.
+SOLVER_SYS = """A unit test was written that fails because of one real bug. Your job: make the production code
+do the CORRECT thing — which makes that test pass as a side effect, not the other way round.
+
+First, reason about what the correct behaviour SHOULD be, from authority — the type/library SPEC (Javadoc, the
+JLS), the serialization/round-trip contract (a value the code WRITES must read back identically), and how
+SIBLING code handles the same case. A passing test is NOT proof of correctness: the same pipeline wrote both
+the test and (now) the fix, so making it green only proves they agree — it can agree on the WRONG behaviour.
+If the test's expectation actually contradicts the spec (e.g. it asserts a throw where the round-trip says the
+value should map back to a canonical default), do NOT force a wrong-but-green fix — record fixed=false and say
+the test encodes the wrong expectation. Pick the canonical answer (e.g. `Locale.ROOT`, not `new Locale("")`).
 
 You have `edit_file` to change existing source and `run_java` to re-run the test (mvn/./mvnw/gradle/./gradlew/
 java/javac — no shell). Work the natural loop: edit the code, run the test, read the output, repeat until it
