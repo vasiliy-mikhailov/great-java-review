@@ -152,6 +152,38 @@ def diff_numstat(version: str = "new"):
     return rows
 
 
+def dirty_files(version: str = "new", prefix: str = ""):
+    """Repo-relative paths git sees as changed (modified / added / untracked) in the worktree, optionally
+    restricted to those starting with `prefix`, each mapped to its CURRENT on-disk content. Runs harness-side
+    (the worktree .git resolves under /work). Used to capture the FULL test scaffolding the reproducer wrote —
+    not just the one named test file, but every helper stub / mock / resource it touched under src/test — so
+    the solver can re-materialize ALL of it into a clean tree and the test actually compiles."""
+    tree = _SESSION.get("base") if version == "old" else _SESSION.get("worktree")
+    if not tree:
+        return {}
+    try:
+        r = _run(f"git -C {tree} status --porcelain -uall", timeout=60)
+    except Exception:  # noqa: BLE001
+        return {}
+    out = {}
+    for ln in (r.stdout or "").splitlines():
+        if len(ln) < 4:
+            continue
+        path = ln[3:].strip()
+        if " -> " in path:                      # rename: take the new path
+            path = path.split(" -> ", 1)[1]
+        path = path.strip().strip('"')
+        if prefix and not path.startswith(prefix):
+            continue
+        p = os.path.join(tree, path)
+        if os.path.isfile(p):
+            try:
+                out[path] = open(p, errors="ignore").read()
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
 # Cosmetic / lint Maven plugins that NEVER affect whether code compiles or a test passes, but routinely
 # false-fail the build (e.g. impsort-maven-plugin 1.0.1 crashes on JDK 21 with a missing plexus class).
 # Auto-skip them on every Maven run so verification sees real compile/test results, not toolchain noise.

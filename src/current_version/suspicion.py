@@ -17,7 +17,7 @@ and dropped by construction.
 """
 from __future__ import annotations
 import json, os, re, sys, warnings
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 warnings.filterwarnings("ignore")
 os.environ.setdefault("OPENHANDS_SUPPRESS_BANNER", "1")
@@ -70,7 +70,8 @@ def _add_bug(suspicion, verdict, validation=""):
             test_path=str(verdict.get("test_path", "")), test_src=str(verdict.get("test_src", "")),
             test_cmd=str(verdict.get("test_cmd", "")), validation=str(validation),
             build_edit_path=str(verdict.get("build_edit_path", "")),
-            build_edit_src=str(verdict.get("build_edit_src", "")))
+            build_edit_src=str(verdict.get("build_edit_src", "")),
+            test_files=dict(verdict.get("test_files", {})))
     _BUGS.append(b)
     return b
 
@@ -274,6 +275,12 @@ class _RecordVerdictExecutor(ToolExecutor):
         _disk_build = _read_worktree_file(_VERDICT["build_edit_path"])
         if _disk_build:
             _VERDICT["build_edit_src"] = _disk_build
+        # FULL test scaffolding: a test rarely lives in one file — it often needs a helper stub/mock edited
+        # (e.g. HikariCP's StubConnection.schemaTransform) or a test resource. Capture EVERY dirty file under
+        # any src/test tree, not just the named test, so the solver can re-materialize all of it into a clean
+        # worktree and the test compiles. Without this the solver is forced to patch scaffolding -> test_changed.
+        _VERDICT["test_files"] = {p: c for p, c in _sandbox.dirty_files("new").items()
+                                  if "/src/test/" in ("/" + p.replace("\\", "/"))}
         # symmetric guard: NEITHER verdict counts without a real run. No run -> inconclusive.
         if _VERDICT["repro_kind"] not in ("regression_test", "test", "log", "grep"):
             _VERDICT["verdict"] = "inconclusive"
@@ -835,6 +842,9 @@ class Bug:
     validation: str = ""             # how the gate cleared it: "flip" or "critic …"
     build_edit_path: str = ""         # build file edited to add a test-scope dep (e.g. mockito), if any
     build_edit_src: str = ""          # full new content of that build file (re-applied for the solver + PR)
+    test_files: dict = field(default_factory=dict)  # FULL test scaffolding {path: content} the reproducer
+    #                                                  wrote under src/test (helper stubs/mocks/resources +
+    #                                                  the named test) — re-materialized so the test compiles
 
 
 @dataclass
@@ -1060,25 +1070,49 @@ def _read_worktree_file(rel):
         return ""
 
 
+def _scaffold_of(test_files, test_path, test_src):
+    """The full set of test-tree files to restore: {path: content}. Prefer captured `test_files` (named test +
+    helper stubs/mocks/resources); always include the primary named test (fallback for older entries recorded
+    before scaffolding capture)."""
+    files = {p: c for p, c in (test_files or {}).items()
+             if "/src/test/" in ("/" + str(p).replace("\\", "/"))}
+    if str(test_src).strip() and str(test_path).strip() and _is_test_path(test_path):
+        files.setdefault(test_path, test_src)
+    return files
+
+
+def _write_scaffold(root, files):
+    """Write {path: content} into `root`, skipping any path escaping it. Returns count written."""
+    n = 0
+    for rel, content in files.items():
+        p = os.path.normpath(os.path.join(root, rel))
+        if not p.startswith(os.path.normpath(root) + os.sep):
+            continue
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            open(p, "w").write(content)
+            n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return n
+
+
+def _test_scaffold(s):
+    """The full test-tree file set for Bug `s` (see _scaffold_of)."""
+    return _scaffold_of(getattr(s, "test_files", None), s.test_path, s.test_src)
+
+
 def _materialize_test(s):
-    """Re-write the reproducer's regression test into the clean worktree so the solver can run it. The test
-    is untracked, so reset_clean() (and the solver's own reset_workspace) wipe it; we put it back from the
-    captured test_src. The solver can't author it himself (edit_code refuses src/test), so the test stays a
-    fixed yardstick he turns green by fixing production code — he can't weaken it. Returns True if written."""
-    if not (s.test_src.strip() and s.test_path.strip() and _is_test_path(s.test_path)):
-        return False
+    """Re-write the reproducer's regression test AND its full test scaffolding into the clean worktree so the
+    solver can run it. These files are untracked/reverted, so reset_clean() (and the solver's own
+    reset_workspace) wipe them; we put them all back from the captured scaffolding — not just the named test,
+    but every helper stub/mock/resource it needed, so the test actually compiles. The solver can't author them
+    himself (edit_code refuses src/test), so the test stays a fixed yardstick he turns green by fixing
+    production code — he can't weaken it. Returns True if at least one file was written."""
     root = _sandbox.workdir("new")
     if not root:
         return False
-    p = os.path.normpath(os.path.join(root, s.test_path))
-    if not p.startswith(os.path.normpath(root) + os.sep):
-        return False
-    try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        open(p, "w").write(s.test_src)
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    return _write_scaffold(root, _test_scaffold(s)) > 0
 
 
 _BUILD_FILES = ("pom.xml", "build.gradle", "build.gradle.kts")
@@ -1119,11 +1153,13 @@ def solve(repo_dir, bug):
     msg = (f"BUG TO FIX:\nobservation: {bug.observation}\nsuspected_bug: {bug.suspected_bug}\n"
            f"location: {bug.location}\nhow it was shown ({bug.repro_kind}): {bug.evidence}\nreproduction:\n{bug.reproduction}\n\n"
            f"{test_block}"
-           "A unit test fails because of this bug. Fix the production code in /src/new so the test passes — "
-           "re-run it to confirm it goes green, changing nothing else. Tools: `edit_file` (change existing "
-           "source), `run_java` (re-run the test). Keep the change small, and don't edit the test itself — a "
-           "changed test scores zero. When the test passes, call record_fix (fixed, fix_diff = your change, "
-           "rerun = the passing test output). If you can't, record fixed=false.")
+           "A unit test fails because of this bug. First decide what the code SHOULD do here (the type/library "
+           "spec, the serialization round-trip contract, sibling code) — then fix the production code in /src/new "
+           "to do that; the test going green is the side effect, not the goal. Re-run it to confirm, changing "
+           "nothing else. Tools: `edit_file` (change existing source), `run_java` (re-run the test). Keep the "
+           "change small, and don't edit the test itself — a changed test scores zero. If the test's expectation "
+           "actually contradicts the correct behaviour, record fixed=false and say so rather than forcing it. "
+           "When the test passes, call record_fix (fixed, fix_diff = your change, rerun = the passing output).")
     # No reset_workspace for the solver — a reset would wipe the materialized test (the thing it must pass).
     out = _run_agent(SOLVER_SYS, msg, repo_dir, base=_READONLY_BASE,
                      extra_tools=["run_java", "edit_file", "record_fix"])
@@ -1134,7 +1170,10 @@ def solve(repo_dir, bug):
     stats = _sandbox.diff_numstat("new")
     fix["lines_changed"] = sum(n for p, n in stats
                                if "/src/test/" not in ("/" + p) and p != bug.build_edit_path)
-    fix["test_changed"] = bool(bug.test_src) and (_read_worktree_file(bug.test_path) != bug.test_src)
+    # test_changed = the solver touched ANY captured test-tree file (the named test OR a helper stub) vs what
+    # we materialized. Since the whole scaffolding is restored, a difference now is the solver weakening it.
+    scaffold = _test_scaffold(bug)
+    fix["test_changed"] = any(_read_worktree_file(p) != c for p, c in scaffold.items())
     return fix
 
 
@@ -1184,13 +1223,9 @@ def _flip_check(verdict):
     root_old = _sandbox.workdir("old")
     if not root_old:
         return (False, rc_new != 0, False)
-    p = os.path.normpath(os.path.join(root_old, tp))
-    if not p.startswith(os.path.normpath(root_old) + os.sep):
-        return (False, rc_new != 0, False)
-    try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        open(p, "w").write(ts)                               # materialize the test into /src/old too
-    except Exception:  # noqa: BLE001
+    # materialize the FULL test scaffolding into /src/old (not just the named test) so a multi-file test still
+    # compiles there — otherwise it fails on a missing helper stub, not on the bug, and the flip can't fire.
+    if _write_scaffold(root_old, _scaffold_of(verdict.get("test_files"), tp, ts)) == 0:
         return (False, rc_new != 0, False)
     rc_old, _ = _sandbox.exec_(cmd, version="old")
     return (True, rc_new != 0, rc_old == 0)
