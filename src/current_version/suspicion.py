@@ -883,7 +883,8 @@ def _read_tools():
         for _n, _t in (("add_suspicion", AddSuspicionTool), ("sandbox_exec", SandboxExecTool),
                        ("record_verdict", RecordVerdictTool), ("reset_workspace", ResetWorkspaceTool),
                        ("record_fix", RecordFixTool), ("run_java", RunJavaTool), ("edit_file", EditFileTool),
-                       ("create_test", CreateTestTool), ("edit_code", EditCodeTool), ("repo_map", RepoMapTool)):
+                       ("create_test", CreateTestTool), ("edit_code", EditCodeTool), ("repo_map", RepoMapTool),
+                       ("record_judgment", RecordJudgmentTool)):
             try:
                 _register_tool(_n, _t)
             except Exception:  # noqa: BLE001  (already registered)
@@ -1360,6 +1361,108 @@ def run(repo, pr, conf_floor=0.4):
     return review, reg
 
 
+# --- adversarial real-bug judge: the STRICT PR-worthiness filter --------------------------------------
+# The head-hunt's critic gate is lenient (precision ~20%): it confirms many test-backed "bugs" that are
+# really the code's INTENDED behavior (savepoint dirty-state, URL/enum/equals, CharSequence pedantry). This
+# judge is the strict, default-REJECT gate before a candidate becomes a PR — a skeptical maintainer with
+# repo-at-HEAD read access arguing AGAINST the bug. Only 'real' verdicts proceed to prepare_pr.
+_JUDGMENT = {}
+
+
+def _reset_judgment():
+    _JUDGMENT.clear()
+
+
+class RecordJudgmentAction(Action):
+    verdict: str = Field(description="real | intended | unsure — is the suspected bug a GENUINE defect a "
+                         "maintainer would fix, the code's INTENDED/documented behavior, or undecidable? "
+                         "Default to intended/unsure unless the code clearly shows a real defect.")
+    reason: str = Field(description="one or two sentences citing the evidence (code/Javadoc/tests/contract) "
+                        "for why it is real vs intended.")
+
+
+class RecordJudgmentObservation(Observation):
+    pass
+
+
+_JUDGE_DESC = ("Record your verdict — real | intended | unsure — on whether the suspected bug is a genuine "
+               "defect or the code's intended behavior, ONCE, after investigating. Default to intended/unsure "
+               "unless the evidence clearly shows a real defect.")
+
+
+class _RecordJudgmentExecutor(ToolExecutor):
+    def __call__(self, action, conversation=None):  # noqa: ARG002
+        _JUDGMENT["verdict"] = str(action.verdict).lower().strip()
+        _JUDGMENT["reason"] = str(action.reason)
+        return RecordJudgmentObservation.from_text(text=f"recorded judgment: {_JUDGMENT['verdict']}")
+
+
+class RecordJudgmentTool(ToolDefinition[RecordJudgmentAction, RecordJudgmentObservation]):
+    def declared_resources(self, action):  # noqa: ARG002
+        return DeclaredResources(keys=(), declared=True)
+
+    @classmethod
+    def create(cls, conv_state) -> "Sequence[RecordJudgmentTool]":  # noqa: ARG003
+        return [cls(description=_JUDGE_DESC, action_type=RecordJudgmentAction,
+                    observation_type=RecordJudgmentObservation,
+                    annotations=ToolAnnotations(title="record_judgment", readOnlyHint=False, destructiveHint=False,
+                                                idempotentHint=False, openWorldHint=False),
+                    executor=_RecordJudgmentExecutor())]
+
+
+JUDGE_SYS = """You are a SKEPTICAL senior maintainer deciding whether a reported bug is real BEFORE it
+becomes a pull request. Default to REJECT: most reports are the code's intended or documented behavior, an
+edge case the author deliberately chose, or a misreading of the contract. Approve as 'real' ONLY when the
+actual code shows a genuine defect a maintainer would fix — a wrong result, a crash on valid input, or a
+contract violation the author did not intend.
+
+You have read tools over the repository at its current HEAD. Investigate: read the real method, its callers,
+its Javadoc/comments, sibling implementations, and the existing tests. A test that merely asserts a DIFFERENT
+design choice is NOT a bug. Ask whether the behavior is deliberate (documented, tested, consistent with
+siblings, a sane design) or a true defect. When you cannot tell, say 'unsure' — do not guess 'real'.
+
+Two calibrations: (1) "no internal caller" is NOT a reason to reject — a PUBLIC, non-@Deprecated method that
+throws (AIOOBE/NPE/etc.) on input or state reachable through the public API is a REAL bug even if nothing in
+this repo currently calls that path; the API surface is the contract. (2) Distinguish a genuine crash on
+valid input (real) from strict-but-deliberate rejection of malformed input (often intended) — gauge it
+against how the surrounding code treats similar cases. Record once with record_judgment(verdict, reason)."""
+
+
+def judge_bug(repo_dir, bug):
+    """Strict adversarial verdict on one candidate (a bug dict from the registry). Default unsure on failure."""
+    _reset_judgment()
+    msg = (f"SUSPECTED BUG:\nobservation: {bug.get('observation', '')}\nsuspected_bug: {bug.get('suspected_bug', '')}\n"
+           f"location: {bug.get('location', '')}\n\nThe reporter's test (what they claim SHOULD happen):\n"
+           f"{str(bug.get('test_src', ''))[:2500]}\n\nInvestigate the real code at HEAD and decide: a genuine "
+           "defect, or the code's intended behavior? Reject unless clearly a real defect. Record your verdict.")
+    out = _run_agent(JUDGE_SYS, msg, repo_dir, base=("search", "grep", "glob", "file_editor"),
+                     extra_tools=["record_judgment"])
+    return dict(_JUDGMENT) if _JUDGMENT.get("verdict") else {"verdict": "unsure", "reason": (out or "")[-200:]}
+
+
+def run_judge(repo):
+    """Run the strict judge over every candidate bug in a repo's head registry; write the shortlist."""
+    from current_version.repo import ensure_repo_head
+    d, _sha = ensure_repo_head(repo)
+    if d is None:
+        raise RuntimeError(f"could not checkout HEAD for {repo}")
+    tag = repo.replace('/', '__') + '__head'
+    reg = json.load(open(f"results/susp_runs/{tag}.json"))["registry"]
+    os.environ["REASONING_LOG"] = f"results/reasoning/{tag}__judge.log"
+    open(os.environ["REASONING_LOG"], "w").close()
+    results = []
+    for b in reg["bugs"]:
+        j = judge_bug(str(d), b)
+        results.append({"id": b["id"], "suspected_bug": b["suspected_bug"][:90], "location": b.get("location", ""),
+                        "verdict": j["verdict"], "reason": j.get("reason", "")[:200]})
+        print(f"  Bug[{b['id']}] {j['verdict'].upper()}: {b['suspected_bug'][:60]}", flush=True)
+    os.makedirs("results/judged", exist_ok=True)
+    json.dump({"repo": repo, "results": results}, open(f"results/judged/{tag}.json", "w"), indent=1)
+    real = [r for r in results if r["verdict"] == "real"]
+    print(f"=> {len(real)}/{len(results)} judged REAL for {repo}", flush=True)
+    return results
+
+
 def _setup_head(repo):
     """Whole-repo HEAD review (no PR): checkout the latest default branch, build a minimal context."""
     from current_version.repo import ensure_repo_head
@@ -1404,6 +1507,8 @@ def run_head(repo, conf_floor=0.4):
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[2] == "head":          # suspicion.py <repo> head  -> whole-repo HEAD hunt
         run_head(sys.argv[1])
+    elif len(sys.argv) > 2 and sys.argv[2] == "judge":       # suspicion.py <repo> judge -> strict real-bug filter
+        run_judge(sys.argv[1])
     elif len(sys.argv) > 3 and sys.argv[3] == "gen":
         gen_probe(sys.argv[1], int(sys.argv[2]))
     else:
