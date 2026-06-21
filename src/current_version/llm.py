@@ -8,6 +8,7 @@ and the module home changed.
 from __future__ import annotations
 
 import os
+import socket
 import warnings
 from pathlib import Path
 
@@ -43,6 +44,50 @@ def _apply_endpoint_env():   # keep private endpoint URLs out of the committed c
 
 
 _apply_endpoint_env()
+
+
+def _keepalive_socket_options():
+    """SO_KEEPALIVE + Linux TCP-keepalive tuning. The vLLM endpoint sits behind a proxy (Caddy) that
+    idle-closes a connection while the model is still THINKING — i.e. BEFORE the first byte, so
+    stream=True's byte-gap heartbeat can't help (no bytes flow yet). Keepalive probes keep the idle
+    socket (and any NAT/proxy state) alive across a long time-to-first-token. TCP_KEEP* are Linux-only;
+    the harness runs in Linux Docker, and we guard each with hasattr so it's a no-op elsewhere."""
+    opts = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    for name, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 15), ("TCP_KEEPCNT", 5)):
+        if hasattr(socket, name):
+            opts.append((socket.IPPROTO_TCP, getattr(socket, name), val))
+    return opts
+
+
+def _install_keepalive_clients():
+    """Inject TCP keepalive into litellm's request socket. The harness drives OpenHands' SYNC
+    `llm.completion()` (conv.run()), and for hosted_vllm that goes through litellm's custom http handler,
+    whose `_create_sync_transport()` returns `litellm.sync_transport` when set — so setting that global
+    routes EVERY endpoint call through our keepalive transport (a transport carries socket options only,
+    not a timeout, so litellm's per-request byte-gap timeout still governs). We flush litellm's client
+    cache so a handler built before this runs doesn't shadow it, and also set client_session/aclient_session
+    as belt-and-suspenders for any OpenAI-SDK code path. Idempotent. (Async defaults to aiohttp and isn't on
+    the harness path, so we don't touch it.)"""
+    try:
+        import litellm, httpx  # noqa: E401
+        opts = _keepalive_socket_options()
+        if getattr(litellm, "sync_transport", None) is None:
+            litellm.sync_transport = httpx.HTTPTransport(retries=0, socket_options=opts)
+        if getattr(litellm, "client_session", None) is None:
+            litellm.client_session = httpx.Client(
+                timeout=httpx.Timeout(None), follow_redirects=True,
+                transport=httpx.HTTPTransport(retries=0, socket_options=opts))
+        if getattr(litellm, "aclient_session", None) is None:
+            litellm.aclient_session = httpx.AsyncClient(
+                timeout=httpx.Timeout(None), follow_redirects=True,
+                transport=httpx.AsyncHTTPTransport(retries=0, socket_options=opts))
+        try:
+            litellm.in_memory_llm_clients_cache.flush_cache()   # drop any handler built pre-injection
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001  (never let keepalive setup break the run)
+        pass
+
 
 from openhands.sdk import LLM  # noqa: E402
 
@@ -188,6 +233,7 @@ def _llm(profile: str = "qwen"):
         litellm.register_model({model: info, c["model"]: info})
     except Exception:  # noqa: BLE001
         pass
+    _install_keepalive_clients()   # TCP keepalive on the endpoint socket (survives long time-to-first-token)
     return StreamingLLM(
         usage_id="oh_review",
         model=model,

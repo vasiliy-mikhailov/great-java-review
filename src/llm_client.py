@@ -8,12 +8,28 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import threading
 import time
 from pathlib import Path
 
+import httpx
 import yaml
 from openai import OpenAI
+
+
+def _keepalive_http_client():
+    """An httpx client with TCP keepalive enabled, for the OpenAI SDK. The vLLM endpoint sits behind a
+    proxy (Caddy) that idle-closes a connection while the model is still THINKING — before the first byte,
+    so stream=True can't help yet. SO_KEEPALIVE probes keep the idle socket alive across a long
+    time-to-first-token. timeout=None lets the OpenAI client's per-request timeout govern, not httpx's 5s
+    default. TCP_KEEP* are Linux-only (guarded by hasattr)."""
+    opts = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    for name, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 15), ("TCP_KEEPCNT", 5)):
+        if hasattr(socket, name):
+            opts.append((socket.IPPROTO_TCP, getattr(socket, name), val))
+    return httpx.Client(timeout=httpx.Timeout(None), follow_redirects=True,
+                        transport=httpx.HTTPTransport(retries=0, socket_options=opts))
 
 _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 _SUMMARY = re.compile(r"(?:^|\n)\s*SUMMARY\s*:", re.I)
@@ -96,6 +112,7 @@ class LLM:
             base_url=c["base_url"],
             api_key=os.environ.get(key_env, "x"),
             timeout=self.timeout,
+            http_client=_keepalive_http_client(),   # TCP keepalive across long time-to-first-token
         )
         self.calls = 0
 
