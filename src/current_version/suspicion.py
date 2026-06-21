@@ -927,6 +927,18 @@ _READONLY_BASE = ("search", "grep", "glob", "pr_files", "pr_file_diff")
 CAPTURE = "add_suspicion"
 
 
+_STALL_LIMIT = int(os.environ.get("OH_STALL_LIMIT", "8"))   # consecutive empty-response nudges -> abort
+
+
+def _msg_text(ev):
+    """Concatenated text of a MessageEvent's content blocks (for spotting the corrective nudge)."""
+    m = getattr(ev, "llm_message", None)
+    try:
+        return " ".join(getattr(c, "text", "") or "" for c in (getattr(m, "content", None) or []))
+    except Exception:  # noqa: BLE001
+        return str(m or "")
+
+
 def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new", base=None):
     """Run a tool-using agent to completion; return its final (post-think) text. The read
     tools (search/grep/glob/file_editor) are rooted at the agent's workspace, which we point
@@ -946,7 +958,33 @@ def _run_agent(system_prompt, user_msg, repo_dir, extra_tools=(), version="new",
     # continues) rather than the old crash. Let the model think as deep as the problem needs.
     llm = harness._llm("qwen").model_copy(update={"usage_id": "oh_suspicion"})
     agent = Agent(llm=llm, tools=tools, system_prompt=system_prompt, condenser=harness._condenser(llm))
-    conv = Conversation(agent=agent, workspace=ws, visualizer=harness._DialogViz, persistence_dir=None)
+    # Stall guard: the model can fall into a degenerate loop where it returns NO tool call and NO content,
+    # and OpenHands answers each with a "please use a tool" nudge forever (the gson hang). This is NOT
+    # productive depth — it makes zero progress. Count CONSECUTIVE nudges (any real ActionEvent resets it)
+    # and pause the run once it's clearly stuck. Progress-based, not a wall-clock/step cap: deep work that
+    # keeps acting never trips it. (A truly hung socket emits no events at all — that's keepalive + the
+    # byte-gap request_timeout's job, P8; this catches the live-but-looping case.)
+    _stall = {"n": 0, "conv": None}
+
+    def _stall_guard(ev):
+        try:
+            if isinstance(ev, ActionEvent):
+                _stall["n"] = 0
+            elif (isinstance(ev, MessageEvent) and getattr(ev, "source", "") == "user"
+                    and "did not include a function call" in _msg_text(ev)):
+                _stall["n"] += 1
+                if _stall["n"] >= _STALL_LIMIT and _stall["conv"] is not None:
+                    print(f"  [stall] {_STALL_LIMIT} consecutive empty responses — pausing the agent", flush=True)
+                    try:
+                        _stall["conv"].pause()
+                    except Exception:  # noqa: BLE001
+                        pass
+        except Exception:  # noqa: BLE001
+            pass
+
+    conv = Conversation(agent=agent, workspace=ws, visualizer=harness._DialogViz,
+                        persistence_dir=None, callbacks=[_stall_guard])
+    _stall["conv"] = conv
     try:
         conv.send_message(user_msg)
         conv.run()
