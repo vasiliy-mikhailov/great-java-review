@@ -25,7 +25,8 @@ import os, subprocess, time
 SSH_HOST = os.environ.get("SANDBOX_SSH_HOST", "")
 # JDK major -> image. All are `maven:3.9-eclipse-temurin-<n>` tagged `review-java-<n>-sandbox`.
 IMAGE_FOR = {8: "review-java-8-sandbox", 11: "review-java-11-sandbox",
-             17: "review-java-17-sandbox", 21: "review-java-21-sandbox"}
+             17: "review-java-17-sandbox", 21: "review-java-21-sandbox",
+             25: "review-java-25-sandbox", 26: "review-java-26-sandbox"}
 DEFAULT_JDK = 21
 
 _SESSION = {"name": None, "log": None, "base": None, "worktree": None}
@@ -62,13 +63,26 @@ def detect_jdk(repo_dir: str) -> int:
             levels.append(int(m))
         for m in _re.findall(r"<java\.version>\s*(?:1\.)?(\d{1,2})", t):
             levels.append(int(m))
+    # Gradle projects declare the level in build.gradle(.kts), not poms — read JavaVersion.VERSION_<n>,
+    # JavaLanguageVersion.of(<n>), and RxJava-style toolchainJdk / sourceCompatibility = "<n>". Without this,
+    # a Gradle repo (RxJava) fell to DEFAULT_JDK 21 and its JDK-26 source could not compile (build failed →
+    # the executable flip-check could not run → every bug fell back to the reading critic).
+    for g in _glob.glob(os.path.join(repo_dir, "**", "build.gradle*"), recursive=True)[:200]:
+        try:
+            t = open(g, errors="ignore").read()
+        except Exception:  # noqa: BLE001
+            continue
+        levels += [int(m) for m in _re.findall(r"VERSION_(\d{1,2})\b", t)]
+        levels += [int(m) for m in _re.findall(r"JavaLanguageVersion\.of\(\s*[\"']?(\d{1,2})", t)]
+        levels += [int(m) for m in _re.findall(
+            r"(?:sourceCompatibility|targetCompatibility|toolchainJdk)\s*=\s*[\"']?(?:1\.)?(\d{1,2})", t)]
     if not levels:
         return DEFAULT_JDK
     lvl = max(levels)
     # build on the lowest LTS that safely compiles the level. <=8 builds on 11 (the quarkus lesson:
     # Java-8-target code overwhelmingly builds on 11+ with sun.misc intact; the 8 image stays available
     # for a manual jdk= override on a true-Java-8 project that uses APIs removed in 11, e.g. JAXB).
-    return 11 if lvl <= 11 else 17 if lvl <= 17 else 21 if lvl <= 21 else 25
+    return 11 if lvl <= 11 else 17 if lvl <= 17 else 21 if lvl <= 21 else 25 if lvl <= 25 else 26
 
 
 def _run(remote_cmd: str, stdin: str = "", timeout: int = 240):
