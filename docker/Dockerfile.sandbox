@@ -3,7 +3,7 @@
 # file view) AND execute (javac/java/mvn) — so reading and compiling share the one mounted repo.
 # JDK + Maven (official maven-on-temurin) with Maven pointed at the on-host Nexus group repo.
 #   docker build -f docker/Dockerfile.sandbox --build-arg JDK=21 -t review-java-21-sandbox .
-#   (repeat for JDK=8/11/17)
+#   (repeat for JDK=8/11/17/21/25/26)
 ARG JDK=21
 FROM maven:3.9-eclipse-temurin-${JDK}
 RUN apt-get update && apt-get install -y --no-install-recommends ripgrep git ca-certificates \
