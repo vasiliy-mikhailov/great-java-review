@@ -6,15 +6,12 @@ autonomous concern the operator has offloaded to the agent.
 **North star:** find real Java bugs, prove each with a failing unit test, fix
 them, and present the find+fix upstream as ordinary human work — the
 **suspect → reproduce → fix → synthesize** pipeline (apex **P17**; runtime/
-sandbox P14/P19; curation P21). The project *began* as GEPA prompt-evolution to
-**mimic** human reviewers (P4–P6, P11–P12); that goal is superseded, but the
-reviewer corpus it produced is retained as the human-review benchmark oracle
-(P18). Where an older problem still says "mimicry/GEPA," read it as serving that
-benchmark now, not the apex.
+sandbox P14/P19; curation P21). A frozen corpus of real human code-review
+comments (P5) is kept as the **benchmark oracle** P18 scores findings against —
+the only role human reviews still play.
 
-Clustered — meta (P1); discipline (P2–P3); origin (mimicry, now measurement:
-P4–P6, P11–P12); substrate (P7–P10, P19–P20); harness + pipeline (P13–P17);
-evaluation (P18); curation (P21).
+Clustered — meta (P1); discipline (P2–P3); benchmark corpus (P5); substrate
+(P7–P10, P19–P20); harness + pipeline (P13–P17); evaluation (P18); curation (P21).
 
 > **WORKSPACE CONVENTION (operator-set).** ALL work happens in **`current_attempt/`**
 > — the single live directory (`src/`, `data/`, `results/`, `excellent_reviews.json`;
@@ -45,8 +42,8 @@ as possible. Every problem has five sections: Value, Contract and constraints
 (operator-only, agent doesn't edit), Solution search approach and hints, Reward
 (one extremum read off without judgement), Attention mechanism. Backtick-pinned
 concretes are recognition scaffolding and survive trims; aging enumerations get
-stripped. The file is clustered — meta (P1); discipline (P2–P3); recipe/setup (P4–P6);
-substrate (P7–P12); harness (P13–P17); evaluation (P18).
+stripped. The file is clustered — meta (P1); discipline (P2–P3); benchmark corpus (P5);
+substrate (P7–P10, P19–P20); harness + pipeline (P13–P17); evaluation (P18); curation (P21).
 
 **Solution search approach and hints:** read → why → intent — for each clause ask
 "why is this here?". Strip when the answer is mechanism the agent already fills,
@@ -89,45 +86,17 @@ re-audit.
 
 ---
 
-## P4 — Problem (mimicry prompts) **[origin — superseded by P17]**: GEPA-evolved prompts that review like a given reviewer.
+## P5 — Problem (benchmark corpus): a frozen dataset of high-signal human Java reviews — the oracle P18 scores against.
 
-**Value:** prompts that make the model produce a reviewer's **high-quality reviews** in their voice — per-reviewer and one universal. We mimic their substantive technical feedback (real pain points), NOT LGTM/nits/process chatter. This was the project's **original apex**; it is now **superseded by the bug pipeline (P17)**. Its lasting value is the reviewer corpus (P5), which became the human-review **benchmark oracle** (P18) the pipeline is scored against — so this problem is maintained, not chased.
+**Value:** the human-review **benchmark oracle** — real PRs with their substantive human review comments, deduped and quality-filtered. P18 scores the pipeline's findings against these as the human ground truth (`−1` per missed human point). Maintained as a measurement baseline, not grown.
 
-**Contract and constraints** *(operator-only)*: GEPA reflective evolution; task + reflection model = the active profile (`qwen`, model-agnostic via profiles). Produce per-reviewer AND one universal prompt, then a held-out comparison vs the `SEED_SINGLE` baseline. Mimicry metric = `0.85·LLM-judge + 0.15·lexical` vs the real review. **The ceiling is the two-human same-PR agreement ≈ `0.485`** (`results/score_calibration.json`), not 1.0; floor ≈ `0.04`, excellent ≈ `0.48+`. Qwen ≈ `0.29` (~56% floor→ceiling) — closing that gap is the goal (P12 / Attempt 2 chase it).
+**Contract and constraints** *(operator-only)*: `excellent_reviews.json` (23-repo corpus, ~1752 qualifying human-reviewed PRs). A review unit = (PR diff, reviewer, their substantive comments) with LGTM/nits/process filtered out; `dataset.py` reads it for the benchmark. Frozen at its current corpus — if ever regrown, honor the single-GitHub-worker rule (P7) when fetching.
 
-**Solution search approach and hints:** custom `GEPAAdapter` in `gepa_run.py`; cost bounded by `max_metric_calls`, not trainset size; inspect a run via `gepa_chart.py <run_dir>`.
+**Solution search approach and hints:** the corpus is frozen; touch it only to fix a quality defect — a misfiltered LGTM/nit that would count as a spurious "missed human point."
 
-**Reward:** best-candidate held-out score, measured against the `0.485` ceiling.
+**Reward:** the benchmark's human points are clean — no trivia counted against the pipeline.
 
-**Attention mechanism:** a reviewer's dataset reaches usable size, or a seed/metric/budget edit.
-
----
-
-## P5 — Problem (reviewer corpus): a reproducible dataset of high-signal Java reviewers and their reviews.
-
-**Value:** the per-reviewer training/eval data P4 learns from — real PRs with their substantive human review comments, deduped and quality-filtered.
-
-**Contract and constraints** *(operator-only)*: `excellent_reviews.json` (23-repo corpus, ~1752 qualifying human-reviewed PRs). A review unit = (PR diff, reviewer, their substantive comments). Filter out LGTM/nits/process. `crawl._review_units` indexes them; `sample_prs.py` selects N. Honor the single-GitHub-worker rule (P7) when fetching.
-
-**Solution search approach and hints:** grow coverage per reviewer until a reviewer has enough PRs to train/hold-out; prefer reviewers with dense technical comments.
-
-**Reward:** enough high-signal PRs per reviewer to train and hold out.
-
-**Attention mechanism:** a reviewer crosses usable size; a corpus-quality complaint.
-
----
-
-## P6 — Problem (scaling curve): does ONE universal prompt suffice as the reviewer set grows?
-
-**Value:** know whether per-reviewer prompts are needed or one universal prompt generalizes — decides where P4 invests.
-
-**Contract and constraints** *(operator-only)*: measure universal-vs-per-reviewer held-out score as the reviewer count grows; the question is empirical, re-asked as the corpus (P5) expands.
-
-**Solution search approach and hints:** plot universal and per-reviewer curves vs reviewer count on the same eval.
-
-**Reward:** a clear answer at the current corpus size, re-checked as it grows.
-
-**Attention mechanism:** the reviewer set grows materially.
+**Attention mechanism:** a corpus-quality complaint; a missed-point that turns out to be a nit.
 
 ---
 
@@ -175,11 +144,11 @@ re-audit.
 
 ## P10 — Problem (Qwen endpoint): the model under optimization is reachable and bounded-cost.
 
-**Value:** GEPA/harness calls hit Qwen reliably within budget.
+**Value:** harness/pipeline calls hit Qwen reliably within budget.
 
 **Contract and constraints** *(operator-only)*: OpenAI-compatible `llm_client.py`/`llm.py`; key from `.env` (`QWEN_API_KEY`/`QWEN_BASE_URL`, never committed); Qwen may run concurrently (`qwen.max_concurrency`) — it is NOT the single GitHub worker. **Reasoning ON** (`enable_thinking: true`) for ALL calls — generation, reflection, judges — Qwen is markedly weaker without it. **Never cap reasoning — no `thinking_token_budget`, no small `max_tokens`, no per-turn output throttle.** A reasoning cap doesn't tighten the answer; the model can't think the problem through, **gives up, and emits noise** (kafka#17565 with `thinking_token_budget=2048` → 26k chars of wandering, 0 tool calls). Use the full window (`131072`); `litellm_extra_body` carries `enable_thinking` ONLY. Transport is **streaming** (`stream=True` via a `StreamingLLM(LLM)` subclass) so the read-timeout fires only on a genuinely silent socket, not on a long generation; `num_retries` rides out transient drops. **TCP keepalive is ON on the client socket** (`SO_KEEPALIVE` + `TCP_KEEPIDLE/INTVL/CNT = 30/15/5`): streaming only protects a connection ONCE bytes flow — during a long **time-to-first-token** the socket sits idle with zero bytes and the proxy (Caddy)/NAT reaps it, so the first chunk lands on a dead connection. Keepalive probes hold the idle socket (and NAT/proxy state) across that gap. Wire it where each path actually opens the socket: the single-call path via `OpenAI(http_client=…)`; the harness path (OpenHands **sync** `completion` → litellm `hosted_vllm`, which uses litellm's custom http handler, NOT the OpenAI SDK — so `client_session` is ignored) via **`litellm.sync_transport`** + a client-cache flush. `timeout=None` on the keepalive client so litellm's per-request byte-gap timeout still governs. Same RLVR lesson as the no-wall-clock-cap rule (P17): caps are poison.
 
-**Solution search approach and hints:** bound spend via GEPA `max_metric_calls`; lean on `max_concurrency` for throughput. Transport-debug detail in the `harness` skill.
+**Solution search approach and hints:** lean on `max_concurrency` for throughput; let a rollout finish on its own rather than bounding spend with a cap (P2/P17). Transport-debug detail in the `harness` skill.
 
 **Reward:** endpoint returns 200; per-run cost within budget.
 
@@ -187,45 +156,17 @@ re-audit.
 
 ---
 
-## P11 — Problem (auto-tune): AutoResearch loop that climbs toward the config maximizing mimicry quality.
-
-**Value:** find the config maximizing held-out mimicry (P4) via a trajectory-informed keep/revert loop, not blind search.
-
-**Contract and constraints** *(operator-only)*: Karpathy-style — propose a TARGETED change informed by past trials, run a comparability-budgeted trial (`gepa_seconds`), KEEP if it beats the incumbent else REVERT. The budget is not the mechanism; the informed hypothesis is. HOLD measurement FIXED (same eval PRs, same metric) so a win can only be genuinely closer reviews. Tune on one well-covered reviewer (`vietj`); validate the winner on others before adoption. Escalation: knobs first, then pivot to editing prompt seeds/code once knobs saturate.
-
-**Solution search approach and hints:** engine `src/autoresearch.py` (resumable via `results/autoresearch.jsonl`); outer loop = the `autoresearch` skill (the agent supplies hypotheses beyond the knob grid).
-
-**Reward:** best held-out mimicry score across trials.
-
-**Attention mechanism:** a trial beats best-so-far; knobs saturate (→ pivot to code); the objective changes.
-
----
-
-## P12 — Problem (context beyond the MR): what data do two AGREEING humans both use?
-
-**Value:** identify the data — beyond the MR diff — two reviewers both draw on when they **agree**, so the agent can be given it and close the Qwen→ceiling gap (P4).
-
-**Contract and constraints** *(operator-only)*: convergence is the signal — when two experts independently raise the SAME point, it is determined by **shared context the diff doesn't contain**: issue-tracker links, the broader codebase, project conventions, prior PR/design discussion, commit history, the contract of touched APIs. Catalog these, ranked by how strongly they drive agreement; that defines the tool/context set the agent must read.
-
-**Solution search approach and hints:** mine high-agreement same-PR human pairs (samePR score ≥ ~0.6 in the `crawl._review_units` index); tag every reference to non-diff data; contrast with low-agreement pairs (what context was missing).
-
-**Reward:** a ranked catalog of non-MR context sources that correlate with two-human agreement.
-
-**Attention mechanism:** the Qwen-vs-ceiling gap; a new context source in an agreeing pair; agent tool design (P13).
-
----
-
 ## P13 — Problem (harness): the loop that lets Qwen read the repo to review.
 
-**Value:** a controllable agent loop that feeds the model the non-MR context (codebase, conventions, API contracts) and whose POLICY P4's GEPA can optimize. The assembled machine; its subsystems are P14 (runtime) / P15 (tools) / P16 (compaction) / P17 (topology), and P18 evaluates it. A fix that changes for a subsystem reason lives there, not here.
+**Value:** a controllable agent loop that feeds the model the non-MR context (codebase, conventions, API contracts) the pipeline (P17) needs. The assembled machine; its subsystems are P14 (runtime) / P15 (tools) / P16 (compaction) / P17 (topology), and P18 evaluates it. A fix that changes for a subsystem reason lives there, not here.
 
 **Contract and constraints** *(operator-only)*: harness = the **OpenHands V1 Agent SDK** (`openhands-sdk` + `openhands-tools`), NOT the heavy `openhands-ai` monorepo. Loop contract: per-rollout system-prompt override = the genome; score the FINAL artifact only (with thinking extraction); extract the tool trajectory for reflection; point at the thinking-Qwen endpoint (P10); think on; pin SDK versions. **Don't artificially limit the review** — no caps on tool calls, delegation breadth, investigation depth, priority cuts, diff/finding truncation, "write it now" early-stops, or reasoning (P10): a hard limit becomes something the model games (drops content) or gives up on (emits noise). The only bounds are the hard physical ones — the vLLM ceiling (P16), PTY avoidance (P15), a runaway backstop well above real need.
 
 **Solution search approach and hints:** implementation knowledge in the `harness` skill, §P13; the Contract is binding.
 
-**Reward:** a repo-reading review that beats diff-only consistently, with the policy GEPA-tunable.
+**Reward:** a repo-reading review that beats diff-only consistently.
 
-**Attention mechanism:** agent+repo Δ over diff-only going negative on high-base reviews; a tool the P12 catalog needs but the loop lacks; any one subsystem (P14–P17) dominant.
+**Attention mechanism:** agent+repo Δ over diff-only going negative on high-base reviews; a context source the pipeline needs but the loop lacks; any one subsystem (P14–P17) dominant.
 
 ---
 
@@ -295,7 +236,7 @@ re-audit.
 
 ## P18 — Problem (measurement): a trustworthy per-review score with its evidence on disk.
 
-**Value:** know whether reading the repo helps and at what cost — the evaluation P4 and P13 rely on.
+**Value:** know whether reading the repo helps and at what cost — the evaluation P13/P17 rely on.
 
 **Contract and constraints** *(operator-only)*: **the judge is CLAUDE, never the reviewer model** — self-grading certifies its own fabrications (Qwen self-judged `sevntu#645` +9 vs Claude −13). Comparison is **3-WAY** (`mr` / `mr_code` / `mr_code_tools`). Metric = code-grounded **POINT judge** with repo access at base (a text-only judge returns `wrong=0` and misses fabrications): per finding good `+1` / critical `+2` / wrong `−1` / trivial `0`, minus `−1` per missed human∪Claude point. Grade on the FULL diff (`full_pr_input`, not the truncated `input`); if the repo is busy, assemble it read-only with `git diff <base>...pr-<pr>-head` (never `checkout`/re-`fetch`, P7). When the protocol changes, RE-MEASURE the whole `n`. Two judges, two jobs: the Claude point-judge is the **quality oracle**; the per-rollout reward is the cheap **execution reward** (P17), with Claude the periodic **auditor** of it (that audit caught the simulation hole). The **200-PR benchmark runs `mode=mr`** (the human oracle is diff-scoped; whole-repo findings = RLVR-only). Run in a few `flock` lanes (polite GPU co-tenant, P20).
 

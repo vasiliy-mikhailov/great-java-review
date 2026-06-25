@@ -48,26 +48,17 @@ def render_pr_input(review: dict, max_chars: int = 7000) -> str:
     return s[:max_chars]
 
 
-def build_instances(min_ref_chars: int = 60, quality_gate: str | None = None,
-                    quality_threshold: int = 4):
-    """Full-MR instances from excellent_reviews.json (input = the WHOLE PR).
-
-    If quality_gate == 'qwen', keep only reviews whose CACHED Qwen rubric score
-    (data/cache/quality.jsonl, full-MR judged) is >= quality_threshold."""
-    import wide_dataset as wds  # reuse the shared quality cache + key
+def build_instances(min_ref_chars: int = 60):
+    """Full-MR instances from excellent_reviews.json (input = the WHOLE PR) —
+    the human-review benchmark units P18 scores the pipeline's findings against."""
     data = json.loads(OUT_PATH.read_text())
     reviewers = data["reviewers"]
-    qcache = wds.load_quality_cache() if quality_gate == "qwen" else None
     out = {}
     for login, blob in reviewers.items():
         insts = []
         for rv in blob.get("reviews", []):
             ref = render_reference(rv)
             if len(ref) < min_ref_chars:
-                continue
-            if qcache is not None and qcache.get(
-                    wds.quality_key(rv.get("repo"), rv.get("pr"),
-                                    rv.get("review_id")), 0) < quality_threshold:
                 continue
             insts.append({
                 "reviewer": login,

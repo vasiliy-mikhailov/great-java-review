@@ -5,12 +5,10 @@ one with a **failing unit test**, **fixes** it, and presents the find+fix
 upstream as ordinary human work. The model under the harness is the
 **Qwen-3.6-27B-FP8** endpoint; the grader and curator is Claude.
 
-> **Origin note.** This project began as GEPA prompt-evolution to make an LLM
-> *review code in a human reviewer's voice* (mimicry). That goal is **superseded**
-> by the bug pipeline below. The reviewer corpus it produced (`excellent_reviews.json`)
-> lives on as the **human-review benchmark oracle** the pipeline is scored against,
-> and the GEPA tooling (`crawl.py`/`gepa_run.py`/`compare.py`/`fib_sweep.py`) is
-> kept to maintain it. See the **Legacy** section and `AGENTS.md` P4–P6.
+> **Note.** A frozen corpus of real human code-review comments
+> (`excellent_reviews.json`) serves as the **benchmark oracle** the pipeline's
+> findings are scored against (`AGENTS.md` P5/P18) — the only role human reviews
+> play here.
 
 ## The pipeline: suspect → reproduce → fix → synthesize
 
@@ -109,9 +107,8 @@ never go to `apache/*` without an explicit go (`AGENTS.md` P21/P7). As of
 - `harvest_candidates.py`  append-only ledger of judged-real PR candidates (`results/pr_candidates.jsonl`)
 - `build_bug_corpus.py` / `compare_iters.py`  benchmark dataset builder + iteration comparison
 - `skills/`  reusable operator skills (e.g. `detect-java-version`)
-- **Legacy / measurement oracle:** `src/crawl.py` (corpus mining), `src/gepa_run.py` (GEPA adapter),
-  `src/compare.py`, `src/fib_sweep.py`, `src/dataset.py`, `src/metric.py`,
-  `excellent_reviews.json` (the human-review corpus), `prompts/` (evolved prompts)
+- **Benchmark oracle:** `excellent_reviews.json` (frozen human-review corpus) +
+  `src/dataset.py` (benchmark units), `src/metric.py`, `src/llm_client.py` (shared infra the pipeline imports)
 
 ## Run
 
@@ -122,14 +119,6 @@ HARNESS_NAME=h-myrun INVESTIGATE_MODE=repo \
   docker/run.sh python -u src/current_version/suspicion.py <owner>/<repo> head
 # continuous multi-lane crawl (queue-driven, resumable, self-healing):
 ./head_worker.sh        # one lane; run several + ./head_watchdog.sh + ./explore_daemons.sh refill
-```
-
-Legacy GEPA pipeline (maintains the benchmark corpus):
-
-```bash
-python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./run_pipeline.sh qwen   # corpus crawl + GEPA + held-out comparison + scaling curve
-nohup ./run_wide.sh &    # progressive wide reviewer crawl
 ```
 
 ## Notes
