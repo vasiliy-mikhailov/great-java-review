@@ -321,3 +321,17 @@ re-audit.
 **Reward:** iteration variance from non-measured factors approaches zero — no disk-full crashes, no stray containers/scratch, the inference endpoint unharmed by our load.
 
 **Attention mechanism:** a `review-*` container/scratch outliving its run; container-log or disk size creeping full; the endpoint degrading during a build.
+
+---
+
+## P21 — Problem (curation): an upstream PR presents Qwen's find AND fix, never the agent's invention.
+
+**Value:** the experiment's claim is that **AI-found-AND-fixed** bugs land on their merits when presented as ordinary human work. If the agent re-derives the test or the fix, the PR silently degrades to "Qwen found, Claude fixed" — a weaker and dishonest claim. The registry already holds Qwen's whole artifact set; the curating agent's job is to PRESENT it, not to author.
+
+**Contract and constraints** *(operator-only)*: every upstream PR is built from Qwen's registry entries **FIRST, in this order of source** — the **Suspicion** (the bug + location), the **Bug**'s `test_src`/`test_files` (the regression test), and the **Solution**'s `fix_diff` (the production patch, `fixed=true`, proven by `fix_rerun`). Take Qwen's four artifacts — suspicions, bugs, tests, solutions — AS WRITTEN; the agent does NOT substitute its own suspicion, test, or fix as the default. The agent may offer its OWN **only when Qwen's is genuinely BAD** — missing (no `fixed=true` solution / `validation:None` / no test), wrong (wrong-but-green, asserts a non-spec behaviour, or embeds a copy of the class under test instead of calling the real one), or un-PR-able (no real caller; private method with no real-class test) — and even then the agent's substitute is **SHOWN and used ONLY AFTER explicit human acceptance**, never silently. Regardless of source, still **prove red→green by EXECUTION** (P19) before opening, and honour P7 (no AI/Claude attribution; explicit operator go for ASF/`apache/*`; spread across maintainers, don't flood one; check own open PRs first).
+
+**Solution search approach and hints:** the fix lives in `registry.solutions[].fix_diff` (NOT the susp_runs top level — `solved` is only a count); join `solution.bug_id → bugs.id` for the location + `test_src`/`test_path`. Target the **solved set** (`fixed=true`), not the raw suspicion list. Apply `fix_diff` by replicating its exact change; reuse `test_src` verbatim. Skip archived/deprecated target repos (easyexcel, fastjson). Where Qwen has no artifact, FLAG the gap and wait — do not quietly fill it.
+
+**Reward:** every merged upstream PR is provably Qwen's find+fix; the agent's authored content is the rare, human-approved exception, logged as such.
+
+**Attention mechanism:** a PR whose fix or test the agent wrote without a human OK; a "cleaner" rewrite of Qwen's `fix_diff` (the easyexcel `rowCache.size()` vs Qwen's `lastRowIndex + 1` trap); opening before red→green; an archived/deprecated target repo; re-deriving when a `fixed=true` solution was sitting in the registry.
