@@ -1,0 +1,89 @@
+{
+ "repo": "chinabugotech/hutool",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "ArrayIndexOutOfBoundsException when AAC.match() is called with a byte array of length 1",
+   "location": "hutool-core/src/main/java/cn/hutool/core/io/FileMagicNumber.java:263-267",
+   "verdict": "real",
+   "reason": "The AAC.match() guard checks `bytes.length < 1` but then accesses `bytes[1]`, causing ArrayIndexOutOfBoundsException when length is exactly 1. Every other enum entry in the same file (TIFF, MP3, AMR, "
+  },
+  {
+   "id": 1,
+   "suspected_bug": "StringIndexOutOfBoundsException for short salt strings in BCrypt.hashpw() instead of prope",
+   "location": "hutool-crypto/src/main/java/cn/hutool/crypto/digest/BCrypt.java:421-439",
+   "verdict": "real",
+   "reason": "The `hashpw(String password, String salt)` method throws `IllegalArgumentException` with descriptive messages for format validation failures like \"Invalid salt version\" and \"Missing salt rounds\", but "
+  },
+  {
+   "id": 2,
+   "suspected_bug": "ArithmeticException (division by zero) when Vigenere.encrypt() is called with an empty cip",
+   "location": "hutool-crypto/src/main/java/cn/hutool/crypto/symmetric/Vigenere.java:25",
+   "verdict": "real",
+   "reason": "`Vigenere.encrypt()` divides by `cipherKeyLen` at line 25 (`dataLen / cipherKeyLen`), causing `ArithmeticException` when an empty key is passed. The sibling class `Caesar` validates inputs with `Asser"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "ArrayIndexOutOfBoundsException in M4A.match() when bytes.length < 4 due to missing length ",
+   "location": "hutool-core/src/main/java/cn/hutool/core/io/FileMagicNumber.java:246-257",
+   "verdict": "real",
+   "reason": "The M4A.match() method (lines 245-258) has a second OR branch that accesses bytes[0] through bytes[3] without any length guard. When the array is shorter than 4 bytes, this throws ArrayIndexOutOfBound"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "ArrayIndexOutOfBoundsException in AMR.match() when bytes.length == 11 due to accessing byt",
+   "location": "hutool-core/src/main/java/cn/hutool/core/io/FileMagicNumber.java:275-297",
+   "verdict": "real",
+   "reason": "The AMR.match() guard at line 275 checks `bytes.length < 11`, but `flag2` accesses `bytes[11]` (index 11 requires at least 12 elements). When `bytes.length == 11` and all prior `&&` conditions in `fla"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "IndexOutOfBoundsException in CsvRow.get() for negative index instead of returning null as ",
+   "location": "hutool-core/src/main/java/cn/hutool/core/text/csv/CsvRow.java:194",
+   "verdict": "real",
+   "reason": "The `CsvRow.get()` method at line 194 only checks `index >= fields.size()` but omits `index < 0`, causing negative indices to throw `IndexOutOfBoundsException` while positive out-of-bounds returns `nu"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Wrong substring range in pattern wildcard counting: substring(pos - 1) without end index r",
+   "location": "hutool-core/src/main/java/cn/hutool/core/text/AntPathMatcher.java:869",
+   "verdict": "real",
+   "reason": "Line 869 uses `this.pattern.substring(pos - 1).equals(\".*\")` which returns the substring from position `pos-1` to the END of the string, not just the two characters `\"*.\"`. This means any `.*` not at "
+  },
+  {
+   "id": 7,
+   "suspected_bug": "StringIndexOutOfBoundsException when parsing ISO8601 date with zone offset shorter than 2 ",
+   "location": "hutool-core/src/main/java/cn/hutool/core/date/DateUtil.java:905-908",
+   "verdict": "real",
+   "reason": "The code at line 908 calls `zoneOffset.substring(0, 2)` assuming zoneOffset has at least 2 chars when there's no colon, but the only prior check is `isBlank(zoneOffset)` which passes for any non-empty"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "StringIndexOutOfBoundsException in md5HexTo16() when input string is shorter than 24 chara",
+   "location": "hutool-crypto/src/main/java/cn/hutool/crypto/digest/DigestUtil.java:199",
+   "verdict": "intended",
+   "reason": "The Javadoc explicitly documents the parameter as \"32\u4f4dMD5\" (32-character MD5), establishing a contract. The entire DigestUtil class (500+ lines) has zero input validations \u2014 this is a deliberate desig"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "Thread-safety race condition in PooledDataSource: activeCount can exceed maxActive or beco",
+   "location": "hutool-db/src/main/java/cn/hutool/db/ds/pooled/PooledDataSource.java:167-184",
+   "verdict": "real",
+   "reason": "The public `getConnection(long)` method (line 138) is NOT synchronized, but it calls `getConnectionDirect()` which reads/writes `activeCount` (lines 173, 182) and `freePool.poll()` (line 178) \u2014 shared"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "Condition.unwrapQuote throws StringIndexOutOfBoundsException when given a string consistin",
+   "location": "hutool-db/src/main/java/cn/hutool/db/sql/Condition.java:561-583",
+   "verdict": "real",
+   "reason": "The `unwrapQuote` method has a null check but fails to check for empty-after-trim before calling `charAt(0)`, causing `StringIndexOutOfBoundsException` on whitespace-only or empty strings. This is rea"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "JSONStrFormatter.format() fails to add space after a colon when the colon is at index 0 (f",
+   "location": "hutool-json/src/main/java/cn/hutool/json/JSONStrFormatter.java:122",
+   "verdict": "intended",
+   "reason": "A colon at position 0 can NEVER appear in valid JSON (even leniently invalid), since JSON must start with `{`, `[`, `\"`, a number, or `true`/`false`/`null`. The `i > 1` guard is overly conservative (s"
+  }
+ ]
+}

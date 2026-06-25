@@ -1,0 +1,145 @@
+{
+ "repo": "alibaba/arthas",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Off-by-one error in checkForPush(): allows one extra push beyond array capacity, causing A",
+   "location": "core/src/main/java/com/taobao/arthas/core/util/collection/ThreadUnsafeFixGaStack.java:25",
+   "verdict": "real",
+   "reason": "The guard `if (current == max)` never triggers because `current` starts at -1 and is pre-incremented before the array access. After `max` successful pushes, `current == max - 1`, so the check `current"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "PaginationHandler's return value is ignored so handle() returning false to stop processing",
+   "location": "core/src/main/java/com/taobao/arthas/core/util/ResultUtils.java:26",
+   "verdict": "real",
+   "reason": "The Javadoc for PaginationHandler.handle() explicitly documents that returning false should terminate processing (\"false \u7ec8\u6b62\u5904\u7406\"), and the implementation at lines 26/32 ignores this return value entirel"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "NullPointerException when setPath() is called with null argument",
+   "location": "tunnel-server/src/main/java/com/alibaba/arthas/tunnel/server/TunnelServer.java:232",
+   "verdict": "real",
+   "reason": "The `setPath()` method calls `path.trim()` without null check, causing an unintentional NPE on null input. The field has a default value and the method's intent is path normalization (trim + ensure le"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "NullPointerException in catch block because job field is nullified before the catch block ",
+   "location": "core/src/main/java/com/taobao/arthas/core/shell/system/impl/GlobalJobControllerImpl.java:119",
+   "verdict": "real",
+   "reason": "In `JobTimeoutTask.run()`, line 119 sets the field `job = null` before calling `temp.terminate()`. If `terminate()` throws, the catch block at line 124 accesses `job.id()` and `job.line()` on the now-"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "Resource leak: StandardJavaFileManager and DynamicJavaFileManager are never closed, leakin",
+   "location": "memorycompiler/src/main/java/com/taobao/arthas/compiler/DynamicCompiler.java:33",
+   "verdict": "real",
+   "reason": "`StandardJavaFileManager` (created at line 33) implements `Closeable` and holds native resources per its Java API contract, but `DynamicCompiler` never implements `AutoCloseable` or closes it. In the "
+  },
+  {
+   "id": 5,
+   "suspected_bug": "NullPointerException when Redis keys() returns null in agentInfo method",
+   "location": "tunnel-server/src/main/java/com/alibaba/arthas/tunnel/server/cluster/RedisTunnelClusterStore.java:103",
+   "verdict": "real",
+   "reason": "The `agentInfo()` method at line 103 calls `opsForValue.getOperations().keys(...)` and passes the result directly to `new ArrayList<>(...)` without a null check, while the sibling method `allAgentIds("
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Basic Auth credentials decoded with wrong charset on non-UTF-8 platforms causing authentic",
+   "location": "core/src/main/java/com/taobao/arthas/core/shell/term/impl/http/BasicHttpAuthenticatorHandler.java:219",
+   "verdict": "real",
+   "reason": "Line 219 uses `Charset.defaultCharset()` instead of UTF-8 to decode HTTP Basic Auth credentials, violating RFC 7617. On non-UTF-8 platforms, non-ASCII credentials would be decoded as garbage, causing "
+  },
+  {
+   "id": 7,
+   "suspected_bug": "Reference count leak: msg written to relayChannel without retain() causes premature releas",
+   "location": "tunnel-server/src/main/java/com/alibaba/arthas/tunnel/server/RelayHandler.java:31",
+   "verdict": "intended",
+   "reason": "Netty's `channel.write()` internally calls `ReferenceCountUtil.retain(msg)` before adding to the outbound buffer, so explicit `retain()` is unnecessary. The reference counting is correct: write() reta"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Race condition: isSuccessSendData read before async callback sets it, always returns stale",
+   "location": "labs/arthas-grpc-web-proxy/src/main/java/com/taobao/arthas/grpcweb/proxy/SendGrpcWebResponse.java:197",
+   "verdict": "real",
+   "reason": "The return value at line 197 reads `isSuccessSendData` synchronously, but it is only ever set asynchronously in the `ChannelFutureListener` callback at line 192. This means: (1) on first call, it alwa"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "StringIndexOutOfBoundsException when jobTimeout config is all whitespace (empty after trim",
+   "location": "core/src/main/java/com/taobao/arthas/core/shell/system/impl/GlobalJobControllerImpl.java:76",
+   "verdict": "intended",
+   "reason": "The `catch (Throwable e)` block at line 95 deliberately catches ALL exceptions (including `StringIndexOutOfBoundsException` from empty string) and falls back to the default 1-day timeout \u2014 matching th"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "Path matching uses endsWith which allows URI path injection \u2014 any URI ending with the mcpE",
+   "location": "arthas-mcp-server/src/main/java/com/taobao/arthas/mcp/server/protocol/server/handler/McpStreamableHttpRequestHandler.java:177",
+   "verdict": "real",
+   "reason": "The `endsWith` check at line 177 is a genuine path-matching defect: a request to \"/evil/mcp\" would incorrectly match endpoint \"/mcp\" and be accepted as a valid MCP endpoint, which is a security vulner"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "Race condition in manager creation causes lost listeners when multiple threads register si",
+   "location": "core/src/main/java/com/taobao/arthas/core/advisor/AdviceListenerManager.java:196-202",
+   "verdict": "real",
+   "reason": "The code at lines 196-202 (and identical patterns at 227-232, 257-262) has a classic check-then-act race condition: two threads can both see `null` from `get()`, both create a new `ClassLoaderAdviceLi"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "Non-thread-safe HashMap used for gRPC invoke maps causes race conditions under concurrent ",
+   "location": "labs/arthas-grpc-server/src/main/java/com/taobao/arthas/grpc/server/handler/GrpcDispatcher.java:33",
+   "verdict": "intended",
+   "reason": "The static HashMaps in GrpcDispatcher follow a write-once-during-startup, read-many-during-runtime pattern. All `.put()` calls are exclusively in `loadGrpcService()`, which is called exactly once in `"
+  },
+  {
+   "id": 13,
+   "suspected_bug": "URI path matching uses endsWith which allows crafted paths to bypass endpoint validation",
+   "location": "arthas-mcp-server/src/main/java/com/taobao/arthas/mcp/server/protocol/server/handler/McpHttpRequestHandler.java:69",
+   "verdict": "real",
+   "reason": "The `endsWith` check at line 69 (and identically at lines 86/177 in sibling handlers) allows crafted URIs like \"/anything/mcp\" to bypass endpoint validation when mcpEndpoint is \"/mcp\", because \"/anyth"
+  },
+  {
+   "id": 14,
+   "suspected_bug": "Read loop initializes l=0 instead of reading first, causing one wasted iteration",
+   "location": "core/src/main/java/com/taobao/arthas/core/shell/term/impl/http/HttpRequestHandler.java:152",
+   "verdict": "intended",
+   "reason": "The pattern `for (int l = 0; l != -1; l = in.read(tmp))` is sloppy but functionally correct: the first iteration writes 0 bytes (a no-op), then reads proceed normally, producing the same output as the"
+  },
+  {
+   "id": 15,
+   "suspected_bug": "buf.array() returns entire underlying array including invalid bytes, not just readable con",
+   "location": "labs/arthas-grpc-server/src/main/java/com/taobao/arthas/grpc/server/utils/ByteUtil.java:24",
+   "verdict": "real",
+   "reason": "The `else` branch of `getBytes()` correctly returns only readable bytes using `buf.readableBytes()` and `buf.getBytes(buf.readerIndex(), bytes)`, proving the intended behavior. But the `if` branch (li"
+  },
+  {
+   "id": 16,
+   "suspected_bug": "pop() on empty stack corrupts stack state by reading stale data and setting wrong position",
+   "location": "core/src/main/java/com/taobao/arthas/core/util/ThreadLocalWatch.java:72",
+   "verdict": "real",
+   "reason": "The `pop()` method at line 72-84 has a clear bug: when `pos == 0` (empty stack), it falls through to lines 81-84 which read `stack[cap]` (potentially stale data) and corrupt the stack state by setting"
+  },
+  {
+   "id": 17,
+   "suspected_bug": "Latch never counted down when onHeaders not called, causing permanent caller hang",
+   "location": "labs/arthas-grpc-web-proxy/src/main/java/com/taobao/arthas/grpcweb/proxy/GrpcWebClientInterceptor.java:63",
+   "verdict": "intended",
+   "reason": "The latch IS always counted down through the `super.onClose(s, t)` call at line 72, which delegates to gRPC's internal `ClientCall.Listener.onClose()`. That internal listener always calls either `onEr"
+  },
+  {
+   "id": 18,
+   "suspected_bug": "GZIP magic byte check is wrong for gRPC compression framing, causing decompression to neve",
+   "location": "labs/arthas-grpc-server/src/main/java/com/taobao/arthas/grpc/server/handler/GrpcRequest.java:111",
+   "verdict": "real",
+   "reason": "The `decompressGzip()` method checks bytes 0-1 for GZIP magic `0x1f 0x8b`, but in gRPC wire format, byte 0 is the compression flag (0x00 or 0x01), which can never be 0x1f. This means decompression NEV"
+  },
+  {
+   "id": 19,
+   "suspected_bug": "Poor hashCode implementation using commutative addition causes hash collisions",
+   "location": "core/src/main/java/com/taobao/arthas/core/command/monitor200/MonitorAdviceListener.java:251",
+   "verdict": "real",
+   "reason": "The hashCode() at line 251 uses commutative addition (`className.hashCode() + methodName.hashCode()`), which is a well-known anti-pattern that a maintainer would fix. The same codebase demonstrates th"
+  }
+ ]
+}

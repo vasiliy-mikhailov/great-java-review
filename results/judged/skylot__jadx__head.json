@@ -1,0 +1,26 @@
+{
+ "repo": "skylot/jadx",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "`lastIndexOf` skips index 0 due to off-by-one error (`i > 0` instead of `i >= 0`), returni",
+   "location": "jadx-core/src/main/java/jadx/core/utils/ImmutableList.java:63",
+   "verdict": "real",
+   "reason": "The `lastIndexOf` method at line 63 uses `i > 0` as the loop condition, which skips index 0 entirely. This violates the `List` interface contract requiring `lastIndexOf` to return the index of the las"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When comparing two unknown types with same number of possible types, TypeCompare incorrect",
+   "location": "jadx-core/src/main/java/jadx/core/dex/visitors/typeinference/TypeCompare.java:88-89",
+   "verdict": "real",
+   "reason": "The code at line 88-89 (`variantLen > 0 ? WIDER : NARROW`) returns NARROW when variantLen == 0, making the comparison asymmetric: both `compareTypes(a, b)` and `compareTypes(b, a)` return NARROW for d"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "StringIndexOutOfBoundsException when either cleanObjectName or cutObject is called with an",
+   "location": "jadx-core/src/main/java/jadx/core/utils/Utils.java:44,54",
+   "verdict": "real",
+   "reason": "Real bug: `cleanObjectName` and `cutObject` are public utility methods with a lenient design (they return input unchanged for non-matching patterns like non-'L' prefixes), but crash with `StringIndexO"
+  }
+ ]
+}

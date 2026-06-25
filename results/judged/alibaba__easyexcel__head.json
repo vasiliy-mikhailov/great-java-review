@@ -1,0 +1,117 @@
+{
+ "repo": "alibaba/easyexcel",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Ehcache.get() throws NullPointerException when requesting a key beyond the cached data ran",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/cache/Ehcache.java:137-147",
+   "verdict": "real",
+   "reason": "The code at line 147 calls `dataList.get()` without checking if `fileCache.get(route)` returned null at line 139. Both callers (`LabelSstRecordHandler` and `CellTagHandler`) expect `get()` to return n"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "After calling setTempFilePrefix, poiFilesPath and cachePath point to stale paths under the",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/util/FileUtils.java:206-208",
+   "verdict": "real",
+   "reason": "`setTempFilePrefix()` (a public, non-deprecated method) only updates `tempFilePrefix` but leaves `poiFilesPath` and `cachePath` stale\u2014they were computed once at static field initialization from the ol"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "getPhysicalNumberOfRows() always returns a negative number (or wrong value) because the su",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/metadata/csv/CsvSheet.java:149-151",
+   "verdict": "real",
+   "reason": "The formula `lastRowIndex - rowCache.size()` in `getPhysicalNumberOfRows()` consistently returns wrong values (e.g., -1 after creating 1 row, 99 after 100 rows). The method implements Apache POI's `Sh"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "If two different Excel files with different locale/1904windowing settings are read on the ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/util/NumberDataFormatterUtils.java:52-58",
+   "verdict": "real",
+   "reason": "The `ThreadLocal<DataFormatter>` cache in `NumberDataFormatterUtils.format()` (lines 52-56) stores a single `DataFormatter` per thread but never checks whether the cached instance's locale/use1904wind"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "Error messages claim values must be 'greater than 1' but the actual validation allows valu",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/write/merge/LoopMergeStrategy.java:33-34",
+   "verdict": "real",
+   "reason": "The validation conditions on lines 33 and 36 use `< 1`, meaning values of 1 ARE allowed, but the error messages say \"must be greater than 1\" which is misleading \u2014 it implies values must be \u2265 2. This i"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "Column width calculation uses platform-dependent byte encoding via getBytes(), producing d",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/write/style/column/LongestMatchColumnWidthStyleStrategy.java:53-71",
+   "verdict": "real",
+   "reason": "The code uses `String.getBytes().length` without specifying a charset, causing platform-dependent results (different column widths on Windows vs Linux). This is an unintended code smell \u2014 other parts "
+  },
+  {
+   "id": 6,
+   "suspected_bug": "BigDecimalBooleanConverter incorrectly treats BigDecimal values like 1.00 or 1.0 as FALSE ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/converters/bigdecimal/BigDecimalBooleanConverter.java:41",
+   "verdict": "real",
+   "reason": "BigDecimal.equals() compares both value AND scale, so BigDecimal.ONE.equals(new BigDecimal(\"1.00\")) returns false. This is a well-known BigDecimal anti-pattern. All sibling converters (Integer, Float,"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "MapCache.get() throws IndexOutOfBoundsException when key >= cache.size() because there is ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/cache/MapCache.java:25-30",
+   "verdict": "intended",
+   "reason": "The MapCache.get() method lacks an explicit bounds check, but this is intentional and consistent with all sibling implementations (Ehcache can NPE on cache miss; XlsCache delegates to POI's SSTRecord "
+  },
+  {
+   "id": 8,
+   "suspected_bug": "toByteArray(InputStream) does not close the input stream, which is a resource leak if the ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/util/IoUtils.java:29-37",
+   "verdict": "real",
+   "reason": "The finally block at line 34-36 calls `output.toByteArray()` which is a no-op dead code (returns a value that's discarded). The try-finally pattern clearly indicates the developer intended to do resou"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "getNumCellStyles() throws NullPointerException if called before createCellStyle() because ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/metadata/csv/CsvWorkbook.java:229-231",
+   "verdict": "real",
+   "reason": "`CsvWorkbook` implements `org.apache.poi.ss.usermodel.Workbook`, and its `getNumCellStyles()` (line 229-231) and `getCellStyleAt()` (line 234-238) both access `csvCellStyleList` without a null check, "
+  },
+  {
+   "id": 10,
+   "suspected_bug": "InputStream from getInputStream() is never closed, causing a resource leak every time this",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/cache/selector/SimpleReadCacheSelector.java:79-84",
+   "verdict": "real",
+   "reason": "The InputStream from `sharedStringsTablePackagePart.getInputStream()` on line 81 is never closed\u2014neither on the normal path nor the IOException catch path. This is a genuine resource leak. The codebas"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "Class.newInstance() is deprecated since Java 9 and won't work for classes with non-public ",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/read/listener/ModelBuildEventListener.java:129",
+   "verdict": "real",
+   "reason": "Line 129 uses deprecated `Class.newInstance()` which fails for non-public constructors, while the same codebase at `ClassUtils.java:243` already uses the correct pattern `getDeclaredConstructor().newI"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "BooleanUtils.valueOf(\"true\") returns Boolean.FALSE instead of Boolean.TRUE, which is surpr",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/util/BooleanUtils.java:31-37",
+   "verdict": "intended",
+   "reason": "`BooleanUtils.valueOf(String)` is used exclusively in `CellTagHandler.java` to parse boolean values from Excel XML (xlsx format), where the OOXML standard represents booleans as \"0\" or \"1\" \u2014 never as "
+  },
+  {
+   "id": 13,
+   "suspected_bug": "Returning internal mutable maps without defensive copy allows callers to corrupt the share",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/converters/DefaultConverterLoader.java:162-164,180-191",
+   "verdict": "real",
+   "reason": "The methods `loadDefaultWriteConverter()` and `loadDefaultReadConverter()` return direct references to the internal static Maps (`defaultWriteConverter` and `allConverter`). Internal callers in `Abstr"
+  },
+  {
+   "id": 14,
+   "suspected_bug": "Error message 'The index of A and B must be inconsistent' is semantically wrong \u2014 it shoul",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/util/ClassUtils.java:281-283",
+   "verdict": "real",
+   "reason": "The error message at line 487-489 says \"The index of 'A' and 'B' must be inconsistent\" when the condition is `indexFieldMap.containsKey(excelProperty.index())` \u2014 meaning the indices ARE the same (dupl"
+  },
+  {
+   "id": 15,
+   "suspected_bug": "The error message says 'must be greater than 0' but validation allows value=0, which is in",
+   "location": "easyexcel-core/src/main/java/com/alibaba/excel/write/merge/OnceAbsoluteMergeStrategy.java:34-36",
+   "verdict": "real",
+   "reason": "The error message \"All parameters must be greater than 0\" contradicts the actual validation check `firstRowIndex < 0` which allows value 0. The code correctly accepts 0 (valid Excel index starting at "
+  }
+ ]
+}

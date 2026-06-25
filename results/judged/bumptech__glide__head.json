@@ -1,0 +1,33 @@
+{
+ "repo": "bumptech/glide",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "When a key is reused in put() or get(), the caller's key object is incorrectly recycled in",
+   "location": "library/src/main/java/com/bumptech/glide/load/engine/bitmap_recycle/GroupedLinkedMap.java:32,45",
+   "verdict": "intended",
+   "reason": "The current code correctly recycles the caller's key parameter (which came from the KeyPool) back to the pool, while preserving the entry's key for future HashMap lookups. If entry.key were recycled i"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Items with size exactly equal to maxSize are always rejected, even when the cache is empty",
+   "location": "library/src/main/java/com/bumptech/glide/util/LruCache.java:132",
+   "verdict": "real",
+   "reason": "The Javadoc (line 109) says items are rejected when \"larger than\" cache size (>), but the code uses >=. This contradicts the documented contract. Additionally, trimToSize() uses `currentSize > size` ("
+  },
+  {
+   "id": 2,
+   "suspected_bug": "GlideUrl.hashCode() uses 0 as an uninitialized sentinel, but 0 is a valid hashCode result.",
+   "location": "library/src/main/java/com/bumptech/glide/load/model/GlideUrl.java:141-147",
+   "verdict": "intended",
+   "reason": "The `if (hashCode == 0)` lazy-computation guard is a deliberate, consistent design pattern used across 3 files (GlideUrl, EngineKey, CachedHashCodeArrayMap). While 0 is technically a valid hash code, "
+  },
+  {
+   "id": 3,
+   "suspected_bug": "MultiClassKey.toString() omits the third field, making debugging misleading since two equa",
+   "location": "library/src/main/java/com/bumptech/glide/util/MultiClassKey.java:37-39",
+   "verdict": "real",
+   "reason": "The `toString()` method (line 38) omits the `third` field, while both `equals()` (lines 53-61) and `hashCode()` (lines 67-71) consider all three fields. This is an inconsistency: two objects with diff"
+  }
+ ]
+}

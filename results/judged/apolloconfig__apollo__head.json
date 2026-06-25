@@ -1,0 +1,26 @@
+{
+ "repo": "apolloconfig/apollo",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "When validating item value length for gray namespaces, the parent namespace's configured v",
+   "location": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/service/ItemService.java:243",
+   "verdict": "real",
+   "reason": "Line 243 passes `grayNamespace` instead of `parentNamespace` to `getItemValueLengthLimit()`, despite `parentNamespace` being fetched on line 241 and the variable being named `parentLimit`. This makes "
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When loading a namespace BO for display, if an item's value is null, the transformItem2BO(",
+   "location": "apollo-portal/src/main/java/com/ctrip/framework/apollo/portal/service/NamespaceService.java:360",
+   "verdict": "real",
+   "reason": "Line 422 in `transformItem2BO()` calls `newValue.equals(oldValue)` where `newValue` comes from `itemDTO.getValue()`. The database `Item` entity has no `nullable = false` on the `Value` column, allowin"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "When updating an item where the old item's value is null, ConfigChangeContentBuilder.updat",
+   "location": "apollo-biz/src/main/java/com/ctrip/framework/apollo/biz/utils/ConfigChangeContentBuilder.java:44",
+   "verdict": "real",
+   "reason": "`ConfigChangeContentBuilder.updateItem()` is a public method that calls `oldItem.getValue().equals(newItem.getValue())`, which throws NPE when `oldItem.getValue()` is null. The `Item` class allows nul"
+  }
+ ]
+}

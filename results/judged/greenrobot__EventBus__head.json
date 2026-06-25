@@ -1,0 +1,26 @@
+{
+ "repo": "greenrobot/EventBus",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "NullPointerException when registering a subscriber whose superclass chain reaches Object a",
+   "location": "EventBus/src/org/greenrobot/eventbus/SubscriberMethodFinder.java:270-271",
+   "verdict": "real",
+   "reason": "The code at lines 270-271 unconditionally calls `clazz.getName()` after `clazz = clazz.getSuperclass()`. When `clazz` is `Object.class` (reachable via `eventBus.register(new Object())` through the pub"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "EventBusBuilder.skipMethodVerificationFor(Class<?>) is a dead API that has no effect on me",
+   "location": "EventBus/src/org/greenrobot/eventbus/EventBusBuilder.java:42",
+   "verdict": "real",
+   "reason": "The public API `skipMethodVerificationFor(Class<?>)` with Javadoc promising to \"exclude subscriber classes from this check\" stores data into `skipMethodVerificationForClasses`, but that field is NEVER"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "getStickyEvent(Object.class) returns null even though postSticky(MyEvent) was posted, beca",
+   "location": "EventBus/src/org/greenrobot/eventbus/EventBus.java:311-317",
+   "verdict": "intended",
+   "reason": "The exact-match behavior of `getStickyEvent(Class)` is intentional: it provides O(1) lookup for the sticky event of that EXACT type, avoiding the ambiguity of which event to return when multiple stick"
+  }
+ ]
+}

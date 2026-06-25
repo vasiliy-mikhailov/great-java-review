@@ -1,0 +1,110 @@
+{
+ "repo": "Stirling-Tools/Stirling-PDF",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "The age-based cleanup via getFilesOlderThan will never find temp directories or third-part",
+   "location": "app/common/src/main/java/stirling/software/common/util/TempFileRegistry.java:143-149",
+   "verdict": "real",
+   "reason": "The reporter's core observation is correct: `getFilesOlderThan` only scans `registeredFiles` and ignores `tempDirectories` and `thirdPartyTempFiles`. This causes two real defects: (1) a memory leak in"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Storage leak: when replacing a file that had history/audit bundles with a new upload missi",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/storage/service/FileStorageService.java:227-231",
+   "verdict": "real",
+   "reason": "REAL BUG: When replaceFile() is called with null/empty historyBundle or auditLog for a file that previously had history/audit storage, the old storage keys are never cleaned up because the cleanup is "
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Registry leak: when file.delete() fails, the file stays registered in TempFileRegistry and",
+   "location": "app/common/src/main/java/stirling/software/common/util/TempFileManager.java:111-122",
+   "verdict": "intended",
+   "reason": "The behavior is deliberate: the registry tracks EXISTING temp files, and when deletion fails the file still exists on disk and must remain registered for the scheduled cleanup retry mechanism (`TempFi"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "In JobQueue.processQueue(), after removing a job from jobMap (line 344), if cancelJob is c",
+   "location": "app/common/src/main/java/stirling/software/common/service/JobQueue.java:304-345",
+   "verdict": "real",
+   "reason": "`cancelJob()` (public, line 466) does NOT synchronize on `queueLock`, while `processQueue()` removes the job from `jobMap` inside `synchronized(queueLock)` but calls `executeJob()` outside it. If `can"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "JobQueue.cancelJob() accesses shared mutable state (jobMap, jobQueue, currentQueueSize) wi",
+   "location": "app/common/src/main/java/stirling/software/common/service/JobQueue.java:466-482",
+   "verdict": "real",
+   "reason": "cancelJob() accesses shared mutable state (`jobQueue.remove(job)` at line 473 and `currentQueueSize = jobQueue.size()` at line 474) WITHOUT holding `queueLock`, while all other methods (queueJob, getQ"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "If a backup file exists with a name shorter than 11 characters (like \"backup.sql\"), delete",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/security/service/DatabaseService.java:383",
+   "verdict": "intended",
+   "reason": "The `getBackupList()` DirectoryStream filter (lines 169-173) requires filenames to `startsWith(\"backup_\")` AND `endsWith(\".sql\")`. Since \"backup_\" (7 chars) and \".sql\" (4 chars) cannot overlap (unders"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Resource leak: the FileInputStream created by Files.newInputStream(filePath) is never clos",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/security/controller/api/DatabaseController.java:210",
+   "verdict": "intended",
+   "reason": "The reporter's core claim is false: `InputStreamResource` has implemented `Closeable` since Spring Framework 4.2 (over 10 years ago). Spring Boot 4.0.6 (Spring 6.x) uses `ResourceUtils.closeIfPossible"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "ensurePersonalTeam() can orphan a shared team by switching a user's team from their shared",
+   "location": "app/saas/src/main/java/stirling/software/saas/service/SaasTeamService.java:55-61",
+   "verdict": "intended",
+   "reason": "The reported scenario cannot occur through any existing code path: `ensurePersonalTeam()` is called exclusively from `upgradeAnonymousUser()` (SupabaseAuthenticationFilter line 267 and SaasUserAccount"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Resource leak: FileInputStream from Files.newInputStream is passed to InputStreamResource ",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/security/controller/api/UIDataTessdataController.java:209-215",
+   "verdict": "real",
+   "reason": "`DatabaseController.downloadFile()` at line 210 uses `new InputStreamResource(Files.newInputStream(filePath))` \u2014 the `InputStreamResource(InputStream)` constructor does NOT close the underlying stream"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "TOCTOU race in get(): a concurrent put() can replace an expired entry with a fresh one bet",
+   "location": "app/common/src/main/java/stirling/software/common/cluster/inprocess/InProcessKeyValueCache.java:25-38",
+   "verdict": "real",
+   "reason": "The `get()` method has a genuine TOCTOU race: between `ns.get(key)` (line 30) and the conditional `ns.remove(key, e)` (line 35), another thread's `put()` can replace the expired `Expiring` with a fres"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "The cast to int on line 161 would overflow for durations exceeding ~68 years, but this is ",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/security/session/SessionPersistentRegistry.java:161",
+   "verdict": "real",
+   "reason": "The cast `(int) defaultMaxInactiveInterval.getSeconds()` at line 161 silently overflows to a negative value when the duration exceeds ~68 years (Integer.MAX_VALUE seconds), causing sessions to expire "
+  },
+  {
+   "id": 11,
+   "suspected_bug": "Potential hang: join() on reader threads has no timeout, so a stuck reader thread will blo",
+   "location": "app/common/src/main/java/stirling/software/common/util/ProcessExecutor.java:304-305",
+   "verdict": "intended",
+   "reason": "The `join()` calls at lines 304-305 are only reached after `process.waitFor(timeoutDuration, TimeUnit.MINUTES)` returned `true`, meaning the process has already exited. When a process exits, the OS cl"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "TOCTOU race in markTotpStepUsed(): concurrent TOTP requests with the same timeStep can bot",
+   "location": "app/proprietary/src/main/java/stirling/software/proprietary/security/service/MfaService.java:166-184",
+   "verdict": "real",
+   "reason": "The method `markTotpStepUsed()` is explicitly documented as \"preventing replay\" but lacks `@Transactional` or any synchronization, making its read-check-write pattern vulnerable to a TOCTOU race where"
+  },
+  {
+   "id": 13,
+   "suspected_bug": "convertSizeToBytes JavaDoc claims PB (petabyte) support but PB is not actually supported. ",
+   "location": "app/common/src/main/java/stirling/software/common/util/GeneralUtils.java:527,59,594",
+   "verdict": "real",
+   "reason": "Two comments (lines 527 and 616) explicitly claim \"TB/PB support\" but the implementation consistently lacks PB everywhere: VALID_SIZE_UNITS omits \"PB\", toBytes rejects powerOf1024 > 4, convertSizeToBy"
+  },
+  {
+   "id": 14,
+   "suspected_bug": "JobQueue.updateQueueCapacity() calls getQueueCapacity() (which locks queueLock) and then e",
+   "location": "app/common/src/main/java/stirling/software/common/service/JobQueue.java:243-268",
+   "verdict": "intended",
+   "reason": "The code comment at line 257 explicitly says \"Use the cached currentCapacity to avoid calling getQueueCapacity() again\" \u2014 this is the author's deliberate design choice. Furthermore, `updateQueueCapaci"
+  }
+ ]
+}

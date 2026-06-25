@@ -1,0 +1,47 @@
+{
+ "repo": "brettwooldridge/HikariCP",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "getStateCounts() will throw ArrayIndexOutOfBoundsException when any PoolEntry is in STATE_",
+   "location": "src/main/java/com/zaxxer/hikari/util/ConcurrentBag.java:400-403",
+   "verdict": "real",
+   "reason": "The `getStateCounts()` method at ConcurrentBag.java:398-407 creates `new int[6]` (valid indices 0-5) but uses `e.getState()` directly as an array index. `e.getState()` can legitimately return `STATE_R"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "setCredentialsProviderClassName() writes the credentials provider class name into the wron",
+   "location": "src/main/java/com/zaxxer/hikari/HikariConfig.java:893",
+   "verdict": "real",
+   "reason": "Line 893 in setCredentialsProviderClassName() assigns to `this.exceptionOverrideClassName` instead of `this.credentialsProviderClassName`. The getter `getCredentialsProviderClassName()` always returns"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "getGeneratedKeys() will crash with NullPointerException when delegate.getGeneratedKeys() r",
+   "location": "src/main/java/com/zaxxer/hikari/pool/ProxyStatement.java:228-235",
+   "verdict": "real",
+   "reason": "`getGeneratedKeys()` unconditionally passes a potentially null result to `ProxyFactory.getProxyResultSet()`, creating a proxy wrapping null instead of returning null as `getResultSet()` correctly does"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "isUnwrappableAs() returns false for valid unwrap types like DataSource.class because isAss",
+   "location": "HikariConnectionProvider.java:128,136",
+   "verdict": "real",
+   "reason": "The `isAssignableFrom` operands on lines 128 and 136 are reversed: `HikariConnectionProvider.class.isAssignableFrom(unwrapType)` checks if `unwrapType` is a subtype of `HikariConnectionProvider`, but "
+  },
+  {
+   "id": 4,
+   "suspected_bug": "rollback(Savepoint) incorrectly sets isCommitStateDirty = true, causing an unnecessary rol",
+   "location": "src/main/java/com/zaxxer/hikari/pool/ProxyConnection.java:392-396",
+   "verdict": "real",
+   "reason": "`rollback(Savepoint)` sets `isCommitStateDirty = true` (line 395) while `rollback()` sets it to `false` (line 387). Both are explicit transaction management calls by the user, so both should set it to"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "setKeepaliveTime() allows negative values to be set without throwing an exception or warni",
+   "location": "src/main/java/com/zaxxer/hikari/HikariConfig.java:757",
+   "verdict": "real",
+   "reason": "setKeepaliveTime() accepts negative values without validation, breaking the established pattern of all other time-quantity setters (setIdleTimeout, setConnectionTimeout, setValidationTimeout, setMinim"
+  }
+ ]
+}

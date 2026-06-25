@@ -1,0 +1,40 @@
+{
+ "repo": "airbnb/lottie-android",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "`floorMod(float, float)` truncates both inputs to `int`, losing all fractional precision. ",
+   "location": "MiscUtils.java:63-64",
+   "verdict": "real",
+   "reason": "`MiscUtils.floorMod(float, float)` casts both arguments to `int` and returns `int`, losing all fractional precision. It is called from `Utils.applyTrimPathIfNeeded` with float path positions (`newStar"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When a composition has a non-zero startFrame, all progress calculations in LottieClipSpec ",
+   "location": "LottieClipSpec.kt:37,44",
+   "verdict": "real",
+   "reason": "LottieClipSpec re-implements frame-to-progress conversion in 6 places using `frame / composition.endFrame`, but LottieComposition.getProgressForFrame() (the canonical public API) correctly uses `(fram"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "The condition uses OR (`||`) instead of AND (`&&`), meaning if EITHER startValue or endVal",
+   "location": "KeyframesParser.java:77-81",
+   "verdict": "intended",
+   "reason": "The OR condition on line 77 is correct: after the loop (lines 64-74), the second-to-last keyframe already has `endValue = lastKeyframe.startValue` and `endFrame = lastKeyframe.startFrame`. The last ke"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "When getColorInBetweenColorStops is called with position == colorStopPositions[0], the opa",
+   "location": "GradientColorParser.java:172",
+   "verdict": "real",
+   "reason": "The early-return at line 172-173 (`if (colorStopColors.length < 2 || position == colorStopPositions[0]) { return colorStopColors[0]; }`) ignores the `opacity` parameter, while all other return paths i"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "When `insertionPoint == colors.length` (position is beyond the last gradient stop), the co",
+   "location": "GradientColor.java:98-101",
+   "verdict": "real",
+   "reason": "The code at line 100 checks `insertionPoint == colors.length - 1` but insertionPoint can equal `colors.length` (when position is beyond all stops), causing the else branch to access `positions[inserti"
+  }
+ ]
+}

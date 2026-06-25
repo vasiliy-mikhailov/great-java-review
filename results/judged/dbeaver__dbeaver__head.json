@@ -1,0 +1,40 @@
+{
+ "repo": "dbeaver/dbeaver",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Malformed SQL in test: DELETE has SET clause (UPDATE syntax), causing parser to fail silen",
+   "location": "test/org.jkiss.dbeaver.model.sql.test/src/org/jkiss/dbeaver/model/sql/SQLQueryDangerousDetectionTest.java:44",
+   "verdict": "real",
+   "reason": "Line 44 uses `\"DELETE FROM table SET a = 1 WHERE id = 1\"` which is syntactically invalid SQL (DELETE has no SET clause \u2014 that's UPDATE syntax). The `isDeleteUpdateDangerous()` method returns `false` f"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "nodesIteratorAt() uses raw size field instead of effective size() method, causing incorrec",
+   "location": "plugins/org.jkiss.dbeaver.model.sql/src/org/jkiss/dbeaver/model/sql/semantics/OffsetKeyedTreeMap.java:414",
+   "verdict": "intended",
+   "reason": "The `switch (this.size)` at line 414 correctly uses the raw `size` field because the invariant `tombstonesCount <= this.size / 2` (enforced by the rebuild check at line 1090) guarantees that `this.siz"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "When processFragment handles empty arrays directly (aLen=0 or bLen=0), the dmax check is b",
+   "location": "plugins/org.jkiss.dbeaver.model/src/org/jkiss/dbeaver/model/sql/Diff.java:198-203",
+   "verdict": "intended",
+   "reason": "The `dmax` parameter is entirely private \u2014 the constructor is private and the only caller (`prepareDiff`, line 267) always passes `Integer.MAX_VALUE`. No internal code (confirmed: only `QueryReconstru"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "Invalid escape sequence `\\s` in Java text block causes compilation failure, preventing the",
+   "location": "test/org.jkiss.dbeaver.ext.oracle.test/src/org/jkiss/dbeaver/ext/oracle/model/util/ProcedureBodyExtractorTest.java:110",
+   "verdict": "real",
+   "reason": "The `\\s` on line 110 is an invalid Java escape sequence inside a text block; Java only recognizes `\\b`, `\\t`, `\\n`, `\\f`, `\\r`, `\\\\`, `\\\"`, `\\'`, `\\uXXXX`, and octal escapes. This causes a compilation"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "escapeXmlElementName() throws StringIndexOutOfBoundsException when passed an empty string,",
+   "location": "plugins/org.jkiss.dbeaver.data.transfer/src/org/jkiss/dbeaver/tools/transfer/stream/exporter/DataExporterXML.java:173-181",
+   "verdict": "real",
+   "reason": "The method `escapeXmlElementName()` at line 175 calls `charAt(0)` on `escapedName` without checking if it's empty. When the input `name` is empty (or consists entirely of non-alphanumeric chars like \""
+  }
+ ]
+}

@@ -1,0 +1,26 @@
+{
+ "repo": "keycloak/keycloak",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "The hasArrayObjectConflict method returns true when two paths share any common prefix comp",
+   "location": "services/src/main/java/org/keycloak/protocol/oid4vc/utils/ClaimsPathPointer.java:164",
+   "verdict": "real",
+   "reason": "The `hasArrayObjectConflict` method at lines 163-165 returns `true` when two path components are equal, but this is wrong: equal components just mean the paths share a common prefix (the normal case f"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When a template parameter lacks a closing '}', uri.replace uses index 0 as end position in",
+   "location": "common/src/main/java/org/keycloak/common/util/PathMatcher.java:219",
+   "verdict": "real",
+   "reason": "The code on line 219 calls `uri.indexOf(...)` where `uri` is a `StringBuilder` (line 163), but `StringBuilder` has no `indexOf` method \u2014 this is a compilation error. The author clearly meant to call `"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Swallowing exceptions in dumpCertInfo means errors during certificate processing are silen",
+   "location": "services/src/main/java/org/keycloak/services/util/MtlsHoKTokenUtil.java:155",
+   "verdict": "intended",
+   "reason": "The `dumpCertInfo` method is `private static` and only invoked when trace logging is enabled \u2014 it's purely diagnostic. The `throws CertificateEncodingException` on the signature serves `certs[i].getEn"
+  }
+ ]
+}

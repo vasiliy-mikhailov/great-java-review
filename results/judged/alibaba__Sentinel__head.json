@@ -1,0 +1,187 @@
+{
+ "repo": "alibaba/Sentinel",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Closing one ZookeeperDataSource instance closes the shared CuratorFramework client, causin",
+   "location": "sentinel-extension/sentinel-datasource-zookeeper/src/main/java/com/alibaba/csp/sentinel/datasource/zookeeper/ZookeeperDataSource.java:176",
+   "verdict": "real",
+   "reason": "The `close()` method at lines 176-178 unconditionally closes `this.zkClient`, which is a reference to the **shared** CuratorFramework stored in the static `zkClientMap`. The sharing is deliberate and "
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Reading statusCode from a closed CloseableHttpResponse may throw IllegalStateException or ",
+   "location": "sentinel-transport/sentinel-transport-netty-http/src/main/java/com/alibaba/csp/sentinel/transport/heartbeat/HttpHeartbeatSender.java:99-101",
+   "verdict": "real",
+   "reason": "The code at lines 99-101 calls `response.close()` before `response.getStatusLine().getStatusCode()`, which violates the `CloseableHttpResponse` contract \u2014 accessing the status line after close is unde"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Thread-safety issue: concurrent consume operations can allow over-consumption of tokens be",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/slots/block/flow/tokenbucket/AbstractTokenBucket.java:77-79",
+   "verdict": "intended",
+   "reason": "The codebase deliberately provides two variants: `DefaultTokenBucket` (fast, non-thread-safe) and `StrictTokenBucket` (synchronized, thread-safe). The `StrictTokenBucket` class overrides `tryConsume()"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "NPE or ClassCastException in getRemoteAddress when inetAddress.getAddress() returns null f",
+   "location": "sentinel-cluster/sentinel-cluster-client-default/src/main/java/com/alibaba/csp/sentinel/cluster/client/handler/TokenClientHandler.java:108-109",
+   "verdict": "intended",
+   "reason": "The `getRemoteAddress` method is private and only used for logging. The bootstrap in `NettyTransportClient` (line 93) exclusively uses `NioSocketChannel.class` (TCP-only), so `remoteAddress()` will al"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "Comparator returns 0 (equal) when o1.getLimitApp() is null and o2.getLimitApp() is non-nul",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/slots/block/flow/FlowRuleComparator.java:40-54",
+   "verdict": "real",
+   "reason": "The null case is a genuine Comparator contract violation. When o1.limitApp is null and o2.limitApp is non-null (e.g., \"originA\"), compare(o1,o2) returns 0. But compare(null, default) = 0 while compare"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "requestConcurrentToken always returns null causing NPE for callers expecting a TokenResult",
+   "location": "sentinel-cluster/sentinel-cluster-client-default/src/main/java/com/alibaba/csp/sentinel/cluster/client/DefaultClusterTokenClient.java:186-188",
+   "verdict": "real",
+   "reason": "The `requestConcurrentToken` method in `DefaultClusterTokenClient` (and identically in `DefaultEmbeddedTokenServer`) returns `null` while all sibling methods (`requestToken`, `requestParamToken`) cons"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "SimpleHttpResponseParser incorrectly throws IllegalStateException for small HTTP responses",
+   "location": "sentinel-transport/sentinel-transport-simple-http/src/main/java/com/alibaba/csp/sentinel/transport/heartbeat/client/SimpleHttpResponseParser.java:97-99",
+   "verdict": "real",
+   "reason": "The check at line 97-99 (`if (contentLength < len - parseBg)`) throws when the buffer contains MORE bytes after headers than Content-Length declares \u2014 a common scenario when headers and a small body a"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "NPE in initSslOptions when only getKeyCertChainFilePath() is set but getKeyFilePath() is n",
+   "location": "sentinel-extension/sentinel-datasource-redis/src/main/java/com/alibaba/csp/sentinel/datasource/redis/RedisDataSource.java:125-137",
+   "verdict": "real",
+   "reason": "The `||` on line 125 allows entry into the block when only `keyCertChainFilePath` is set, but lines 126 and 134 unconditionally call `getKeyFilePath()` (via `.endsWith()` and `new File()`), which NPEs"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Content-Length header calculated with wrong charset causes HTTP response body truncation o",
+   "location": "sentinel-transport/sentinel-transport-simple-http/src/main/java/com/alibaba/csp/sentinel/transport/command/http/HttpEventTask.java:325",
+   "verdict": "real",
+   "reason": "Line 325 uses `message.getBytes().length` (platform default charset) to compute Content-Length, but the PrintWriter on lines 80-81 encodes the body using `SentinelConfig.charset()`. When these differ "
+  },
+  {
+   "id": 9,
+   "suspected_bug": "Division by zero in slope calculation when maxToken equals warningToken (due to integer tr",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/slots/block/flow/controller/WarmUpController.java:99-104",
+   "verdict": "real",
+   "reason": "The public `WarmUpController` constructor accepts valid inputs (e.g., count=0.5, warmUpPeriodInSec=1, coldFactor=3) that pass all validation checks (FlowRuleUtil.isValidRule checks count>=0, checkCont"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "TOCTOU race condition: the check (canPass) and the update (add(1)) are not atomic, allowin",
+   "location": "sentinel-cluster/sentinel-cluster-server-default/src/main/java/com/alibaba/csp/sentinel/cluster/flow/statistic/limit/RequestLimiter.java:81-87",
+   "verdict": "intended",
+   "reason": "The TOCTOU pattern in `RequestLimiter.tryPass()` is a deliberate performance-vs-precision trade-off consistent with Sentinel's core rate limiting. The identical check-then-act pattern exists in `Defau"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "Circuit breakers are never reused during rule reload for default rules because the lookup ",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/slots/block/degrade/DefaultCircuitBreakerRuleManager.java:158-170",
+   "verdict": "real",
+   "reason": "In `DefaultCircuitBreakerRuleManager.reloadFrom()`, the outer loop iterates over actual resource names (e.g., \"resA\", \"resB\") from the existing circuitBreakers map keys. For each resource, it calls `g"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "TOCTOU race condition in initIfAbsent allows concurrent threads to overwrite RequestLimite",
+   "location": "sentinel-cluster/sentinel-cluster-server-default/src/main/java/com/alibaba/csp/sentinel/cluster/flow/statistic/limit/GlobalRequestLimiter.java:32-37",
+   "verdict": "real",
+   "reason": "The `initIfAbsent()` method has a TOCTOU race (`containsKey` + `put` is not atomic on `ConcurrentHashMap`), while structurally identical methods in the same codebase (`ClusterParamFlowRuleManager.regi"
+  },
+  {
+   "id": 13,
+   "suspected_bug": "NullPointerException when releasing concurrent token if the flowId's nowCalls AtomicIntege",
+   "location": "sentinel-cluster/sentinel-cluster-server-default/src/main/java/com/alibaba/csp/sentinel/cluster/flow/ConcurrentClusterFlowChecker.java:97-98",
+   "verdict": "real",
+   "reason": "The `releaseConcurrentToken` method at line 98 calls `nowCalls.getAndAdd(...)` without null-checking the result of `CurrentConcurrencyManager.get()` at line 97. This is a genuine defect because: (1) t"
+  },
+  {
+   "id": 14,
+   "suspected_bug": "setReuseAddress(true) called after ServerSocket is already bound so SO_REUSEADDR has no ef",
+   "location": "sentinel-transport/sentinel-transport-simple-http/src/main/java/com/alibaba/csp/sentinel/transport/command/SimpleHttpCommandCenter.java:137-138",
+   "verdict": "real",
+   "reason": "The code calls `new ServerSocket(port, backlog)` which binds the socket immediately, then calls `setReuseAddress(true)` after binding \u2014 per Java's java.net.ServerSocket contract, SO_REUSEADDR must be "
+  },
+  {
+   "id": 15,
+   "suspected_bug": "ArrayIndexOutOfBoundsException in fromThinString when input has fewer than 7 fields due to",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/node/metric/MetricNode.java:183-192",
+   "verdict": "intended",
+   "reason": "The `fromThinString` method is a symmetric parser for `toThinString`, which always produces exactly 10 fields. Fields 0\u20136 are mandatory per the wire format contract, while fields 7\u20139 have length guard"
+  },
+  {
+   "id": 16,
+   "suspected_bug": "NPE in closeResources when individual closeable elements are null, masking original IOExce",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/spi/SpiLoader.java:390-400",
+   "verdict": "unsure",
+   "reason": "\n\nLet me look at the full method to see how `in` and `br` are initialized:"
+  },
+  {
+   "id": 17,
+   "suspected_bug": "GlobalRequestLimiter.applyMaxQpsChange incorrectly applies the same QPS limit to all names",
+   "location": "sentinel-cluster/sentinel-cluster-server-default/src/main/java/com/alibaba/csp/sentinel/cluster/flow/statistic/limit/GlobalRequestLimiter.java:73-80",
+   "verdict": "intended",
+   "reason": "`GlobalRequestLimiter.applyMaxQpsChange(double)` is exclusively called from `ServerGlobalFlowPropertyListener.applyGlobalFlowConfig()` which handles GLOBAL flow configuration \u2014 not per-namespace. The "
+  },
+  {
+   "id": 18,
+   "suspected_bug": "ArrayIndexOutOfBoundsException could occur in MetricFileNameComparator.compare when the fi",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/node/metric/MetricWriter.java:246-252",
+   "verdict": "intended",
+   "reason": "The comparator's Javadoc (lines 218-237) explicitly documents the expected file name format requiring at least 3 dot-separated parts with a date component. Both internal callers (`nextFileNameOfDay` a"
+  },
+  {
+   "id": 19,
+   "suspected_bug": "NullPointerException in Context.setCurNode when curEntry is null, unlike the guarded gette",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/context/Context.java:115-117",
+   "verdict": "intended",
+   "reason": "The only internal caller of `Context.setCurNode()` is `NodeSelectorSlot.entry()`, which is always reached after `CtEntry.setUpEntryFor()` has called `context.setCurEntry(this)`, guaranteeing `curEntry"
+  },
+  {
+   "id": 20,
+   "suspected_bug": "NPE in compareTo if port is null, causing sorting/Ordering operations on MachineInfo sets ",
+   "location": "sentinel-dashboard/src/main/java/com/alibaba/csp/sentinel/dashboard/discovery/MachineInfo.java:138",
+   "verdict": "real",
+   "reason": "The `compareTo` method crashes with NPE when `port` is null, which is reachable through the public API (`setPort(null)` or `MachineInfo.of(app, ip, null)` both lack null guards). This is inconsistent "
+  },
+  {
+   "id": 21,
+   "suspected_bug": "NullPointerException in writeResponse when CommandResponse has a null exception but isSucc",
+   "location": "sentinel-transport/sentinel-transport-netty-http/src/main/java/com/alibaba/csp/sentinel/transport/command/netty/HttpServerHandler.java:144",
+   "verdict": "real",
+   "reason": "HttpServerHandler.writeResponse line 144 lacks a null check on `response.getException()` before calling `.getMessage()`, causing NPE when `CommandResponse.ofFailure(null)` is used. The sibling impleme"
+  },
+  {
+   "id": 22,
+   "suspected_bug": "createConnection silently replaces existing connections without closing them, causing reso",
+   "location": "sentinel-cluster/sentinel-cluster-server-default/src/main/java/com/alibaba/csp/sentinel/cluster/server/connection/ConnectionPool.java:54-61",
+   "verdict": "intended",
+   "reason": "The `CONNECTION_MAP.put()` replacing old connections is safe because in real TCP/Netty lifecycle, `channelInactive` fires on the old channel (calling `pool.remove()`) BEFORE `channelActive` fires on t"
+  },
+  {
+   "id": 23,
+   "suspected_bug": "Silent catch of InterruptedException leaves latestPassedTime in an inconsistent state (cos",
+   "location": "sentinel-core/src/main/java/com/alibaba/csp/sentinel/slots/block/flow/controller/WarmUpRateLimiterController.java:82-83",
+   "verdict": "real",
+   "reason": "The `InterruptedException` catch block at line 82-83 is empty and falls through to `return false`, but `costTime` was already added to `latestPassedTime` at line 71 and never rolled back. This is a ge"
+  },
+  {
+   "id": 24,
+   "suspected_bug": "Silently swallowed IOException in parseRequest causes POST form parameters to be silently ",
+   "location": "sentinel-transport/sentinel-transport-netty-http/src/main/java/com/alibaba/csp/sentinel/transport/command/netty/HttpServerHandler.java:195-196",
+   "verdict": "real",
+   "reason": "The empty catch block `catch (IOException e) {}` at lines 195-196 silently swallows IOExceptions from `httpData.getString()`. This contradicts the codebase's consistent pattern of logging exceptions ("
+  },
+  {
+   "id": 25,
+   "suspected_bug": "Inefficient port scanning: the same port is retried 3 times before trying next port, causi",
+   "location": "sentinel-transport/sentinel-transport-simple-http/src/main/java/com/alibaba/csp/sentinel/transport/command/SimpleHttpCommandCenter.java:137",
+   "verdict": "intended",
+   "reason": "The `tryCount / 3` pattern is explicitly documented as intentional in the sibling module `HttpServer.java` with Javadoc stating \"Increase port number every 3 tries.\" Both transport implementations (si"
+  }
+ ]
+}

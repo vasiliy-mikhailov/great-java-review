@@ -1,0 +1,61 @@
+{
+ "repo": "alibaba/nacos",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Calling batchSuccess(0) or batchSuccess(negative) will cause IndexOutOfBoundsException bec",
+   "location": "common/src/main/java/com/alibaba/nacos/common/task/BatchTaskCounter.java:52",
+   "verdict": "real",
+   "reason": "The guard condition `batch <= batchCounter.size()` at line 52 only checks the upper bound, missing the lower bound. When batch=0 or negative, `batch-1` becomes negative and `batchCounter.get(-1)` thro"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "String.format is called as instance method instead of static method, causing NoSuchMethodE",
+   "location": "consistency/src/main/java/com/alibaba/nacos/consistency/serialize/HessianSerializer.java:61",
+   "verdict": "real",
+   "reason": "The code at line 61 calls `\"%s cannot be cast to %s\".format(...)` as an instance method on String. Java's `String` class has no `format` instance method \u2014 `String.format()` is static. This is a genuin"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Calling deregisterPublisher for an unregistered event type causes NullPointerException ins",
+   "location": "common/src/main/java/com/alibaba/nacos/common/notify/NotifyCenter.java:383",
+   "verdict": "real",
+   "reason": "`deregisterPublisher()` calls `publisher.shutdown()` without null-checking the result of `publisherMap.remove()`, which returns null when no publisher is registered. Every other method in NotifyCenter"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "Push failures are silently reported as success, causing callers to believe a push was deli",
+   "location": "core/src/main/java/com/alibaba/nacos/core/remote/RpcPushService.java:79-91",
+   "verdict": "intended",
+   "reason": "The repo's own existing tests (`testPushWithCallbackWhenConnectionNull` and `testPushWithCallbackWhenAsyncThrowsConnectionAlreadyClosed`) explicitly assert `onSuccess()` is called in these scenarios a"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "Calling parse(null) or parse(empty byte array) silently produces incorrect results instead",
+   "location": "consistency/src/main/java/com/alibaba/nacos/consistency/ProtoMessageUtil.java:49-60",
+   "verdict": "intended",
+   "reason": "The `parse()` method uses a deliberate multi-format fallback pattern: it tries parsing as ReadRequest, GetRequest, and Log in sequence, catching `Throwable` from each attempt. When all parsers fail (i"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "Removing a subscriber for one SlowEvent type incorrectly removes it from receiving all Slo",
+   "location": "common/src/main/java/com/alibaba/nacos/common/notify/DefaultSharePublisher.java:63-78",
+   "verdict": "real",
+   "reason": "The bug is REAL: `removeSubscriber()` on line 67 unconditionally removes the subscriber from the parent's `subscribers` set even when the subscriber still has registrations for other event types. This"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Writer.addFile stores the caller's LocalFileMeta reference directly without copying, so ca",
+   "location": "consistency/src/main/java/com/alibaba/nacos/consistency/snapshot/Writer.java:59-62",
+   "verdict": "intended",
+   "reason": "The `addFile(String, LocalFileMeta)` method stores the caller's reference directly, which is standard Java behavior (consistent with `Map.put()` semantics). There's no crash, no wrong result in any ac"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "matchPattern and getNamespaceFromPattern will throw ArrayIndexOutOfBoundsException when gi",
+   "location": "common/src/main/java/com/alibaba/nacos/common/utils/FuzzyGroupKeyPattern.java:109-112",
+   "verdict": "real",
+   "reason": "The public methods `matchPattern()` and `getNamespaceFromPattern()` call `split(FUZZY_WATCH_PATTERN_SPLITTER)` and then access array indices without checking length, throwing `ArrayIndexOutOfBoundsExc"
+  }
+ ]
+}

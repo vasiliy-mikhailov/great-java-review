@@ -1,0 +1,12 @@
+{
+ "repo": "netty/netty",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "When CR appears as a continuation byte in a malformed UTF-8 sequence, the parser's interim",
+   "location": "codec-stomp/src/main/java/io/netty/handler/codec/stomp/StompSubframeDecoder.java:290-293",
+   "verdict": "intended",
+   "reason": "CR (0x0D) is deliberately treated as transparent/invisible throughout the STOMP decoder (skipControlCharacters() also skips it; it's not appended to output). Preserving UTF-8 state across CR is consis"
+  }
+ ]
+}

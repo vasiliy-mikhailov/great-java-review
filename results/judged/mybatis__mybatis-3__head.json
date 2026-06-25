@@ -1,0 +1,54 @@
+{
+ "repo": "mybatis/mybatis-3",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "getSetterType() throws NullPointerException instead of ReflectionException when property h",
+   "location": "Reflector.java:403",
+   "verdict": "real",
+   "reason": "`Reflector.getSetterType()` at line 339 calls `setTypes.get(propertyName).getValue()` which throws NPE when the property is missing, before the null check at line 340-342 can execute (making it dead c"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "BlockingCache leaks locks when getObject returns null, because releaseLock is only called ",
+   "location": "BlockingCache.java:68-75",
+   "verdict": "intended",
+   "reason": "The lock being held when `getObject` returns null is the core design of BlockingCache: it's a \\\"blocking\\\" cache decorator that holds the lock until a subsequent `putObject` (on commit) or `removeObje"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "PropertyTokenizer silently truncates the last character when property name has an unclosed",
+   "location": "PropertyTokenizer.java:41",
+   "verdict": "real",
+   "reason": "PropertyTokenizer silently produces wrong results for input like \"foo[bar\" (extracts \"ba\" instead of \"bar\", dropping the last char) and crashes with StringIndexOutOfBoundsException for \"foo[\" (substri"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "JdbcType.forCode() returns null for unknown JDBC type codes, causing NPE in downstream cod",
+   "location": "JdbcType.java:112-118",
+   "verdict": "intended",
+   "reason": "The `JdbcType.forCode()` returning null for unrecognized type codes is the intended design, and all callers (ResultSetWrapper, Jdbc3KeyGenerator, DefaultParameterHandler, UnknownTypeHandler) handle th"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "PooledConnection.equals() can throw NullPointerException if realConnection is null, becaus",
+   "location": "PooledConnection.java:222-231",
+   "verdict": "intended",
+   "reason": "`realConnection` is declared `final` (line 36) and assigned only in the constructor. If a null connection were passed, the constructor would NPE at line 53 (`this.hashCode = connection.hashCode()`) BE"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "flushStatements() has a copy-paste error in its exception message saying 'Cannot rollback'",
+   "location": "SqlSessionManager.java:320",
+   "verdict": "real",
+   "reason": "The `flushStatements()` method at line 320 throws \"Cannot rollback\" instead of \"Cannot flush statements\". Every other method in the same class (commit, rollback, close) uses the correct operation name"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "translateParentTypeVars leaves newParentArgs[i] as null when a TypeVariable in parent type",
+   "location": "TypeParameterResolver.java:222-232",
+   "verdict": "real",
+   "reason": "The `translateParentTypeVars` method leaves `newParentArgs[i]` as null when `parentTypeArgs[i]` is a TypeVariable from the outer class that doesn't match any element in `srcClass.getTypeParameters()`."
+  }
+ ]
+}

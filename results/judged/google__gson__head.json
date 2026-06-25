@@ -1,0 +1,68 @@
+{
+ "repo": "google/gson",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "When deserializing an AtomicLongArray with a null element in the JSON array, `longAdapter.",
+   "location": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:381",
+   "verdict": "real",
+   "reason": "The `TypeAdapters.LONG.read()` method explicitly returns null when the JSON token is NULL (lines 408-410). Both `atomicLongAdapter` (line 312) and `atomicLongArrayAdapter` (line 381) call `.longValue("
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When deserializing a Locale from an empty string, the Locale adapter passes null to the Lo",
+   "location": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:922",
+   "verdict": "real",
+   "reason": "The Locale adapter (lines 902-927) lacks the try-catch pattern that every similar adapter in the same file uses: UUID (line 772-774) catches `IllegalArgumentException` and wraps it in `JsonSyntaxExcep"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "URL adapter's read method allows MalformedURLException to propagate directly instead of wr",
+   "location": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:701",
+   "verdict": "intended",
+   "reason": "The difference is dictated by Java's exception hierarchy: `URISyntaxException` extends `Exception` (not `IOException`), so it MUST be wrapped for the code to compile. `MalformedURLException` extends `"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "When RuntimeTypeAdapterFactory.read() receives a non-object JSON element (array, primitive",
+   "location": "extras/src/main/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactory.java:270",
+   "verdict": "real",
+   "reason": "When non-object JSON (array or primitive) reaches the `read()` method, `getAsJsonObject()` throws `IllegalStateException` (not `ClassCastException` as the reporter claimed \u2014 the reporter got the excep"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "When deserializing an enum with an unknown string value, EnumTypeAdapter.read() returns nu",
+   "location": "gson/src/main/java/com/google/gson/internal/bind/EnumTypeAdapter.java:120",
+   "verdict": "intended",
+   "reason": "The behavior is explicitly documented in a code comment (\"Note: If none of the approaches find the constant, this returns null\") and explicitly tested in `EnumTest.testEnumToStringRead()` which assert"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "IntegerFieldsTypeAdapter (used by Calendar) throws confusing IllegalStateException when a ",
+   "location": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:834",
+   "verdict": "intended",
+   "reason": "The adapter deliberately uses `long[]` (primitive array) which cannot represent null, and the `create(long[] values)` contract requires concrete int values. The error \"Expected a long but was NULL\" wi"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "When PostConstruct method invocation throws an Error (like OutOfMemoryError), it gets inco",
+   "location": "extras/src/main/java/com/google/gson/typeadapters/PostConstructAdapterFactory.java:62",
+   "verdict": "real",
+   "reason": "The code at lines 65-69 checks `if (e.getCause() instanceof RuntimeException)` but `Error` is NOT a subclass of `RuntimeException` in Java's hierarchy \u2014 it's a sibling under `Throwable`. When an @Post"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "LazilyParsedNumber.equals() doesn't handle equality with other Number types (Integer, Long",
+   "location": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java:101",
+   "verdict": "intended",
+   "reason": "Java's `Number` class does not define any cross-type `equals()` contract \u2014 it does not override `equals()` at all. All built-in Number subclasses (Integer, Long, Double, BigDecimal) only return `true`"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "CurrentWrite.length() returns wrong value - full buffer size instead of the actual written",
+   "location": "gson/src/main/java/com/google/gson/internal/Streams.java:145",
+   "verdict": "intended",
+   "reason": "The `CurrentWrite` class wraps the entire char buffer, and the range is always communicated via the `append(CharSequence, start, end)` parameters in `write(char[], offset, length)` \u2014 `appendable.appen"
+  }
+ ]
+}

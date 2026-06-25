@@ -1,0 +1,110 @@
+{
+ "repo": "Aiven-Open/klaw",
+ "pr": 2296,
+ "review": "SUMMARY: Two confirmed issues in the permission annotation rollout: a read-only permission incorrectly guarding a write endpoint, and a custom exception inheriting from a misaligned Bean Validation base class.\n\nPOINTS:\n- [core/src/main/java/io/aiven/klaw/controller/TopicController.java:307] POST /saveTopicDocumentation is guarded by VIEW_TOPICS, allowing read-only users to modify topic documentation \u2014 fix: change to PermissionType.REQUEST_EDIT_TOPICS\n- [core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java:6] Extends ConstraintDeclarationException, causing runtime authorization failures to be incorrectly caught as Bean Validation configuration errors",
+ "n_suspicions": 5,
+ "bugs": 2,
+ "solved": 1,
+ "inconclusive": 0,
+ "refuted": 1,
+ "registry": {
+  "suspicions": [
+   {
+    "id": 0,
+    "observation": "PermissionConstraintException extends ConstraintDeclarationException, which is a Bean Validation exception intended for constraint declaration/configuration problems at startup (e.g., invalid annotation usage), not for runtime authorization failures.",
+    "suspected_bug": "Any existing or future code that catches ConstraintDeclarationException expecting it to mean \"constraint is misconfigured\" will incorrectly catch and handle permission denials as configuration errors. This is a semantic misuse of the parent exception class.",
+    "location": "core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java:6",
+    "confidence": 0.85,
+    "status": "proven"
+   },
+   {
+    "id": 1,
+    "observation": "POST endpoint /saveTopicDocumentation is annotated with @PermissionAllowed(permissionAllowed = {PermissionType.VIEW_TOPICS}). This is a write operation (saves documentation) that only requires a read/view permission.",
+    "suspected_bug": "Any user with VIEW_TOPICS permission can modify topic documentation despite only having a \"view\" permission. Write operations should require a higher/dedicated permission, not a read-only permission.",
+    "location": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:307",
+    "confidence": 0.9,
+    "status": "proven"
+   },
+   {
+    "id": 2,
+    "observation": "Method name is handlePermissionNotAuthoirzedExceptionInternal - \"Authoirzed\" is misspelled (should be \"Authorized\").",
+    "suspected_bug": "Typo in method name - minor cosmetic issue but could cause confusion during debugging.",
+    "location": "core/src/main/java/io/aiven/klaw/error/KlawExceptionHandler.java:67",
+    "confidence": 0.3,
+    "status": "pending"
+   },
+   {
+    "id": 3,
+    "observation": "BuildProperties is imported and autowired (line 85: @Autowired BuildProperties buildProperties;) but never used anywhere in the test class.",
+    "suspected_bug": "Dead code - unused autowired field in test class.",
+    "location": "core/src/test/java/io/aiven/klaw/TopicAclControllerIT.java:53",
+    "confidence": 0.3,
+    "status": "pending"
+   },
+   {
+    "id": 4,
+    "observation": "The PR introduces an @Aspect-based permission interceptor (PermissionAllowedAspectInterceptor) as the sole permission enforcement mechanism, but the project has NO spring-boot-starter-aop dependency in pom.xml and NO @EnableAspectJAutoProxy annotation anywhere. This is the only @Aspect class in the entire codebase. Spring Boot does not enable AspectJ auto-proxying by default without the AOP starter.",
+    "suspected_bug": "The @Before(\"@annotation(permissionAllowed)\") advice will NEVER execute because Spring AOP/AspectJ is not configured. The @PermissionAllowed annotations are completely inert. Combined with the removal of existing permission checks from the service layer, this means ALL permission enforcement on Topic and Connector endpoints is silently bypassed - any authenticated user can perform any Topic/Connector operation regardless of their permissions.",
+    "location": "core/src/main/java/io/aiven/klaw/validation/PermissionAllowedAspectInterceptor.java:19",
+    "confidence": 0.95,
+    "status": "refuted"
+   }
+  ],
+  "bugs": [
+   {
+    "id": 0,
+    "suspicion_id": 1,
+    "observation": "POST endpoint /saveTopicDocumentation is annotated with @PermissionAllowed(permissionAllowed = {PermissionType.VIEW_TOPICS}). This is a write operation (saves documentation) that only requires a read/view permission.",
+    "suspected_bug": "Any user with VIEW_TOPICS permission can modify topic documentation despite only having a \"view\" permission. Write operations should require a higher/dedicated permission, not a read-only permission.",
+    "location": "core/src/main/java/io/aiven/klaw/controller/TopicController.java:307",
+    "repro_kind": "regression_test",
+    "evidence": "TopicController.java:307 - @PermissionAllowed(permissionAllowed = {PermissionType.VIEW_TOPICS}) on saveTopicDocumentation allows any user with VIEW_TOPICS (a read-only permission) to modify topic documentation via a POST endpoint, which is a security issue. The test correctly asserts that a write operation must not use only VIEW_TOPICS permission.",
+    "reproduction": "On /src/new (buggy):\n$ mvn compiler:testCompile surefire:test -Dtest=TopicControllerPermissionsTest -pl core\nTests run: 1, Failures: 1, Errors: 0\n[saveTopicDocumentation uses only VIEW_TOPICS permission, which is a read-only permission. Write operations should require a write-related permission like REQUEST_EDIT_TOPICS] Expecting value to be true but was false\n\nOn /src/old (no bug - PermissionAllowed class doesn't exist):\n$ mvn compiler:testCompile surefire:test -Dtest=TopicControllerPermissionsTest -pl core\nTests run: 1, Failures: 0, Errors: 0, Skipped: 0\nBUILD SUCCESS",
+    "test_path": "core/src/test/java/io/aiven/klaw/controller/TopicControllerPermissionsTest.java",
+    "test_src": "package io.aiven.klaw.controller;\n\nimport static org.assertj.core.api.Assertions.assertThat;\n\nimport io.aiven.klaw.model.enums.PermissionType;\nimport java.lang.annotation.Annotation;\nimport java.lang.reflect.Method;\nimport org.junit.jupiter.api.Test;\n\n/**\n * Tests that verify the correct permissions are required on TopicController endpoints.\n */\npublic class TopicControllerPermissionsTest {\n\n  private static final String PERMISSION_ALLOWED_ANNOTATION = \"io.aiven.klaw.validation.PermissionAllowed\";\n\n  /**\n   * Verify that saveTopicDocumentation does NOT require only VIEW_TOPICS permission.\n   * saveTopicDocumentation is a write operation (POST endpoint that modifies topic documentation).\n   * It should require a write-related permission (e.g., REQUEST_EDIT_TOPICS), not a read-only\n   * VIEW_TOPICS permission. Using VIEW_TOPICS for a write operation allows any user with\n   * view-only access to modify data, which is a security issue.\n   */\n  @Test\n  public void saveTopicDocumentation_shouldNotUseViewOnlyPermission() throws Exception {\n    Method method = TopicController.class.getMethod(\"saveTopicDocumentation\", io.aiven.klaw.model.TopicInfo.class);\n    \n    // Use reflection to find the PermissionAllowed annotation by class name\n    // This avoids a compile-time dependency on the annotation class\n    Class<?> annotationClass;\n    try {\n      annotationClass = Class.forName(PERMISSION_ALLOWED_ANNOTATION);\n    } catch (ClassNotFoundException e) {\n      // Annotation class doesn't exist (e.g., on old code before this PR)\n      // Test passes since there's no wrong permission annotation\n      return;\n    }\n    \n    Annotation permissionAnnotation = method.getAnnotation((Class<Annotation>) annotationClass);\n    \n    // If no annotation exists (e.g., on old code), the test passes\n    if (permissionAnnotation == null) {\n      return;\n    }\n    \n    // Get the permissionAllowed() method via reflection\n    java.lang.reflect.Method permissionMethod = annotationClass.getMethod(\"permissionAllowed\");\n    Object permissionsObj = permissionMethod.invoke(permissionAnnotation);\n    Object[] permissions = (Object[]) permissionsObj;\n    \n    assertThat(permissions)\n        .as(\"saveTopicDocumentation is a write operation and must not use only VIEW_TOPICS permission\")\n        .isNotEmpty();\n    \n    // Check that the permission array contains at least one permission that is NOT VIEW_TOPICS\n    boolean hasWritePermission = false;\n    for (Object perm : permissions) {\n      if (perm != PermissionType.VIEW_TOPICS) {\n        hasWritePermission = true;\n        break;\n      }\n    }\n    assertThat(hasWritePermission)\n        .as(\"saveTopicDocumentation uses only VIEW_TOPICS permission, which is a read-only permission. \" +\n            \"Write operations should require a write-related permission like REQUEST_EDIT_TOPICS\")\n        .isTrue();\n  }\n}\n",
+    "test_cmd": "mvn compiler:testCompile surefire:test -Dtest=TopicControllerPermissionsTest -pl core",
+    "validation": "flip",
+    "build_edit_path": "",
+    "build_edit_src": ""
+   },
+   {
+    "id": 1,
+    "suspicion_id": 0,
+    "observation": "PermissionConstraintException extends ConstraintDeclarationException, which is a Bean Validation exception intended for constraint declaration/configuration problems at startup (e.g., invalid annotation usage), not for runtime authorization failures.",
+    "suspected_bug": "Any existing or future code that catches ConstraintDeclarationException expecting it to mean \"constraint is misconfigured\" will incorrectly catch and handle permission denials as configuration errors. This is a semantic misuse of the parent exception class.",
+    "location": "core/src/main/java/io/aiven/klaw/error/PermissionConstraintException.java:6",
+    "repro_kind": "regression_test",
+    "evidence": "PermissionConstraintException.java:5 extends ConstraintDeclarationException; test proves catching ConstraintDeclarationException incorrectly catches PermissionConstraintException (runtime auth failure treated as config error)",
+    "reproduction": "mvn test -Dtest=PermissionConstraintExceptionTest -pl core -Dexec.skip=true\nResults: Tests run: 3, Failures: 2, Errors: 0\n  - shouldNotExtendConstraintDeclarationException: FAILED (isAssignableFrom returns true, expected false)\n  - catchingConstraintDeclarationExceptionMustNotCatchPermissionException: FAILED (caught=true, expected false)\n  - shouldBeRuntimeException: PASSED (transitively via ConstraintDeclarationException)",
+    "test_path": "core/src/test/java/io/aiven/klaw/error/PermissionConstraintExceptionTest.java",
+    "test_src": "package io.aiven.klaw.error;\n\nimport static org.assertj.core.api.Assertions.assertThat;\n\nimport jakarta.validation.ConstraintDeclarationException;\nimport org.junit.jupiter.api.Test;\n\npublic class PermissionConstraintExceptionTest {\n\n  @Test\n  public void shouldNotExtendConstraintDeclarationException() {\n    // PermissionConstraintException is a runtime authorization exception,\n    // NOT a constraint declaration/configuration problem.\n    // It should NOT extend ConstraintDeclarationException, which is meant for\n    // Bean Validation constraint configuration issues at startup.\n    PermissionConstraintException ex = new PermissionConstraintException(\"Not Authorized\");\n\n    assertThat(ConstraintDeclarationException.class.isAssignableFrom(PermissionConstraintException.class))\n        .as(\"PermissionConstraintException must NOT be assignable from ConstraintDeclarationException; \"\n            + \"it is a runtime authorization failure, not a constraint configuration error\")\n        .isFalse();\n  }\n\n  @Test\n  public void catchingConstraintDeclarationExceptionMustNotCatchPermissionException() {\n    // Code that catches ConstraintDeclarationException expecting a configuration error\n    // must NOT incorrectly catch permission denial runtime exceptions.\n    boolean caught = false;\n    try {\n      throw new PermissionConstraintException(\"Not Authorized\");\n    } catch (ConstraintDeclarationException e) {\n      caught = true;\n    }\n\n    assertThat(caught)\n        .as(\"Catching ConstraintDeclarationException must NOT catch PermissionConstraintException; \"\n            + \"permission denials are runtime failures, not configuration errors\")\n        .isFalse();\n  }\n\n  @Test\n  public void shouldBeRuntimeException() {\n    // PermissionConstraintException is thrown at runtime during authorization checks;\n    // it should be a RuntimeException, not a checked or validation-related exception.\n    PermissionConstraintException ex = new PermissionConstraintException(\"Not Authorized\");\n\n    assertThat(ex)\n        .as(\"PermissionConstraintException must be a RuntimeException for runtime authorization failures\")\n        .isInstanceOf(RuntimeException.class);\n  }\n}\n",
+    "test_cmd": "mvn test -Dtest=PermissionConstraintExceptionTest -pl core -Dexec.skip=true",
+    "validation": "critic approved",
+    "build_edit_path": "",
+    "build_edit_src": ""
+   }
+  ],
+  "solutions": [
+   {
+    "id": 0,
+    "bug_id": 0,
+    "fixed": true,
+    "fix_diff": "-  @PermissionAllowed(permissionAllowed = {PermissionType.VIEW_TOPICS})\n+  @PermissionAllowed(permissionAllowed = {PermissionType.REQUEST_EDIT_TOPICS})\n   @PostMapping(\n       value = \"/saveTopicDocumentation\",",
+    "fix_rerun": "[INFO] Running io.aiven.klaw.controller.TopicControllerPermissionsTest\n[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.040 s -- in io.aiven.klaw.controller.TopicControllerPermissionsTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS",
+    "lines_changed": 2,
+    "test_changed": false,
+    "reward": 0.81
+   },
+   {
+    "id": 1,
+    "bug_id": 1,
+    "fixed": false,
+    "fix_diff": "The production fix was correct: changed PermissionConstraintException from extending ConstraintDeclarationException (a Bean Validation config exception) to extending RuntimeException (a proper runtime authorization exception). This correctly addresses the semantic misuse described in the bug.\n\nHowever, the test has a design flaw in `catchingConstraintDeclarationExceptionMustNotCatchPermissionException`:\n- It throws a PermissionConstraintException inside a try-catch that only catches ConstraintDeclarationException\n- If PermissionConstraintException extends RuntimeException (correct fix), the exception is NOT caught by the catch block, but it also propagates out of the method, causing the test to ERROR (not PASS)\n- If PermissionConstraintException extends ConstraintDeclarationException (buggy state), the catch block catches it, caught=true, and the assertion FAILS\n\nThe test cannot pass with production-only changes because the uncaught exception propagates, making the test error. The test needs an additional catch block (e.g., `catch (Exception e) {}` or `catch (RuntimeException e) {}`) to properly handle the case where the exception doesn't extend ConstraintDeclarationException.",
+    "fix_rerun": "The test currently shows: Tests run: 3, Failures: 0, Errors: 1\n- shouldNotExtendConstraintDeclarationException: PASSED\n- catchingConstraintDeclarationExceptionMustNotCatchPermissionException: ERROR (uncaught exception propagates)\n- shouldBeRuntimeException: PASSED",
+    "lines_changed": 4,
+    "test_changed": false,
+    "reward": 0.0
+   }
+  ]
+ }
+}

@@ -1,0 +1,47 @@
+{
+ "repo": "apache/rocketmq",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "BitsArray.toString() prints one extra invalid bit in the most-significant byte when bitLen",
+   "location": "filter/src/main/java/org/apache/rocketmq/filter/util/BitsArray.java:241",
+   "verdict": "real",
+   "reason": "The `toString()` method at line 241 sets `j = this.bitLength % Byte.SIZE` (e.g., 2 for bitLength=10), causing the inner loop to iterate j=2,1,0 (3 bits) in the most-significant byte, but only `bitLeng"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "PopCheckPoint.compareTo() can return wrong ordering when startOffset values are large due ",
+   "location": "store/src/main/java/org/apache/rocketmq/store/pop/PopCheckPoint.java:215",
+   "verdict": "real",
+   "reason": "The `compareTo` implementation `(int)(this.getStartOffset() - o.getStartOffset())` has a classic long subtraction overflow bug: when values span the full long range (e.g., 0 vs Long.MAX_VALUE), the su"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "MessageQueuePenalizer.selectLeastPenaltyWithPriority() may throw NullPointerException when",
+   "location": "proxy/src/main/java/org/apache/rocketmq/proxy/service/route/MessageQueuePenalizer.java:122",
+   "verdict": "real",
+   "reason": "`selectLeastPenaltyWithPriority` is a public static method on a public interface. It calls `selectLeastPenalty` (which returns null for empty/null inner lists) at line 122, then unconditionally derefe"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "OrderInfo.isNotAck() returns wrong results for offsetIndex >= 64 due to Java's 64-bit shif",
+   "location": "broker/src/main/java/org/apache/rocketmq/broker/pop/orderly/QueueLevelConsumerManager.java:335",
+   "verdict": "intended",
+   "reason": "The broker enforces max batch size of 32 (PopMessageProcessor line 265: `requestHeader.getMaxMsgNums() > 32` \u2192 INVALID_PARAMETER), making the shift wraparound at index \u2265 64 unreachable through any val"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "GroupConsumeInfo.compareTo() can return wrong ordering when diffTotal values are large due",
+   "location": "tools/src/main/java/org/apache/rocketmq/tools/command/consumer/ConsumerProgressSubCommand.java:352",
+   "verdict": "intended",
+   "reason": "REJECT as not a genuine defect. While `(int)(o.diffTotal - diffTotal)` theoretically overflows for extreme long values, this is not a real defect: (1) GroupConsumeInfo is a package-private inner class"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "AllocateMessageQueueByMachineRoom.allocate() throws NPE when consumeridcs is null because ",
+   "location": "client/src/main/java/org/apache/rocketmq/client/consumer/rebalance/AllocateMessageQueueByMachineRoom.java:45",
+   "verdict": "intended",
+   "reason": "The uninitialized `consumeridcs` field is a deliberate design consistent with sibling `AllocateMessageQueueByConfig`, which also has an uninitialized field used without null checks. These custom alloc"
+  }
+ ]
+}

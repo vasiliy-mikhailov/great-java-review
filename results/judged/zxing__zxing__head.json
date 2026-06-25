@@ -1,0 +1,75 @@
+{
+ "repo": "zxing/zxing",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "hashCode() computes hash using width twice instead of width and height, causing unequal ha",
+   "location": "core/src/main/java/com/google/zxing/common/BitMatrix.java:484-486",
+   "verdict": "real",
+   "reason": "BitMatrix.hashCode() (lines 484-485) initializes `int hash = width` then immediately does `hash = 31 * hash + width`, including width twice. The equals() contract requires width, height, rowSize, and "
+  },
+  {
+   "id": 1,
+   "suspected_bug": "DataMask pattern 001 masks based on row (y) instead of column (x), causing incorrect unmas",
+   "location": "core/src/main/java/com/google/zxing/qrcode/decoder/DataMask.java:51-52",
+   "verdict": "intended",
+   "reason": "The ISO 18004:2006 spec \u00a76.8.1 defines mask pattern 1 as \"i mod 2 = 0\" where i is the row position \u2014 exactly what the code implements (`(i & 0x01) == 0`). The existing test `DataMaskTestCase.testMask1"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "The metadata consistency check is too weak: it should return null if ANY of the three fiel",
+   "location": "core/src/main/java/com/google/zxing/pdf417/decoder/PDF417ScanningDecoder.java:199-203",
+   "verdict": "real",
+   "reason": "The `&&` operator in the metadata consistency check (lines 199-201) is clearly wrong - it only rejects when ALL THREE fields differ simultaneously, but should reject when ANY field differs. In a valid"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "Integer overflow in height * width computation allows images with dimensions >= 46341x4634",
+   "location": "zxingorg/src/main/java/com/google/zxing/web/DecodeServlet.java:301",
+   "verdict": "real",
+   "reason": "Line 359: `height * width > MAX_PIXELS` uses int arithmetic. When both dimensions \u2265 ~46,341, the product overflows to negative, bypassing the pixel limit check the comment on line 103 says should exis"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "After calling flip(), padding bits beyond the logical matrix width become set to 1, causin",
+   "location": "core/src/main/java/com/google/zxing/common/BitMatrix.java:195-199",
+   "verdict": "real",
+   "reason": "The `flip()` method (line 195-199) does `bits[i] = ~bits[i]` on ALL elements including the padding portion of each row's last int (bits beyond logical width). This violates the invariant that padding "
+  },
+  {
+   "id": 5,
+   "suspected_bug": "BufferedImageLuminanceSource accepts invalid crop rectangles (left+width > image width or ",
+   "location": "javase/src/main/java/com/google/zxing/client/j2se/BufferedImageLuminanceSource.java:48-49",
+   "verdict": "real",
+   "reason": "The bounds check at line 53 (`if (left + width > sourceWidth || top + height > sourceHeight)`) is placed inside the `else` branch, so it only executes for non-gray images. For `TYPE_BYTE_GRAY` images,"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Integer overflow in getWidth() * getHeight() computation can cause NegativeArraySizeExcept",
+   "location": "core/src/main/java/com/google/zxing/InvertedLuminanceSource.java:47",
+   "verdict": "real",
+   "reason": "`InvertedLuminanceSource.getMatrix()` computes `length = getWidth() * getHeight()` instead of using the delegate's actual `matrix.length`. This (1) overflows for large dimensions causing NegativeArray"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "QRCodeMultiReader.processStructuredAppend merges all BYTE_SEGMENTS from all structured app",
+   "location": "core/src/main/java/com/google/zxing/multi/qrcode/QRCodeMultiReader.java:121-138",
+   "verdict": "intended",
+   "reason": "The code consistently merges text, rawBytes, and byteSegments into single values \u2014 this is the deliberate design for structured append reassembly where multiple QR codes form one logical barcode. The "
+  },
+  {
+   "id": 8,
+   "suspected_bug": "When a quoted-printable '=' is followed by two non-hex characters (e.g., '=%%' or '=%A'), ",
+   "location": "core/src/main/java/com/google/zxing/client/result/VCardResultParser.java:243",
+   "verdict": "real",
+   "reason": "The `i += 2` on line 243 is incorrectly placed OUTSIDE the `if (firstDigit >= 0 && secondDigit >= 0)` check but INSIDE the `if (nextChar != '\\r' && nextChar != '\\n')` block. This causes `=%%` (and sim"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "Integer overflow in setRegion left+width/top+height could cause the bounds check to pass w",
+   "location": "core/src/main/java/com/google/zxing/common/BitMatrix.java:247",
+   "verdict": "real",
+   "reason": "The `setRegion` method's bounds check `right > this.width` can be bypassed when `left + width` overflows to negative, causing the method to silently return without throwing the documented `IllegalArgu"
+  }
+ ]
+}

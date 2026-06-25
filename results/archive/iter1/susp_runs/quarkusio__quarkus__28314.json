@@ -1,0 +1,84 @@
+{
+ "repo": "quarkusio/quarkus",
+ "pr": 28314,
+ "review": "SUMMARY: Confirmed package naming typo across instrumentation classes.\nPOINTS:\n- [extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcAttributesGetter.java:1] Typo \"intrumentation\" instead of \"instrumentation\" in package names will cause confusion for users trying to reference these classes directly, and may break any external code or documentation that assumes the correct spelling. All runtime instrumentation classes are now in incorrectly named packages. \u2014 fix: Rename package from io.quarkus.opentelemetry.runtime.tracing.intrumentation.* to io.quarkus.opentelemetry.runtime.tracing.instrumentation.* across all affected files.",
+ "n_suspicions": 5,
+ "bugs": 1,
+ "solved": 1,
+ "inconclusive": 0,
+ "refuted": 2,
+ "registry": {
+  "suspicions": [
+   {
+    "id": 0,
+    "observation": "Multiple files are moved to packages with misspelled \"intrumentation\" instead of \"instrumentation\". For example: `io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc.GrpcAttributesGetter`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.vertx.EventBusInstrumenterVertxTracer`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.reactivemessaging.ReactiveMessagingTracingDecorator`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.restclient.OpenTelemetryClientFilter`, and all other instrumentation files.",
+    "suspected_bug": "Typo \"intrumentation\" instead of \"instrumentation\" in package names will cause confusion for users trying to reference these classes directly, and may break any external code or documentation that assumes the correct spelling. All runtime instrumentation classes are now in incorrectly named packages.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcAttributesGetter.java:1",
+    "confidence": 0.9,
+    "status": "proven"
+   },
+   {
+    "id": 1,
+    "observation": "In TracerRuntimeConfig.java, the field `resourceAttributes` visibility is changed from package-private to `public`: `Optional<List<String>> resourceAttributes;` becomes `public Optional<List<String>> resourceAttributes;`",
+    "suspected_bug": "While this may be intentional for Quarkus config classes that require public fields, it could be a mistake if the field was intentionally package-private before. If this is not a Quarkus requirement, this unnecessarily exposes the field publicly.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/config/TracerRuntimeConfig.java:20",
+    "confidence": 0.3,
+    "status": "pending"
+   },
+   {
+    "id": 2,
+    "observation": "In TracerProducer.java, new imports are added for `io.quarkus.opentelemetry.runtime.tracing.DelayedAttributes` and `io.quarkus.opentelemetry.runtime.tracing.LateBoundSampler` that weren't in the original file. The file is just being moved and the import path for INSTRUMENTATION_NAME is updated.",
+    "suspected_bug": "These imports may be unused if TracerProducer doesn't actually reference DelayedAttributes or LateBoundSampler in its code. Adding unused imports suggests either the code is incomplete or there's dead code.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/cdi/TracerProducer.java:11",
+    "confidence": 0.4,
+    "status": "refuted"
+   },
+   {
+    "id": 3,
+    "observation": "In TracerUtil.java, a new import is added: `import io.quarkus.opentelemetry.runtime.config.TracerRuntimeConfig;` but the file content doesn't appear to change beyond this import addition.",
+    "suspected_bug": "The TracerRuntimeConfig import may be unused in TracerUtil.java. If it's not used, this is a dead import. If it is needed, the original code was missing the import and would not have compiled.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/TracerUtil.java:14",
+    "confidence": 0.4,
+    "status": "refuted"
+   },
+   {
+    "id": 4,
+    "observation": "In TracerUtil.java, the import `io.quarkus.opentelemetry.runtime.OpenTelemetryUtil` is present but OpenTelemetryUtil is not shown as being moved or changed in this PR. The import path remains unchanged.",
+    "suspected_bug": "If OpenTelemetryUtil was also supposed to be moved to a subpackage as part of this refactor but was missed, this could cause import issues later. However, if it's intentionally left in place, this is not a bug.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/TracerUtil.java:13",
+    "confidence": 0.2,
+    "status": "pending"
+   }
+  ],
+  "bugs": [
+   {
+    "id": 0,
+    "suspicion_id": 0,
+    "observation": "Multiple files are moved to packages with misspelled \"intrumentation\" instead of \"instrumentation\". For example: `io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc.GrpcAttributesGetter`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.vertx.EventBusInstrumenterVertxTracer`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.reactivemessaging.ReactiveMessagingTracingDecorator`, `io.quarkus.opentelemetry.runtime.tracing.intrumentation.restclient.OpenTelemetryClientFilter`, and all other instrumentation files.",
+    "suspected_bug": "Typo \"intrumentation\" instead of \"instrumentation\" in package names will cause confusion for users trying to reference these classes directly, and may break any external code or documentation that assumes the correct spelling. All runtime instrumentation classes are now in incorrectly named packages.",
+    "location": "extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcAttributesGetter.java:1",
+    "repro_kind": "regression_test",
+    "evidence": "InstrumentationPackageSpellingTest.java:17 files in /src/new use misspelled \"intrumentation\" package (e.g., io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc.GrpcAttributesGetter) instead of correctly spelled \"instrumentation\" \u2014 test exits code 1 (FAIL) on /src/new, exits code 0 (PASS) on /src/old.",
+    "reproduction": "On /src/new (with the bug):\n$ javac -d /tmp/test-classes -encoding UTF-8 extensions/opentelemetry/opentelemetry/runtime/src/test/java/io/quarkus/opentelemetry/runtime/tracing/InstrumentationPackageSpellingTest.java\n$ java -cp /tmp/test-classes io.quarkus.opentelemetry.runtime.tracing.InstrumentationPackageSpellingTest\nexit=1\nFAIL: Found Java files with misspelled 'intrumentation' package (should be 'instrumentation'):\n  - /src/new/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/vertx/VertxUtil.java\n  - /src/new/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/vertx/InstrumenterVertxTracer.java\n  - ... (17 files total)\n\nOn /src/old (without the bug):\n$ javac -d /tmp/test-classes-old -encoding UTF-8 extensions/opentelemetry/opentelemetry/runtime/src/test/java/io/quarkus/opentelemetry/runtime/tracing/InstrumentationPackageSpellingTest.java\n$ java -cp /tmp/test-classes-old io.quarkus.opentelemetry.runtime.tracing.InstrumentationPackageSpellingTest\nexit=0\nPASS: No misspelled 'intrumentation' package declarations found.\nAll packages use the correct spelling 'instrumentation'.",
+    "test_path": "extensions/opentelemetry/opentelemetry/runtime/src/test/java/io/quarkus/opentelemetry/runtime/tracing/InstrumentationPackageSpellingTest.java",
+    "test_src": "package io.quarkus.opentelemetry.runtime.tracing;\n\nimport java.io.BufferedReader;\nimport java.io.IOException;\nimport java.nio.charset.StandardCharsets;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.Paths;\nimport java.util.ArrayList;\nimport java.util.List;\nimport java.util.stream.Stream;\n\n/**\n * Regression test for package naming typo: \"intrumentation\" instead of \"instrumentation\".\n * \n * This test scans the source tree for any Java file whose package declaration\n * contains the misspelling \"intrumentation\" and asserts it is not present.\n * \n * On /src/new (with the bug): FAILS because classes are in misspelled \"intrumentation\" packages.\n * On /src/old (without the bug): PASSES because classes were in different packages (grpc/, vertx/, etc.).\n */\npublic class InstrumentationPackageSpellingTest {\n\n    public static void main(String[] args) throws Exception {\n        // Determine the project root from where this test runs\n        Path projectRoot = Paths.get(System.getProperty(\"user.dir\")).toAbsolutePath();\n        \n        // Walk up to find the actual repo root (has pom.xml and extensions/ dir)\n        Path current = projectRoot;\n        while (current != null && current.getParent() != null) {\n            if (Files.exists(current.resolve(\"extensions\")) && Files.exists(current.resolve(\"pom.xml\"))) {\n                projectRoot = current;\n                break;\n            }\n            current = current.getParent();\n        }\n        \n        Path base = projectRoot.resolve(\"extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing\");\n        \n        if (!Files.exists(base)) {\n            System.err.println(\"FAIL: Source directory not found: \" + base);\n            System.exit(1);\n        }\n        \n        List<String> misspelled = new ArrayList<>();\n        \n        try (Stream<Path> walk = Files.walk(base)) {\n            walk.filter(Files::isRegularFile)\n                .filter(p -> p.toString().endsWith(\".java\"))\n                .forEach(p -> checkFile(p, misspelled));\n        }\n        \n        if (!misspelled.isEmpty()) {\n            System.err.println(\"FAIL: Found Java files with misspelled 'intrumentation' package (should be 'instrumentation'):\");\n            for (String file : misspelled) {\n                System.err.println(\"  - \" + file);\n            }\n            System.err.println(\"\\nThe correct spelling is 'instrumentation' (with two 'e's), not 'intrumentation'.\");\n            System.exit(1);\n        } else {\n            System.out.println(\"PASS: No misspelled 'intrumentation' package declarations found.\");\n            System.out.println(\"All packages use the correct spelling 'instrumentation'.\");\n            System.exit(0);\n        }\n    }\n    \n    private static void checkFile(Path path, List<String> misspelled) {\n        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {\n            String line;\n            while ((line = reader.readLine()) != null) {\n                if (line.trim().startsWith(\"package \") && line.contains(\"intrumentation\")) {\n                    misspelled.add(path.toString());\n                    return;\n                }\n            }\n        } catch (IOException e) {\n            // Skip files we can't read\n        }\n    }\n}\n",
+    "test_cmd": "javac -d /tmp/test-classes -encoding UTF-8 extensions/opentelemetry/opentelemetry/runtime/src/test/java/io/quarkus/opentelemetry/runtime/tracing/InstrumentationPackageSpellingTest.java && java -cp /tmp/test-classes io.quarkus.opentelemetry.runtime.tracing.InstrumentationPackageSpellingTest",
+    "validation": "critic approved",
+    "build_edit_path": "",
+    "build_edit_src": ""
+   }
+  ],
+  "solutions": [
+   {
+    "id": 0,
+    "bug_id": 0,
+    "fixed": true,
+    "fix_diff": "--- a/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcAttributesGetter.java\n+++ b/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/instrumentation/grpc/GrpcAttributesGetter.java\n@@ -1 +1 @@\n-package io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc;\n+package io.quarkus.opentelemetry.runtime.tracing.instrumentation.grpc;\n\n--- a/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcRequest.java\n+++ b/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/instrumentation/grpc/GrpcRequest.java\n@@ -1 +1 @@\n-package io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc;\n+package io.quarkus.opentelemetry.runtime.tracing.instrumentation.grpc;\n\n--- a/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcSpanNameExtractor.java\n+++ b/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/instrumentation/grpc/GrpcSpanNameExtractor.java\n@@ -1 +1 @@\n-package io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc;\n+package io.quarkus.opentelemetry.runtime.tracing.instrumentation.grpc;\n\n--- a/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcSpanStatusExtractor.java\n+++ b/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/instrumentation/grpc/GrpcSpanStatusExtractor.java\n@@ -1 +1 @@\n-package io.quarkus.opentelemetry.runtime.tracing.intrumentation.grpc;\n+package io.quarkus.opentelemetry.runtime.tracing.instrumentation.grpc;\n\n--- a/extensions/opentelemetry/opentelemetry/runtime/src/main/java/io/quarkus/opentelemetry/runtime/tracing/intrumentation/grpc/GrpcStatusCodeExtracto",
+    "fix_rerun": "exit=0\nPASS: No misspelled 'intrumentation' package declarations found.\nAll packages use the correct spelling 'instrumentation'.",
+    "lines_changed": 48,
+    "test_changed": false,
+    "reward": 0.0064
+   }
+  ]
+ }
+}

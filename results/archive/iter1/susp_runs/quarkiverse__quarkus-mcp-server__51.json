@@ -1,0 +1,52 @@
+{
+ "repo": "quarkiverse/quarkus-mcp-server",
+ "pr": 51,
+ "review": "SUMMARY: Adds extension metadata for SSE and stdio transports to improve visibility on code.quarkus and Maven Central. One typo in the stdio description needs correction before release.\nPOINTS:\n- [transports/stdio/pom.xml:14] Typo \"stanard\" in the Maven Central/code.quarkus extension description will be published with incorrect spelling \u2014 fix: Change \"stanard\" to \"standard\" in the <description> tag.",
+ "n_suspicions": 1,
+ "bugs": 1,
+ "solved": 1,
+ "inconclusive": 0,
+ "refuted": 0,
+ "registry": {
+  "suspicions": [
+   {
+    "id": 0,
+    "observation": "The description contains a typo: \"stanard input/output\" instead of \"standard input/output\"",
+    "suspected_bug": "Typo \"stanard\" in the Maven Central/code.quarkus extension description will be published with incorrect spelling",
+    "location": "transports/stdio/pom.xml:14",
+    "confidence": 0.95,
+    "status": "proven"
+   }
+  ],
+  "bugs": [
+   {
+    "id": 0,
+    "suspicion_id": 0,
+    "observation": "The description contains a typo: \"stanard input/output\" instead of \"standard input/output\"",
+    "suspected_bug": "Typo \"stanard\" in the Maven Central/code.quarkus extension description will be published with incorrect spelling",
+    "location": "transports/stdio/pom.xml:14",
+    "repro_kind": "regression_test",
+    "evidence": "transports/stdio/pom.xml:14 - Test FAILS on /src/new detecting \"stanard\" typo in description; PASSES on /src/old where description element is absent",
+    "reproduction": "On /src/new (FAIL):\n$ mvn test -Dtest=StdioPomDescriptionTest -pl transports/stdio/runtime\n[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0\n[ERROR] StdioPomDescriptionTest.pomDescriptionShouldNotContainTypo:41 POM description contains typo 'stanard' instead of 'standard': This extension enables developers to implement the MCP server features easily using stanard input/output (stdio). ==> expected: <false> but was: <true>\nBUILD FAILURE\n\nOn /src/old (PASS):\n$ mvn test -Dtest=StdioPomDescriptionTest -pl transports/stdio/runtime\nTests run: 1, Failures: 0, Errors: 0, Skipped: 0\nBUILD SUCCESS",
+    "test_path": "transports/stdio/runtime/src/test/java/io/quarkiverse/mcp/server/stdio/StdioPomDescriptionTest.java",
+    "test_src": "package io.quarkiverse.mcp.server.stdio;\n\nimport org.junit.jupiter.api.Test;\n\nimport java.io.IOException;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.nio.file.Paths;\nimport java.util.regex.Matcher;\nimport java.util.regex.Pattern;\n\nimport static org.junit.jupiter.api.Assertions.assertFalse;\nimport static org.junit.jupiter.api.Assertions.assertTrue;\n\n/**\n * Regression test to ensure the stdio transport parent POM description\n * is correctly spelled (no typos like \"stanard\" instead of \"standard\").\n */\nclass StdioPomDescriptionTest {\n\n    @Test\n    void pomDescriptionShouldNotContainTypo() throws IOException {\n        Path pomPath = Paths.get(\"pom.xml\").toAbsolutePath()\n                .getParent().getParent() // go up from runtime to transports/stdio\n                .resolve(\"pom.xml\");\n\n        String pomContent = Files.readString(pomPath);\n\n        // Extract the description value\n        Pattern descPattern = Pattern.compile(\"<description>([^<]+)</description>\");\n        Matcher matcher = descPattern.matcher(pomContent);\n\n        // If no description element exists, that's fine - nothing to check\n        if (!matcher.find()) {\n            return;\n        }\n\n        String description = matcher.group(1);\n\n        // The description should NOT contain the typo \"stanard\"\n        assertFalse(description.contains(\"stanard\"),\n                \"POM description contains typo 'stanard' instead of 'standard': \" + description);\n\n        // If it mentions standard I/O, it should be correctly spelled\n        if (description.toLowerCase().contains(\"input/output\")) {\n            assertTrue(description.contains(\"standard input/output\")\n                    || description.contains(\"Standard input/output\"),\n                    \"POM description should contain 'standard input/output': \" + description);\n        }\n    }\n}\n",
+    "test_cmd": "mvn test -Dtest=StdioPomDescriptionTest -pl transports/stdio/runtime",
+    "validation": "flip",
+    "build_edit_path": "transports/stdio/runtime/pom.xml",
+    "build_edit_src": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd\">\n    <modelVersion>4.0.0</modelVersion>\n\n    <parent>\n        <groupId>io.quarkiverse.mcp</groupId>\n        <artifactId>quarkus-mcp-server-stdio-parent</artifactId>\n        <version>999-SNAPSHOT</version>\n        <relativePath>../pom.xml</relativePath>\n    </parent>\n    <artifactId>quarkus-mcp-server-stdio</artifactId>\n    <name>Quarkus MCP Server Transport - stdio - Runtime</name>\n\n    <dependencies>\n        <dependency>\n            <groupId>io.quarkiverse.mcp</groupId>\n            <artifactId>quarkus-mcp-server-core</artifactId>\n            <version>${project.version}</version>\n        </dependency>\n        <dependency>\n            <groupId>org.junit.jupiter</groupId>\n            <artifactId>junit-jupiter</artifactId>\n            <scope>test</scope>\n        </dependency>\n    </dependencies>\n\n    <build>\n        <plugins>\n            <plugin>\n                <groupId>io.quarkus</groupId>\n                <artifactId>quarkus-extension-maven-plugin</artifactId>\n                <version>${quarkus.version}</version>\n                <executions>\n                    <execution>\n                        <phase>compile</phase>\n                        <goals>\n                            <goal>extension-descriptor</goal>\n                        </goals>\n                        <configuration>\n                            <deployment>${project.groupId}:${project.artifactId}-deployment:${project.version}</deployment>\n                        </configuration>\n                    </execution>\n                </executions>\n            </plugin>\n            <plugin>\n                <artifactId>maven-compiler-plugin</artifactId>\n                <executions>\n                    <execution>\n                        <id>default-compile</id>\n                        <configuration>\n                            <annotationProcessorPaths>\n                                <path>\n                                    <groupId>io.quarkus</groupId>\n                                    <artifactId>quarkus-extension-processor</artifactId>\n                                    <version>${quarkus.version}</version>\n                                </path>\n                            </annotationProcessorPaths>\n                        </configuration>\n                    </execution>\n                </executions>\n            </plugin>\n        </plugins>\n    </build>\n</project>\n"
+   }
+  ],
+  "solutions": [
+   {
+    "id": 0,
+    "bug_id": 0,
+    "fixed": true,
+    "fix_diff": "-    <description>This extension enables developers to implement the MCP server features easily using stanard input/output (stdio).</description>\n+    <description>This extension enables developers to implement the MCP server features easily using standard input/output (stdio).</description>",
+    "fix_rerun": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0\nBUILD SUCCESS",
+    "lines_changed": 2,
+    "test_changed": false,
+    "reward": 0.81
+   }
+  ]
+ }
+}

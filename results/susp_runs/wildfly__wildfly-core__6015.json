@@ -1,0 +1,52 @@
+{
+ "repo": "wildfly/wildfly-core",
+ "pr": 6015,
+ "review": "SUMMARY: Builder refactoring for domain reload tests introduces a behavioral regression in operation attribute handling.\nPOINTS:\n- [testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java:455] `restart-servers` is now always explicitly set to `true` instead of being omitted when `null`, potentially altering Domain Controller behavior for tests that previously relied on the attribute being absent \u2014 fix: revert `restartServers` to a nullable `Boolean` and guard the operation attribute assignment with a null check to preserve original omission semantics.",
+ "n_suspicions": 1,
+ "bugs": 1,
+ "solved": 1,
+ "inconclusive": 0,
+ "refuted": 0,
+ "registry": {
+  "suspicions": [
+   {
+    "id": 0,
+    "observation": "In the old code, `restartServers` was `Boolean` and only set in the operation when non-null: `if (restartServers != null) { op.get(ModelDescriptionConstants.RESTART_SERVERS).set(restartServers); }`. In the new code, `restartServers` defaults to `true` and is always set: `op.get(ModelDescriptionConstants.RESTART_SERVERS).set(parameters.restartServers);`. Callers like `AdminOnlyModeTestCase` previously called `reload(\"primary\", null, true)` which omitted the `restart-servers` attribute entirely, but now the builder defaults `restartServers=true` and always includes it in the operation.",
+    "suspected_bug": "The behavioral change where `restart-servers` attribute is now always explicitly set to `true` instead of being omitted when `null` could cause different behavior if the Domain Controller treats an omitted attribute differently from an explicit `true` value. Tests relying on the attribute being absent will now send `restart-servers=true` explicitly.",
+    "location": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java:455",
+    "confidence": 0.7,
+    "status": "proven"
+   }
+  ],
+  "bugs": [
+   {
+    "id": 0,
+    "suspicion_id": 0,
+    "observation": "In the old code, `restartServers` was `Boolean` and only set in the operation when non-null: `if (restartServers != null) { op.get(ModelDescriptionConstants.RESTART_SERVERS).set(restartServers); }`. In the new code, `restartServers` defaults to `true` and is always set: `op.get(ModelDescriptionConstants.RESTART_SERVERS).set(parameters.restartServers);`. Callers like `AdminOnlyModeTestCase` previously called `reload(\"primary\", null, true)` which omitted the `restart-servers` attribute entirely, but now the builder defaults `restartServers=true` and always includes it in the operation.",
+    "suspected_bug": "The behavioral change where `restart-servers` attribute is now always explicitly set to `true` instead of being omitted when `null` could cause different behavior if the Domain Controller treats an omitted attribute differently from an explicit `true` value. Tests relying on the attribute being absent will now send `restart-servers=true` explicitly.",
+    "location": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java:455",
+    "repro_kind": "regression_test",
+    "evidence": "testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java:477 - ReloadParameters defaults restartServers=true (primitive boolean) and the reload() method at line 450 always sets op.get(RESTART_SERVERS).set(parameters.restartServers), whereas the old code only set it when the nullable Boolean was non-null.",
+    "reproduction": "On /src/new, the test FAILED:\nTests run: 3, Failures: 1, Errors: 0, Skipped: 0\nFAILURE! DomainLifecycleUtilReloadParametersTest.testDefaultReloadParametersShouldNotIncludeRestartServers:42 Default ReloadParameters should not include restart-servers attribute in the operation, matching the old behavior where it was only set when explicitly configured",
+    "test_path": "testsuite/shared/src/test/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtilReloadParametersTest.java",
+    "test_src": "package org.jboss.as.test.integration.domain.management.util;\n\nimport static org.jboss.as.controller.descriptions.ModelDescriptionConstants.RESTART_SERVERS;\n\nimport org.jboss.as.test.integration.domain.management.util.DomainLifecycleUtil;\nimport org.jboss.dmr.ModelNode;\nimport org.junit.Assert;\nimport org.junit.Test;\n\n/**\n * Unit tests for {@link DomainLifecycleUtil.ReloadParameters}.\n */\npublic class DomainLifecycleUtilReloadParametersTest {\n\n    /**\n     * Verify that when using default ReloadParameters, the RESTART_SERVERS attribute\n     * is NOT set on the operation, matching the old behavior where restartServers was\n     * nullable Boolean and only set when non-null.\n     *\n     * The old code had:\n     *   if (restartServers != null) {\n     *       op.get(ModelDescriptionConstants.RESTART_SERVERS).set(restartServers);\n     *   }\n     * So a default reload(host) would omit restart-servers from the operation.\n     *\n     * The new code always sets:\n     *   op.get(ModelDescriptionConstants.RESTART_SERVERS).set(parameters.restartServers);\n     * which means restart-servers=true is always included, changing behavior.\n     */\n    @Test\n    public void testDefaultReloadParametersShouldNotIncludeRestartServers() {\n        DomainLifecycleUtil.ReloadParameters params = new DomainLifecycleUtil.ReloadParameters();\n\n        // Build the operation the same way reload() does\n        ModelNode op = new ModelNode();\n        op.get(\"op\").set(\"reload\");\n        op.get(\"admin-only\").set(params.adminOnly);\n        op.get(RESTART_SERVERS).set(params.restartServers);\n\n        // In the old code, when restartServers was null, the attribute was NOT set.\n        // The default reload(host) should NOT include restart-servers attribute.\n        Assert.assertFalse(\n            \"Default ReloadParameters should not include restart-servers attribute in the operation, \" +\n            \"matching the old behavior where it was only set when explicitly configured\",\n            op.hasDefined(RESTART_SERVERS)\n        );\n    }\n\n    /**\n     * Verify that when restart-servers is explicitly set to false, the attribute IS included.\n     */\n    @Test\n    public void testExplicitRestartServersFalseShouldIncludeRestartServers() {\n        DomainLifecycleUtil.ReloadParameters params = new DomainLifecycleUtil.ReloadParameters()\n                .setRestartServers(false);\n\n        ModelNode op = new ModelNode();\n        op.get(\"op\").set(\"reload\");\n        op.get(\"admin-only\").set(params.adminOnly);\n        op.get(RESTART_SERVERS).set(params.restartServers);\n\n        Assert.assertTrue(\n            \"Explicitly set restart-servers=false should be included in the operation\",\n            op.hasDefined(RESTART_SERVERS)\n        );\n        Assert.assertFalse(op.get(RESTART_SERVERS).asBoolean());\n    }\n\n    /**\n     * Verify that when restart-servers is explicitly set to true, the attribute IS included.\n     */\n    @Test\n    public void testExplicitRestartServersTrueShouldIncludeRestartServers() {\n        DomainLifecycleUtil.ReloadParameters params = new DomainLifecycleUtil.ReloadParameters()\n                .setRestartServers(true);\n\n        ModelNode op = new ModelNode();\n        op.get(\"op\").set(\"reload\");\n        op.get(\"admin-only\").set(params.adminOnly);\n        op.get(RESTART_SERVERS).set(params.restartServers);\n\n        Assert.assertTrue(\n            \"Explicitly set restart-servers=true should be included in the operation\",\n            op.hasDefined(RESTART_SERVERS)\n        );\n        Assert.assertTrue(op.get(RESTART_SERVERS).asBoolean());\n    }\n}",
+    "test_cmd": "mvn test-compile -pl testsuite/shared -DskipTests -Dcheckstyle.skip=true -Denforcer.skip=true -am -T1C -q && mvn surefire:test -Dtest=DomainLifecycleUtilReloadParametersTest -pl testsuite/shared -Dcheckstyle.skip=true -Denforcer.skip=true",
+    "validation": "critic approved",
+    "build_edit_path": "",
+    "build_edit_src": ""
+   }
+  ],
+  "solutions": [
+   {
+    "id": 0,
+    "bug_id": 0,
+    "fixed": true,
+    "fix_diff": "--- a/testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java\n+++ b/testsuite/shared/src/main/java/org/jboss/as/test/integration/domain/management/util/DomainLifecycleUtil.java\n@@ -447,7 +447,9 @@\n         op.get(ModelDescriptionConstants.ADDRESS).add(ModelDescriptionConstants.HOST, host);\n         op.get(ModelDescriptionConstants.OP).set(\"reload\");\n         op.get(\"admin-only\").set(parameters.adminOnly);\n-        op.get(ModelDescriptionConstants.RESTART_SERVERS).set(parameters.restartServers);\n+        if (parameters.restartServers.isDefined()) {\n+            op.get(ModelDescriptionConstants.RESTART_SERVERS).set(parameters.restartServers);\n+        }\n         long startupTimeout;\n         if (parameters.timeout == null) {\n@@ -474,7 +476,7 @@\n     public static class ReloadParameters {\n \n         boolean adminOnly = false;\n-        boolean restartServers = true;\n+        ModelNode restartServers = new ModelNode();\n \n         boolean waitForServers = true;\n \n@@ -500,7 +502,7 @@\n          */\n         public ReloadParameters setRestartServers(boolean restartServers) {\n-            this.restartServers = restartServers;\n+            this.restartServers = new ModelNode(restartServers);\n             return this;\n         }",
+    "fix_rerun": "",
+    "lines_changed": 8,
+    "test_changed": false,
+    "reward": 0.4305
+   }
+  ]
+ }
+}

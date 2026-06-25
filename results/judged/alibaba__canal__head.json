@@ -1,0 +1,110 @@
+{
+ "repo": "alibaba/canal",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "getHostAddress() returns null despite logging that it \"will use 127.0.0.1 instead\". This c",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/utils/AddressUtils.java:77",
+   "verdict": "real",
+   "reason": "The method's own log message at line 76 states \"will use 127.0.0.1 instead\" but line 77 returns `localAddress` which is still `null` (initialized at line 48, never reassigned). The constant `LOCALHOST"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Switch cases Types.BIT and Types.BOOLEAN fall through to Types.TINYINT because the origina",
+   "location": "client-adapter/common/src/main/java/com/alibaba/otter/canal/client/adapter/support/JdbcTypeUtil.java:35",
+   "verdict": "real",
+   "reason": "The commented-out `// return Boolean.class;` without a `break` is clearly an abandoned debug change \u2014 the original developer had `return Boolean.class;`, commented it out, and forgot to either restore"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "ZooKeeperx.configMutliCluster swallows InterruptedException, losing the thread's interrupt",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/zookeeper/ZooKeeperx.java:114",
+   "verdict": "real",
+   "reason": "The code at ZooKeeperx.java:114-115 catches `InterruptedException` from `zk.close()` without restoring the interrupt flag via `Thread.currentThread().interrupt()`, violating the standard Java threadin"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "When createPersistentSequential or createPersistent is called with a path containing no '/",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/zookeeper/ZkClientx.java:81",
+   "verdict": "real",
+   "reason": "The three public methods `createPersistent`, `createPersistentSequential` (2 overloads) in `ZkClientx` call `path.substring(0, path.lastIndexOf('/'))` without checking if `lastIndexOf('/')` returns -1"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "Malformed JSON binary data with an unterminated variable-length string encoding (all 5 byt",
+   "location": "dbsync/src/main/java/com/taobao/tddl/dbsync/binlog/JsonConversion.java:157",
+   "verdict": "real",
+   "reason": "The STRING case (lines 135-161) lacks validation for unterminated variable-length encoding: when no terminating byte (high bit 0) is found within available bytes, `n` and `str_len` remain 0, the check"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "Recursive call to check() on ZkInterruptedException causes infinite recursion leading to S",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/zookeeper/running/ServerRunningMonitor.java:199",
+   "verdict": "intended",
+   "reason": "The recursive `return check();` pattern on `ZkInterruptedException` is an intentional tail-call retry pattern, consistent with the same approach used elsewhere in the codebase (e.g., `initRunning()` r"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Calling TimeZone.setDefault() in a static initializer changes the JVM-wide default timezon",
+   "location": "client-adapter/common/src/main/java/com/alibaba/otter/canal/client/adapter/support/Util.java:236",
+   "verdict": "real",
+   "reason": "The static initializer at Util.java:236 calls `TimeZone.setDefault()` which mutates JVM-wide state as a side effect of class loading. This is a well-documented anti-pattern that silently corrupts date"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "md5String() uses content.getBytes() without specifying a charset, relying on the platform ",
+   "location": "protocol/src/main/java/com/alibaba/otter/canal/protocol/SecurityUtil.java:36",
+   "verdict": "real",
+   "reason": "The `md5String()` method at line 36 uses `content.getBytes()` without specifying a charset, relying on the platform default. This is a well-known Java anti-pattern that produces different MD5 hashes a"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "getBatchMarkNode() truncates the Long batchId to int via .intValue(), losing precision for",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/zookeeper/ZookeeperPathUtils.java:181",
+   "verdict": "real",
+   "reason": "`getBatchMarkNode(Long batchId)` calls `batchId.intValue()` (truncating to 32-bit) while the API contract (parameter type `Long`, sibling `getBatchMarkId` using `Long.valueOf`, and the overloaded `add"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "Calling connectAddress.getAddress().getHostAddress() without null check. If the InetSocket",
+   "location": "client/src/main/java/com/alibaba/otter/canal/client/impl/running/ClientRunningMonitor.java:217",
+   "verdict": "intended",
+   "reason": "The only real internal implementation of `ClientRunningListener.processActiveEnter()` in `SimpleCanalConnector.doConnect()` (line 198) always returns `new InetSocketAddress(channel.socket().getLocalAd"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "The regex `[0-9]{1,3}(\\\\.[0-9]{1,3}){3,}` matches strings with 3 or more dot-separated gro",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/utils/AddressUtils.java:19",
+   "verdict": "real",
+   "reason": "The regex `[0-9]{1,3}(\\\\.[0-9]{1,3}){3,}` uses `{3,}` (3 or more) instead of `{3}` (exactly 3), which would incorrectly match strings like \"1.2.3.4.5\" (5+ octets). This is clearly a typo in the quanti"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "Query parameters with multiple '=' signs (e.g., \"a=b=c\") will have their value truncated, ",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/utils/UriUtils.java:62",
+   "verdict": "real",
+   "reason": "The code uses `token.split(\"=\")` which for `\"a=b=c\"` produces 4 elements `[\"a\",\"b\",\"c\"]`, and the `pair.length == 2` guard then sets value to `null` \u2014 silently dropping the entire value. The fix is `s"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "Casting DataSource to DruidDataSource without type check. If a non-Druid DataSource (e.g.,",
+   "location": "client-adapter/common/src/main/java/com/alibaba/otter/canal/client/adapter/support/Util.java:43",
+   "verdict": "real",
+   "reason": "The method `Util.sqlRS(DataSource ds, ...)` is `public static` and declares it accepts `javax.sql.DataSource` (the standard Java interface), but unconditionally casts to `DruidDataSource` on lines 43 "
+  },
+  {
+   "id": 13,
+   "suspected_bug": "LogPosition.equals() can throw NullPointerException if the `fileName` field is null, since",
+   "location": "dbsync/src/main/java/com/taobao/tddl/dbsync/binlog/LogPosition.java:97",
+   "verdict": "real",
+   "reason": "The public constructors `LogPosition(String)` and `LogPosition(String, long)` accept `null` for `fileName` without validation, making that state reachable through the public API. When `fileName` is nu"
+  },
+  {
+   "id": 14,
+   "suspected_bug": "Calling clearClients() removes references to ZkClientx instances from the cache, but those",
+   "location": "common/src/main/java/com/alibaba/otter/canal/common/zookeeper/ZkClientx.java:31",
+   "verdict": "real",
+   "reason": "`clearClients()` calls only `clients.clear()` without iterating over cached `ZkClientx` instances to call `close()` on each. Since `ZkClientx` extends `ZkClient` which holds ZooKeeper connections and "
+  }
+ ]
+}

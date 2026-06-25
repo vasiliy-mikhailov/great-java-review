@@ -1,0 +1,24 @@
+{
+ "repo": "trinodb/trino",
+ "pr": 29144,
+ "review": "SUMMARY: No confirmed bugs were identified in the provided changes.\nPOINTS:\n(none)",
+ "n_suspicions": 1,
+ "bugs": 0,
+ "solved": 0,
+ "inconclusive": 0,
+ "refuted": 0,
+ "registry": {
+  "suspicions": [
+   {
+    "id": 0,
+    "observation": "In `FilesTablePageSource.java`, `idToPartitionSpecMapping.get(contentFile.specId())` can return null if the specId is not found in the map. The result is passed directly to `createStructLikeWrapper(partitionSpec, contentFile.partition())` without any null check. Inside `createStructLikeWrapper`, `partitionSpec.partitionType()` is called, which would throw a NullPointerException.",
+    "suspected_bug": "NullPointerException when a content file references a spec ID that is not present in `idToPartitionSpecMapping`, causing a crash during partition column writing.",
+    "location": "plugin/trino-iceberg/src/main/java/io/trino/plugin/iceberg/system/files/FilesTablePageSource.java:323",
+    "confidence": 0.3,
+    "status": "pending"
+   }
+  ],
+  "bugs": [],
+  "solutions": []
+ }
+}

@@ -1,0 +1,68 @@
+{
+ "repo": "apache/commons-collections",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "isPrefix method extracts wrong substring when offsetInBits is non-zero, always returning c",
+   "location": "src/main/java/org/apache/commons/collections4/trie/analyzer/StringKeyAnalyzer.java:141",
+   "verdict": "real",
+   "reason": "Line 141 uses `substring(offsetInBits/LENGTH, lengthInBits/LENGTH)` but substring's second parameter is endIndex, not length. The correct end index should be `(offsetInBits + lengthInBits)/LENGTH`. Th"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "retainAll removes all copies of an element when the other bag has MORE copies than this ba",
+   "location": "src/main/java/org/apache/commons/collections4/bag/AbstractMapBag.java:395",
+   "verdict": "real",
+   "reason": "The `retainAll(Bag)` method at line 492-502 conflates two distinct cases in its else branch: when `otherCount == 0` (correctly removes all copies) AND when `otherCount > myCount` (incorrectly removes "
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Integer overflow in cardinality multiplication causes incorrect cosineSimilarity results f",
+   "location": "src/main/java/org/apache/commons/collections4/bloomfilter/SetOperations.java:103",
+   "verdict": "real",
+   "reason": "The expression `cardinality(first) * cardinality(second)` on line 103 (and line 126) performs int*int multiplication that overflows when both cardinalities exceed ~46,341 (\u221aInteger.MAX_VALUE), despite"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "LazyIteratorChain.remove() operates on wrong iterator after hasNext() is called between ne",
+   "location": "src/main/java/org/apache/commons/collections4/iterators/LazyIteratorChain.java:85",
+   "verdict": "real",
+   "reason": "LazyIteratorChain.hasNext() (line 85) incorrectly sets `lastUsedIterator = currentIterator`, overwriting the iterator that produced the last `next()` result. When `hasNext()` is called between `next()"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "ArrayCountingBloomFilter.clear() leaves state field negative, causing isValid() to return ",
+   "location": "src/main/java/org/apache/commons/collections4/bloomfilter/ArrayCountingBloomFilter.java:147",
+   "verdict": "intended",
+   "reason": "The Javadoc for `isValid()` at line 202 explicitly states \"The state transition to invalid is permanent.\" The class-level Javadoc (lines 29-31) also states \"This transition is not reversible.\" The `st"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "CircularFifoQueue.remove() enters infinite loop when queue contains null elements, because",
+   "location": "src/main/java/org/apache/commons/collections4/queue/CircularFifoQueue.java:381",
+   "verdict": "intended",
+   "reason": "The class contract explicitly prohibits nulls (Javadoc line 47: \"This queue prevents null objects from being added\"), enforced by `Objects.requireNonNull` in `add()`/`offer()`, confirmed by test `isNu"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "SparseBloomFilter.merge(IndexExtractor) leaves the filter in corrupted state when validati",
+   "location": "src/main/java/org/apache/commons/collections4/bloomfilter/SparseBloomFilter.java:147",
+   "verdict": "real",
+   "reason": "SparseBloomFilter.merge(IndexExtractor) adds all indices to the TreeSet at line 147 BEFORE validating them at lines 148-157. If validation fails, the exception leaves invalid indices permanently in th"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "AbstractMapBag.add() increments modCount even when nCopies is 0 or negative, causing false",
+   "location": "src/main/java/org/apache/commons/collections4/bag/AbstractMapBag.java:206",
+   "verdict": "unsure",
+   "reason": "er=parameter name=\"path\">\nsrc/main/java/org/apache/commons/collections4/bag/AbstractMapBag.java\n</parameter>\n<parameter=parameter name=\"pattern>\niterator|Iterator\n</parameter>\n</function>\n</tool_call>"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "CountingPredicate.processRemaining() doesn't update the idx field, so repeated calls or in",
+   "location": "src/main/java/org/apache/commons/collections4/bloomfilter/CountingPredicate.java:64",
+   "verdict": "real",
+   "reason": "The `processRemaining()` method uses a local `i = idx` for loop optimization but never syncs `idx = i` after the loop. This means if `processRemaining()` is called (even once) and then `test()` is cal"
+  }
+ ]
+}

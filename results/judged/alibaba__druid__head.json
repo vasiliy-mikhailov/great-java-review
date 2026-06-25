@@ -1,0 +1,54 @@
+{
+ "repo": "alibaba/druid",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "tryGetConnection() violates its non-blocking contract - it can block even when poolingCoun",
+   "location": "core/src/main/java/com/alibaba/druid/pool/DruidDataSource.java:283",
+   "verdict": "real",
+   "reason": "`tryGetConnection()` (line 3792-3797) reads `poolingCount` without the lock and then calls `getConnection()`, which uses the configured `maxWait` (default -1, meaning block indefinitely via `notEmpty."
+  },
+  {
+   "id": 1,
+   "suspected_bug": "When all data sources are blacklisted, removeBlackList returns them anyway, effectively by",
+   "location": "core/src/main/java/com/alibaba/druid/pool/ha/selector/RandomDataSourceSelector.java:206",
+   "verdict": "intended",
+   "reason": "The existing test `RandomDataSourceSelectorWithValidationTest.testAllDataSourceFail()` explicitly asserts that when ALL data sources are blacklisted, `get()` should return them (`assertTrue(count[0] >"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Race condition in errorCounts increment: concurrent validation threads lose increments, ca",
+   "location": "core/src/main/java/com/alibaba/druid/pool/ha/selector/RandomDataSourceValidateThread.java:201",
+   "verdict": "real",
+   "reason": "The code uses `ConcurrentHashMap` for `errorCounts` (showing concurrency awareness) but performs a non-atomic check-then-act increment (`containsKey` \u2192 `get` \u2192 `put`) at lines 201-205 inside Callables"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "setAsyncCloseConnectionEnable(true) is a permanent side effect from a single cross-thread ",
+   "location": "core/src/main/java/com/alibaba/druid/pool/DruidPooledConnection.java:253",
+   "verdict": "intended",
+   "reason": "The permanent `setAsyncCloseConnectionEnable(true)` on cross-thread close is a deliberate \"safety switch\" design: once cross-thread close is detected (indicating the app uses multi-threaded connection"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "isSameRM() throws NullPointerException when the other JtdsXAResource's rmHost field is nul",
+   "location": "core/src/main/java/com/alibaba/druid/pool/xa/JtdsXAResource.java:90",
+   "verdict": "real",
+   "reason": "The `isSameRM()` method at line 90 calls `((JtdsXAResource) xares).getRmHost().equals(this.rmHost)` which throws NPE when the other resource's `rmHost` is null. The constructor (lines 42-56) can leave"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "SQLJSONValueExpr.equals() always returns false (violating reflexivity: x.equals(x) == fals",
+   "location": "core/src/main/java/com/alibaba/druid/sql/ast/SQLJSONValueExpr.java:10",
+   "verdict": "real",
+   "reason": "SQLJSONValueExpr.equals() unconditionally returns false, so x.equals(x) is false \u2014 a clear violation of the Java Object.equals() contract (reflexivity). Sibling classes like SQLCurrentUserExpr and SQL"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "When all data sources are busy (poolingCount <= 0), removeBusyDataSource doesn't remove an",
+   "location": "core/src/main/java/com/alibaba/druid/pool/ha/selector/RandomDataSourceSelector.java:226",
+   "verdict": "intended",
+   "reason": "The guard `busyDataSourceSet.size() < dataSourceSet.size()` is a deliberate fail-open design: when at least one DataSource is non-busy, prefer it; when ALL are busy, still route to them because `pooli"
+  }
+ ]
+}

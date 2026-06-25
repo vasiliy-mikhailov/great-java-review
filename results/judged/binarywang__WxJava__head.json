@@ -1,0 +1,68 @@
+{
+ "repo": "binarywang/WxJava",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Incomplete data read from InputStream resulting in corrupted or truncated base64 encoding ",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/fs/FileUtils.java:63",
+   "verdict": "real",
+   "reason": "The code at lines 63-64 uses `in.available()` to size a byte array and then `in.read(data)` to fill it. Both are unreliable for general InputStreams: `available()` returns an estimate (may be partial)"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Cryptographic operation silently fails, returning null which may bypass signature validati",
+   "location": "weixin-java-pay/src/main/java/com/github/binarywang/wxpay/v3/util/AesUtils.java:126",
+   "verdict": "real",
+   "reason": "`AesUtils.HMACSHA256` catches all exceptions, prints to stderr via `e.printStackTrace()` (an anti-pattern not used anywhere else in the file), and returns null \u2014 silently failing in a security-sensiti"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Caller's InputStream is unexpectedly closed after createTmpFile returns, causing IOExcepti",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/fs/FileUtils.java:37",
+   "verdict": "real",
+   "reason": "The `copyToFile` method (line 36-40) assigns the caller's `InputStream` to a try-with-resources variable (`try (InputStream in = source; ...)`), which closes the caller's stream after the copy. This i"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "ArrayIndexOutOfBoundsException when PKCS7Encoder.decode is called with an empty byte array",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/crypto/PKCS7Encoder.java:47",
+   "verdict": "intended",
+   "reason": "PKCS7 padding requires at least 1 byte by definition; an empty array is semantically invalid input, not a valid use case. All internal callers pass results from AES cipher.doFinal() which produces min"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "NullPointerException when xmlBean2Map is called on a bean whose class hierarchy doesn't ma",
+   "location": "weixin-java-pay/src/main/java/com/github/binarywang/wxpay/util/SignUtils.java:230",
+   "verdict": "intended",
+   "reason": "The method's Javadoc documents the parameter as \"xml bean object with @XStreamAlias annotations\" and the code is designed for a specific bean hierarchy (BaseWxPayRequest/BaseWxPayResult subclasses). P"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "NullPointerException in checkSign when HMAC-SHA256 signing fails internally and returns nu",
+   "location": "weixin-java-pay/src/main/java/com/github/binarywang/wxpay/util/SignUtils.java:218",
+   "verdict": "real",
+   "reason": "The `checkSign` method's Javadoc promises a boolean return (\"true - \u7b7e\u540d\u6821\u9a8c\u6210\u529f\uff0cfalse - \u7b7e\u540d\u6821\u9a8c\u5931\u8d25\"), but line 218 calls `sign.equals(...)` where `sign` comes from `createSign()` which can return `null` when `"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "Secrets at the end of URLs (without trailing &) are not masked by the regex, potentially l",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/DataUtils.java:21",
+   "verdict": "real",
+   "reason": "The regex `&secret=\\\\w+&` on line 21 requires a trailing `&` after the secret value, so when `secret` is the last query parameter (e.g., `appid=wx123&secret=abc123`), it won't match and the secret rem"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "Thread incorrectly believes it holds the lock when another thread acquired it after expira",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/locks/RedisTemplateSimpleDistributedLock.java:80",
+   "verdict": "intended",
+   "reason": "The TOCTOU window between `setIfAbsent` (line 74) and `get` (line 80) CANNOT cause a false positive: `value.equals(currentValue)` returns true only when the Redis value matches this thread's own cache"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "If the JSON property exists but is not an array, ClassCastException is thrown instead of g",
+   "location": "weixin-java-common/src/main/java/me/chanjar/weixin/common/util/json/GsonHelper.java:111",
+   "verdict": "real",
+   "reason": "The three array methods (`getIntArray`, `getStringArray`, `getLongArray`) call `o.getAsJsonArray(string)` which throws `ClassCastException` when the property exists but is not a JSON array (e.g., a st"
+  }
+ ]
+}

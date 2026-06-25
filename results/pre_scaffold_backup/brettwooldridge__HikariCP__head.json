@@ -1,0 +1,40 @@
+{
+ "repo": "brettwooldridge/HikariCP",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Calling getStateCounts() on a bag with entries in STATE_REMOVED or STATE_RESERVED state wi",
+   "location": "ConcurrentBag.java:401",
+   "verdict": "real",
+   "reason": "The `getStateCounts()` method at line 402 does `++states[e.getState()]` where valid states include `STATE_REMOVED=-1` and `STATE_RESERVED=-2`. Java arrays cannot be indexed with negative values, so th"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "After rollback(Savepoint), isCommitStateDirty is incorrectly set to true instead of false,",
+   "location": "ProxyConnection.java:348",
+   "verdict": "intended",
+   "reason": "The `rollback(Savepoint)` method correctly sets `isCommitStateDirty = true` because unlike `rollback()` (no args) which ends the entire transaction, `rollback(Savepoint)` only reverts changes to a poi"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "setCredentialsProviderClassName() incorrectly sets exceptionOverrideClassName to the crede",
+   "location": "HikariConfig.java:893",
+   "verdict": "real",
+   "reason": "Line 893 in `setCredentialsProviderClassName()` erroneously sets `this.exceptionOverrideClassName = credentialsProviderClassName` instead of `this.credentialsProviderClassName = credentialsProviderCla"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "setSchema stores delegate.getSchema() instead of the passed 'schema' parameter, inconsiste",
+   "location": "ProxyConnection.java:508",
+   "verdict": "real",
+   "reason": "In `ProxyConnection.java`, `setSchema()` at line 508 stores `dbschema = delegate.getSchema()` instead of `dbschema = schema`, which is inconsistent with the canonical pattern used in `setCatalog()` at"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "If the stack trace from the exception has fewer than 5 elements, creating a negative-sized",
+   "location": "ProxyLeakTask.java:80",
+   "verdict": "intended",
+   "reason": "The stack trace is guaranteed to have at least 5 frames: Exception.<init>() \u2192 ProxyLeakTask.<init>() \u2192 ProxyLeakTaskFactory.scheduleNewTask() \u2192 ProxyLeakTaskFactory.schedule() \u2192 HikariPool.getConnecti"
+  }
+ ]
+}

@@ -1,0 +1,75 @@
+{
+ "repo": "apache/dubbo",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "NullPointerException in ServiceDiscovery.getDelay() because getUrl() returns null by defau",
+   "location": "dubbo-registry/dubbo-registry-api/src/main/java/org/apache/dubbo/registry/client/ServiceDiscovery.java:93",
+   "verdict": "real",
+   "reason": "`ServiceDiscovery.getUrl()` is a default method explicitly returning `null`, making null a valid contract return value. But `ServiceDiscovery.getDelay()` \u2014 also a default method \u2014 calls `getUrl().getP"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Division by zero ArithmeticException when BitList has zero cardinality (all elements remov",
+   "location": "dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/router/state/BitList.java:160",
+   "verdict": "real",
+   "reason": "The `randomSelectOne()` method is public and has no guard against empty state. When all elements are removed via `remove()` or `removeAll()` (documented, tested public APIs \u2014 see test line 78-79), `ro"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Comparator contract violation in ActivateComparator: compare(o1, o2) returns -1 when o1 an",
+   "location": "dubbo-common/src/main/java/org/apache/dubbo/common/extension/support/ActivateComparator.java:120",
+   "verdict": "real",
+   "reason": "Line 120 returns -1 for both compare(a,b) and compare(b,a) when order AND simple name are equal, violating Comparator's antisymmetry contract. The comparator is actively used with TreeMap in Extension"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "Null elements in match list cause NullPointerException when iterating over parsed tag rule",
+   "location": "dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/router/tag/model/Tag.java:57",
+   "verdict": "real",
+   "reason": "The catch block at Tag.java:57 returns null after logging, and the null is collected into the match list without filtering. TagRouterRule.init() (line 100-101) iterates over the match list in a for-ea"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "NullPointerException in ListDoubleMatch.isMatch() when the oneof field is null, as no null",
+   "location": "dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/router/mesh/rule/virtualservice/match/ListDoubleMatch.java:34",
+   "verdict": "intended",
+   "reason": "All three sibling classes (ListDoubleMatch, ListStringMatch, ListBoolMatch) share the identical no-null-check pattern consistently. The only internal caller (DubboMethodArg.isMatch()) already guards w"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "NullPointerException in ListBoolMatch.isMatch() when the oneof field is null, as no null c",
+   "location": "dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/router/mesh/rule/virtualservice/match/ListBoolMatch.java:34",
+   "verdict": "real",
+   "reason": "**REAL BUG.** `ListBoolMatch.isMatch()`, `ListStringMatch.isMatch()`, and `ListDoubleMatch.isMatch()` all iterate over the uninitialized `oneof` field without a null check, causing NPE. The field is `"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "NullPointerException in DefaultFuture.cancel() when response is received concurrently - FU",
+   "location": "dubbo-remoting/dubbo-remoting-api/src/main/java/org/apache/dubbo/remoting/exchange/support/DefaultFuture.java:236",
+   "verdict": "real",
+   "reason": "In `cancel()`, `FUTURES.remove(id)` can return null when `received()` has already removed the future concurrently. The result is passed to `shutdownExecutorIfNeeded(future)` without a null check, caus"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "ArrayIndexOutOfBoundsException when address ends with \":\" because split(\":\") discards trai",
+   "location": "dubbo-common/src/main/java/org/apache/dubbo/common/utils/NetUtils.java:742",
+   "verdict": "real",
+   "reason": "The code at line 741 uses `address.endsWith(\":\")` instead of `address.contains(\":\")`, which means the port-parsing logic never executes for valid \"ip:port\" input like \"192.168.1.1:8080\". Furthermore, "
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Incorrect method parameter lookup in URLParam.getMethodParameterStrict() because substring",
+   "location": "dubbo-common/src/main/java/org/apache/dubbo/common/url/component/URLParam.java:214",
+   "verdict": "real",
+   "reason": "Line 214 uses `methodsString.contains(method)` which performs substring matching instead of exact matching against the comma-separated methods list. This is inconsistent with the `initMethodParameters"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "NullPointerException when ForkingClusterInvoker times out waiting for a result - ret is nu",
+   "location": "dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/support/ForkingClusterInvoker.java:126",
+   "verdict": "real",
+   "reason": "The `poll(timeout)` returning null on timeout causes `doInvoke()` to return null instead of throwing `RpcException`, violating its declared contract (`throws RpcException`) and inconsistent with how a"
+  }
+ ]
+}

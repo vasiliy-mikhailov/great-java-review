@@ -1,0 +1,82 @@
+{
+ "repo": "alibaba/fastjson",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "findClass() always compares the same Class (the first entry in each bucket chain) against ",
+   "location": "IdentityHashMap.java:62",
+   "verdict": "real",
+   "reason": "Line 62 uses `bucket.key` instead of `entry.key` inside the inner loop that iterates `entry = entry.next`. Since `bucket` is never reassigned (line 55), it always refers to the head of the chain, caus"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "objectKeyLevel is incremented but never decremented, so after parsing 512 object keys (eve",
+   "location": "DefaultJSONParser.java:287",
+   "verdict": "real",
+   "reason": "The `objectKeyLevel` field (line 70) is incremented at line 287 when an object key is `{` or `[`, but is NEVER decremented after the nested key parsing completes (after `key = parse()` at line 291). T"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "ArrayIndexOutOfBoundsException when casting negative numbers to enum, as ordinal is only c",
+   "location": "TypeUtils.java:1299",
+   "verdict": "real",
+   "reason": "The bounds check at lines 1299 and 1307 only checks `ordinal < values.length` but omits the lower bound `ordinal >= 0`. A negative ordinal (e.g., -1) passes the check since `-1 < values.length` is tru"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "GZIPInputStream is not closed after use, causing a resource leak. The stream should be clo",
+   "location": "DefaultFieldDeserializer.java:95",
+   "verdict": "intended",
+   "reason": "The reported \"resource leak\" involves GZIPInputStream wrapping ByteArrayInputStream \u2014 both are purely in-memory with zero OS resources (no file descriptors, sockets, or native handles). Closing them i"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "ArrayIndexOutOfBoundsException in Base64.decodeFast when input contains characters with va",
+   "location": "Base64.java:46",
+   "verdict": "real",
+   "reason": "The IA lookup table is int[256], but char values >= 256 (like '\\u0100') cause ArrayIndexOutOfBoundsException when used directly as index. The Javadoc explicitly states \"illegal characters at the begin"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "IndexOutOfBoundsException in JSONValidator.UTF16Validator.fieldName() when the field name ",
+   "location": "JSONValidator.java:518",
+   "verdict": "unsure",
+   "reason": ""
+  },
+  {
+   "id": 6,
+   "suspected_bug": "ArrayIndexOutOfBoundsException thrown when decoding base64 strings ending with '=' and con",
+   "location": "Base64.java:50",
+   "verdict": "real",
+   "reason": "The code at line 50/105/172 accesses `chars[eIx - 1]` without checking `eIx > 0` first. When input is `\"=\"` or `\"=   \"` (trailing whitespace trimmed to just `=`), `eIx` becomes 0, causing an AIOOBE/St"
+  },
+  {
+   "id": 7,
+   "suspected_bug": "MiscCodec deserialze for InetSocketAddress reads lexer.stringVal() without verifying the t",
+   "location": "MiscCodec.java:213",
+   "verdict": "real",
+   "reason": "The InetSocketAddress deserializer in MiscCodec.java:213 calls `lexer.stringVal()` without first checking `lexer.token() == JSONToken.LITERAL_STRING`, unlike the identical pattern in AwtCodec which pr"
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Hash collisions in SymbolTable cause string interning to fail silently - different strings",
+   "location": "SymbolTable.java:52",
+   "verdict": "real",
+   "reason": "The `addSymbol` method (lines 51-79) has no collision handling: when two different strings hash to the same bucket, the second string is returned as `new String(...)` at line 72 but NEVER stored in th"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "ArrayIndexOutOfBoundsException in EnumDeserializer.valueOf(int ordinal) when called with n",
+   "location": "EnumDeserializer.java:114",
+   "verdict": "real",
+   "reason": "The `valueOf(int ordinal)` method at line 114 directly accesses `ordinalEnums[ordinal]` without bounds checking, and it IS called from internal code paths (`JavaBeanDeserializer.java:342` and ASM-gene"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "getAllocateLengthExp has integer overflow: `1 << 32` overflows to 1 for large inputs near ",
+   "location": "ThreadLocalCache.java:73",
+   "verdict": "intended",
+   "reason": "The `getAllocateLengthExp` method is `private static` and only called by `allocate()` and `allocateBytes()`, both of which guard with `if(length > 131072) return new T[length]`. Within the actual vali"
+  }
+ ]
+}

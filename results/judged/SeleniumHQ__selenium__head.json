@@ -1,0 +1,40 @@
+{
+ "repo": "SeleniumHQ/selenium",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Calling stream() on an Either that holds only a left value will throw NullPointerException",
+   "location": "java/src/org/openqa/selenium/internal/Either.java:76-77",
+   "verdict": "real",
+   "reason": "`Either` is a `public` class implementing `Iterable<B>`. When `Either` is a left instance, `right()` returns `null`. Calling `stream()` invokes `Stream.of(null)` which throws `NullPointerException` \u2014 "
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Either.map() always applies the mapper to the right side even for left-value Eithers (pass",
+   "location": "java/src/org/openqa/selenium/internal/Either.java:61-69",
+   "verdict": "real",
+   "reason": "Either.map() unconditionally calls mapper.apply(right()) even when the Either is left (right=null), and Either.mapLeft() unconditionally calls mapper.apply(left()) even when it's right (left=null). Al"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "Calling match(url, prefix) where prefix contains regex meta-characters will produce wrong ",
+   "location": "java/src/org/openqa/selenium/remote/http/UrlTemplate.java:152",
+   "verdict": "real",
+   "reason": "Line 152 uses `replaceFirst(prefix, \"\")` which treats `prefix` as a regex pattern, but the public API contract (Javadoc: \"Remove subPath from matchAgainst\") implies a literal string removal. The const"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "InterruptedException in waitUntilUnavailable() loses the thread's interrupt status because",
+   "location": "java/src/org/openqa/selenium/net/UrlChecker.java:157-158",
+   "verdict": "real",
+   "reason": "The `waitUntilUnavailable()` method catches `InterruptedException` (grouped with `ExecutionException` at line 157) and rethrows as `RuntimeException` without calling `Thread.currentThread().interrupt("
+  },
+  {
+   "id": 4,
+   "suspected_bug": "FileHandler.createDir() has potential NPE when directory is at filesystem root (getParentF",
+   "location": "java/src/org/openqa/selenium/io/FileHandler.java:69-79",
+   "verdict": "real",
+   "reason": "Bug 1: `getParentFile()` can return null (e.g., `new File(\"foo\")`), and the recursive call at line 79 passes null to `createDir()`, causing NPE on `null.exists()` at line 70 \u2014 reachable through the pu"
+  }
+ ]
+}

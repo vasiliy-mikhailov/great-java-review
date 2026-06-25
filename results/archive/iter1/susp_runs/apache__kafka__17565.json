@@ -1,0 +1,40 @@
+{
+ "repo": "apache/kafka",
+ "pr": 17565,
+ "review": "SUMMARY: No confirmed findings were provided for this PR. The diff introduces the `forbiddenapis` Gradle plugin with `ignoreFailures = true` and the `jdk-unsafe` signature, but no bugs were reproduced or verified in the supplied data.\n\nPOINTS:\n(none)",
+ "confirmed": 0,
+ "solved": 0,
+ "inconclusive": 0,
+ "refuted": 0,
+ "n_suspicions": 2,
+ "suspicions": [
+  {
+   "id": 0,
+   "observation": "The PR adds `test.dependsOn('checkstyleMain', 'checkstyleTest', 'forbiddenApisMain')` but only includes `forbiddenApisMain` in the dependency chain, omitting `forbiddenApisTest`.",
+   "suspected_bug": "Test sources won't be checked for forbidden APIs, leaving potential unsafe API usage in test code undetected.",
+   "location": "build.gradle:805",
+   "confidence": 0.3,
+   "status": "pending",
+   "evidence": "",
+   "repro_kind": "",
+   "reproduction": "",
+   "fixed": false,
+   "fix_diff": "",
+   "fix_rerun": ""
+  },
+  {
+   "id": 1,
+   "observation": "The diff shows the last line of build.gradle loses its trailing newline (`\\ No newline at end of file`).",
+   "suspected_bug": "Missing trailing newline in build.gradle could cause issues with tools that expect POSIX-compliant text files (e.g., `diff` shows spurious output, some linters fail, `cat` may merge with shell prompt).",
+   "location": "build.gradle:3858",
+   "confidence": 0.2,
+   "status": "pending",
+   "evidence": "",
+   "repro_kind": "",
+   "reproduction": "",
+   "fixed": false,
+   "fix_diff": "",
+   "fix_rerun": ""
+  }
+ ]
+}

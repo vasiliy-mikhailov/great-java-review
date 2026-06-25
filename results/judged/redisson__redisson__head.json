@@ -1,0 +1,19 @@
+{
+ "repo": "redisson/redisson",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "ByteBuf memory leak: the encoded ByteBuf objects are never released, causing a heap/direct",
+   "location": "redisson/src/main/java/org/redisson/transaction/RedissonTransactionalBucket.java:404-405",
+   "verdict": "real",
+   "reason": "The `isEquals()` method in `RedissonTransactionalBucket` (lines 404-405) and `BaseTransactionalMap` (lines 706-707) calls `readableBytes()` instead of `release()` in the finally block. `readableBytes("
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Map.entrySet().contains() always returns false for valid entries because it compares the v",
+   "location": "redisson/src/main/java/org/redisson/RedissonMap.java:1861",
+   "verdict": "real",
+   "reason": "Line 1861: `return value != null && value.equals(e);` compares a map value (type V) directly with the entire Map.Entry object `e`, which will virtually always return false since they are different typ"
+  }
+ ]
+}

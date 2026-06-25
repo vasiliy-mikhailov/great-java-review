@@ -1,0 +1,26 @@
+{
+ "repo": "google/guava",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "Resource leak: forEachPair fails to close input streams in the non-parallel path, causing ",
+   "location": "guava/src/com/google/common/collect/Streams.java:396-409",
+   "verdict": "intended",
+   "reason": "The `forEachPair` Javadoc explicitly states: \\\"This method behaves equivalently to zipping the stream elements into temporary pair objects and then using Stream#forEach on that stream.\\\" That document"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "LimitedInputStream.skip can skip past the limit when wrapping a FileInputStream, allowing ",
+   "location": "guava/src/com/google/common/io/ByteStreams.java:778-784",
+   "verdict": "real",
+   "reason": "`LimitedInputStream.skip()` calls `in.skip(n)` without protecting against `FileInputStream`'s documented behavior of skipping more bytes than requested. The `skipSafely` method (line 880) exists speci"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "IntMath.divide(MIN_VALUE, -1, mode) silently returns MIN_VALUE instead of throwing Arithme",
+   "location": "guava/src/com/google/common/math/IntMath.java:313-367",
+   "verdict": "real",
+   "reason": "The Javadoc explicitly states that FLOOR mode is \"equivalent to Math.floorDiv(p, q)\", but for Integer.MIN_VALUE / -1, Math.floorDiv throws ArithmeticException (correctly, since +2^31 overflows int) wh"
+  }
+ ]
+}

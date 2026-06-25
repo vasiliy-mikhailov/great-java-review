@@ -1,0 +1,96 @@
+{
+ "repo": "ReactiveX/RxJava",
+ "results": [
+  {
+   "id": 0,
+   "suspected_bug": "offer(first, second) writes the second element into the buffer's link slot when the produc",
+   "location": "src/main/java/io/reactivex/rxjava4/operators/SpscLinkedArrayQueue.java:286",
+   "verdict": "real",
+   "reason": "In SpscLinkedArrayQueue.offer(T first, T second), lines 286 and 295 write `second` at offset `pi + 1` without wrapping it via `calcWrappedOffset()`. When `pi == mask` (e.g., 15), `pi + 1` equals `p2ca"
+  },
+  {
+   "id": 1,
+   "suspected_bug": "Scheduler.toExecutorService() passes null as workerStore, but SchedulerToExecutorService.e",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/schedulers/SchedulerToExecutorService.java:31-41",
+   "verdict": "real",
+   "reason": "`Scheduler.toExecutorService()` (public, @since 4.0.0, documented with Javadoc) passes `null` for `workerStore` to `SchedulerToExecutorService`, but every method in that class calls `workerStore.get()"
+  },
+  {
+   "id": 2,
+   "suspected_bug": "roundToPowerOfTwo(Integer.MAX_VALUE) returns Integer.MIN_VALUE (negative) instead of 0x800",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/util/Pow2.java:34",
+   "verdict": "real",
+   "reason": "The Javadoc contract explicitly promises a \"positive power of two\" result, but for any input > 2^30, `1 << 31` yields `Integer.MIN_VALUE` (negative), violating the documented contract. Callers like `O"
+  },
+  {
+   "id": 3,
+   "suspected_bug": "Race condition in shutdown(): the first branch (when workerStore contains a valid Worker) ",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/schedulers/SchedulerToExecutorService.java:44-54",
+   "verdict": "intended",
+   "reason": "The suspected race condition cannot manifest because the if-branch (`workerStore.get() instanceof Worker`) is dead code - nothing in the codebase ever populates `workerStore` with a Worker (no `worker"
+  },
+  {
+   "id": 4,
+   "suspected_bug": "invokeAny() throws IllegalStateException instead of returning results because CompletableF",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/schedulers/SchedulerToExecutorService.java:192",
+   "verdict": "real",
+   "reason": "`SchedulerToExecutorService.invokeAny()` at line 192 misuses `CompletableFuture.exceptionNow()`, an internal JDK method that throws `IllegalStateException` when a future completed normally. Since `inv"
+  },
+  {
+   "id": 5,
+   "suspected_bug": "forEachWhile(S, BiPredicate) throws NullPointerException when called on a list where the l",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/util/AppendOnlyLinkedArrayList.java:167",
+   "verdict": "real",
+   "reason": "The `forEachWhile(S, BiPredicate)` method at line 164 uses `for (;;) { }` with no null check on `a` before `Object o = a[i]`, while all sibling methods (`forEachWhile(NonThrowingPredicate)`, `accept(S"
+  },
+  {
+   "id": 6,
+   "suspected_bug": "CachedScheduler.CachedWorkerPool.evictExpiredWorkers uses ConcurrentLinkedQueue and assume",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/schedulers/CachedScheduler.java:126-141",
+   "verdict": "real",
+   "reason": "The `release()` method performs non-atomic `setExpirationTime()` followed by `offer()`, so concurrent releases from multiple threads can interleave and place a worker with LATER expiration BEFORE one "
+  },
+  {
+   "id": 7,
+   "suspected_bug": "multiplyCap(0, Long.MAX_VALUE) throws ArithmeticException due to division by zero instead ",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/util/BackpressureHelper.java:53",
+   "verdict": "real",
+   "reason": "The method `multiplyCap(a, b)` at line 53 does `u / a != b` for overflow detection, but when `a == 0` and `b > 2^31`, the guard `((a | b) >>> 31) != 0` passes (because `b >>> 31 != 0`), and then `0 / "
+  },
+  {
+   "id": 8,
+   "suspected_bug": "Race condition on ThreadWorker.expirationTime: stale reads may cause workers to never be e",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/schedulers/CachedScheduler.java:251",
+   "verdict": "intended",
+   "reason": "The `expirationTime` field does NOT need to be volatile because the `ConcurrentLinkedQueue` establishes the necessary happens-before relationship. Per JLS 17.4.5, \"Actions in a thread prior to placing"
+  },
+  {
+   "id": 9,
+   "suspected_bug": "isDisposed() can throw IndexOutOfBoundsException if ArrayCompositeSubscription was constru",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/subscriptions/ArrayCompositeSubscription.java:100",
+   "verdict": "intended",
+   "reason": "The `isDisposed()` slot-0 check is the intended fast-path design: `dispose()` atomically sets ALL slots (including slot 0) to CANCELLED, making slot 0 a valid disposed flag. The sibling `ArrayComposit"
+  },
+  {
+   "id": 10,
+   "suspected_bug": "FlowableSampleTimed.SampleTimedEmitLast has a wip counter that can grow unbounded when the",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/operators/flowable/FlowableSampleTimed.java:190-196",
+   "verdict": "intended",
+   "reason": "The bug report assumes concurrent timer fires, but `schedulePeriodicallyDirect` guarantees serial execution: `Worker.schedulePeriodically()` chains tasks so each `run()` completes before the next is s"
+  },
+  {
+   "id": 11,
+   "suspected_bug": "VolatileSizeArrayList.set() doesn't update the volatile size field via lazySet(), potentia",
+   "location": "src/main/java/io/reactivex/rxjava4/internal/util/VolatileSizeArrayList.java:130",
+   "verdict": "intended",
+   "reason": "The `set(int, T)` method by contract does NOT change the list's size\u2014it only replaces an element at a given index. The volatile AtomicInteger tracks SIZE specifically (as stated in the Javadoc: \"Track"
+  },
+  {
+   "id": 12,
+   "suspected_bug": "SpscArrayQueue.offer(E, E) is non-atomic - if the first element succeeds but the second fa",
+   "location": "src/main/java/io/reactivex/rxjava4/operators/SpscArrayQueue.java:87-89",
+   "verdict": "real",
+   "reason": "The `SpscArrayQueue.offer(E, E)` method is a FIXME stub (`// FIXME` comment at line 88) that simply does `return offer(v1) && offer(v2)`, which is non-atomic: if offer(v1) succeeds but offer(v2) fails"
+  }
+ ]
+}
