@@ -1,112 +1,140 @@
-# Great Java Review — reviewer-style mining + GEPA prompt optimization
+# Great Java Review — find real Java bugs, prove them with a test, fix them
 
-Mine GitHub for high-signal Java code reviewers, capture their reviews, then use
-**GEPA** (reflective prompt evolution) to discover prompts that make an LLM
-review code in each reviewer's voice — and a single universal prompt — evaluated
-against the **Qwen-3.6-27B-FP8** endpoint.
+An agentic pipeline that mines large Java projects for **real bugs**, proves each
+one with a **failing unit test**, **fixes** it, and presents the find+fix
+upstream as ordinary human work. The model under the harness is the
+**Qwen-3.6-27B-FP8** endpoint; the grader and curator is Claude.
 
-## Results (v1)
+> **Origin note.** This project began as GEPA prompt-evolution to make an LLM
+> *review code in a human reviewer's voice* (mimicry). That goal is **superseded**
+> by the bug pipeline below. The reviewer corpus it produced (`excellent_reviews.json`)
+> lives on as the **human-review benchmark oracle** the pipeline is scored against,
+> and the GEPA tooling (`crawl.py`/`gepa_run.py`/`compare.py`/`fib_sweep.py`) is
+> kept to maintain it. See the **Legacy** section and `AGENTS.md` P4–P6.
 
-- **Corpus:** 10 deep reviewers × up to 300 substantive reviews
-  (`excellent_reviews.json`) + a ~3k-reviewer wide pool mined free from the
-  inline-comment index. Reviewers are real maintainers (DaveCTurner, normanmaurer,
-  vietj, franz1981, dmlloyd, …).
-- **Prompt comparison** (held-out PRs, mimicry = 0.85·LLM-judge + 0.15·lexical):
-  **per-reviewer 0.271 > single 0.263 ≈ baseline 0.262** — personalization gives a
-  small edge (7/10 reviewers), one universal prompt buys ~nothing over the generic
-  seed. Effect is small + noisy on ~12-PR tests; see `results/comparison_hc.md` for
-  the higher-confidence run (60-PR held-out, temp=0).
-- **AutoResearch tuning** (`autoresearch.py`, Karpathy-style trajectory-informed
-  keep/revert): mimicry on vietj **0.331 → 0.475 (+43%)** over 40 trials, then knob
-  saturation. `results/autoresearch_curve.qwen.png`.
-- **Output-cap ablation** (`token_sweep.py`): `gen_max_tokens` is a *cap, not a
-  target* — score rises until the cap clears the reviewer's natural review length
-  (vietj ~120 tok), then is **flat + noise**. Knee ≈ 233; bigger is wasted compute,
-  not better. `results/token_sweep_fib.qwen.png`.
-- **Leakage guard:** optimized prompts must be self-contained; a guard
-  (`leaks_reference` + penalty + seed-fallback) rejects prompts that assume the
-  held-out reference review is an input.
+## The pipeline: suspect → reproduce → fix → synthesize
 
-See `AGENTS.md` for the problem/delegation model (P1 meta · P2 main: mimicry
-prompts · P3 corpus · P4 scaling · P5–P8 substrate · P9 auto-tune).
-
-## Pipeline (all stages resumable, single GitHub worker)
+A deterministic **registry pipeline** (`src/current_version/suspicion.py`). Each
+stage is a separate agent given only the tools and the single reward its job
+needs; nothing is parsed from prose — every artifact is stored through a tool.
+The registry holds three linked entry types, **Suspicion → Bug → Solution**:
 
 ```
-run_pipeline.sh
- ├─ 1. crawl.py discover   identify reviewers from inline-review-comment volume
- ├─ 2. crawl.py collect    per reviewer, gather ~300 substantive reviews via
- │                         `reviewed-by:` search -> excellent_reviews.json
- ├─ 3. gepa_run.py per     evolve a per-reviewer mimicry prompt (x10)
- ├─ 4. gepa_run.py single  evolve one universal prompt across all reviewers
- ├─ 5. compare.py          score baseline vs per-reviewer vs single on held-out PRs
- └─ 6. fib_sweep.py        scaling curve: universal-prompt quality vs #reviewers
-                           trained on (k = 1,2,3,5,8,... Fibonacci)
+                          src/current_version/suspicion.py
+ ┌──────────────┐   ┌───────────────┐   ┌────────────┐   ┌──────────────┐
+ │  SUSPECTOR   │──>│  REPRODUCER   │──>│   SOLVER   │──>│ SYNTHESIZER  │
+ │ investigate  │   │ prove w/ test │   │  fix prod  │   │  emit review │
+ └──────────────┘   └───────────────┘   └────────────┘   └──────────────┘
+   Suspicions          Bugs                Solutions          PR / review
 ```
 
-### Fibonacci scaling result (universal prompt vs. #reviewers, up to ~10k)
-`fib_sweep.py` re-runs the single-universal-prompt GEPA optimization on the first
-**k** reviewers for each Fibonacci `k` — `1, 2, 3, 5, 8, 13, …, 6765, 10946`
-(`max_k` ≈ 10k, capped at however many reviewers are currently in the pool, plus
-the full-set point). Each resulting prompt is scored on the **same fixed global
-held-out eval set**, so the points form a comparable generalization curve.
-Output: `results/fib_sweep.<profile>.json` / `.md` (table + ASCII curve). A rising
-curve means a single prompt keeps benefiting from more reviewers; a plateau/decline
-means styles conflict and per-reviewer prompts pay off more.
+- **Suspector** → *Suspicions.* Sweeps for likely bugs and fires on sight; a
+  Suspicion = `{observation, suspected_bug, location, confidence}`. **Confidence
+  is the only priority signal.** Two modes (`INVESTIGATE_MODE`): `mr` reads just
+  the PR diff (the **benchmark path** — the human-review oracle is diff-scoped),
+  `repo` sweeps the whole repo biased toward *tested* modules (the **RLVR path** —
+  execution is the oracle). A dedup subagent merges overlapping entries on the way in.
+- **Reproducer** → *Bugs.* Takes the highest-confidence suspicion and must **show
+  the bug with a unit test** in a per-JDK sandbox — a JUnit `@Test` that fails on
+  the bug (`regression_test` > `test` > `log` > `grep`). Coupled code is reached
+  by *mocking collaborators* (never copying the class under test). A test-critic
+  checks the assertion is the genuinely-correct behaviour (Javadoc/JLS/round-trip
+  contract), not a convenient one. A verdict shown by a run, or it's `inconclusive`.
+- **Solver** → *Solutions.* Only on a Bug that carries a test. It re-materializes
+  the test into a clean tree and edits *production* code until green. Green ≠
+  correct: it first reasons what the code *should* do, then makes that the fix.
+  Reward `R_solve = passes · 0.9^(lines_changed) · test_untouched` favours the
+  smallest production change that leaves the test untouched.
+- **Synthesizer** → reads the registry and emits the review / PR material: each
+  Bug with its test and (when present) its verified fix; `inconclusive`
+  suspicions become hedged open questions.
 
-Design that scales to k≈10k cheaply:
-- **Wide pool, zero extra API.** Instances are mined straight from the discovery
-  comment index (`src/wide_dataset.py`): input = the diff hunks a reviewer
-  commented on, reference = their actual inline comments. ~10k reviewers become
-  available without any per-review enrichment.
-- **Bounded GEPA cost.** `trainset(k)` = one instance per reviewer over the first
-  `k` reviewers (size ≈ k, up to thousands); GEPA *samples* it, so cost is capped
-  by `metric_budget(k) = base·(1 + α·log₂k)` (capped at `base·3`), **not** by `k`.
-- **Comparable points.** A fixed global val set (GEPA candidate selection) and a
-  fixed global eval set (the reported curve) are shared across all `k`.
-- **Auto-extends.** Reviewers are added best-covered-first; as the progressive
-  wide crawl grows the pool past 1597/2584/4181/6765/10946, re-running the sweep
-  extends the curve. The run is resumable (cached per `k`).
+**No-cheat is structural, not a guard.** The reproducer/solver only get
+`run_java`, `edit_file` (str-replace on an *existing* file), and `create_test`
+(a *new* file only under `src/test/**`). There is no tool with which to stub or
+copy the class under test, and the sandbox wipes any stray new `.java`. The
+reward is bound by the scorer **re-running the genuine code**.
 
-### Progressive wide crawl (to reach ~10k reviewers)
-`crawl.py wide` (see `run_wide.sh`) auto-discovers hundreds of `language:Java`
-repos via star-bucketed search and shallowly crawls each into the same
-`comments_index.jsonl`, growing the distinct-reviewer pool toward
-`github.wide.target_reviewers`. Single worker, resumable, meant to run for hours/
-days in the background. The deep track (10 reviewers × 300 reviews) is unaffected.
+## Verification by execution (the sandbox)
+
+Text tools cannot settle our worst errors (wrong overload, comparator contract,
+NPE, "won't compile", external-API behaviour). The compiler/runtime is the exact
+oracle. Builds run on a remote Docker host (server2): per-JDK sandbox images
+`review-java-{8,11,17,21,25,26}-sandbox`, dependencies through a **Nexus** proxy,
+untrusted PR code **only ever inside a container**. The JDK is picked by the
+project's **build floor, detected by compiling** — not the declared
+`maven.compiler.*`, since a wrong JDK yields false errors that poison a verdict.
+
+## How it's trained: RLVR, no caps
+
+The per-rollout reward is **execution-grounded** — the test really fails before
+the fix and passes after; a fabrication that survives text-checking dies on a
+real `javac`/`mvn` run. Two rules hold throughout (see `AGENTS.md` P2/P10/P17):
+
+- **No reasoning budget** — no `thinking_token_budget`, no small `max_tokens`.
+  A cap doesn't tighten the answer; the model gives up and emits noise.
+- **No wall-clock cap on a rollout** — a truncated trajectory has no clean
+  reward. Runs are bound only by internal per-step limits + a stall detector.
+
+The Suspector's coverage reward, for example, is
+`Σ confidence(confirmed) · 0.9^(unopened source files)` — credit for breadth,
+discounted for files never looked at.
+
+## Measurement: Claude is the judge
+
+Quality numbers come from **Claude, never the reviewer model** (a model that
+self-grades certifies its own fabrications). The metric is a code-grounded
+**point judge** with repo access: per finding good `+1` / critical `+2` /
+wrong `−1` / trivial `0`, minus `−1` per missed human∪Claude point. The
+benchmark is a 200-PR set run `mode=mr` (the human oracle is diff-scoped),
+graded 3-way (`mr` / `mr_code` / `mr_code_tools`) to show whether reading the
+repo + running tools actually helps.
+
+## The upstream experiment
+
+The claim under test is that **AI-found-AND-fixed** bugs land on their merits
+when presented as ordinary human work. So every upstream PR is built from
+**Qwen's** registry entries first — its suspicion, its regression test, its
+`fix_diff` — proven red→green by execution before opening. The agent substitutes
+its own test/fix only when Qwen's is genuinely bad, and only after explicit human
+acceptance. PRs carry **no AI attribution**, are spread across maintainers, and
+never go to `apache/*` without an explicit go (`AGENTS.md` P21/P7). As of
+2026-06 the experiment has produced merged bug-fix PRs across multiple projects
+(e.g. gson, RxJava, zxing, hutool, selenium), several landed by project leads.
 
 ## Layout
-- `src/gh_client.py`   stdlib, rate-limited, single-worker GitHub client (token from `gh`)
-- `src/crawl.py`       discovery + collection
-- `src/dataset.py`     excellent_reviews.json -> GEPA instances + splits
-- `src/llm_client.py`  OpenAI-compatible client (Qwen; model-agnostic)
-- `src/metric.py`      review-mimicry metric: 0.85·LLM-judge + 0.15·lexical
-- `src/gepa_run.py`    GEPA adapter + per-reviewer / single optimization
-- `src/compare.py`     held-out comparison report
-- `excellent_reviews.json`  the reproducible dataset (reviewer -> reviews w/ PR, diff, review body, inline comments, ids, urls)
-- `prompts/`           optimized prompts (per_reviewer/*.qwen.txt, single_great.qwen.txt)
-- `results/`           comparison.json / comparison.md + GEPA run artifacts
+- `src/current_version/suspicion.py`  the active registry pipeline (all four agents + tools)
+- `head_worker.sh` / `head_watchdog.sh` / `explore_daemons.sh`  the lane loop, self-healing watchdog, queue-refill daemons
+- `docker/`  `Dockerfile` (`review-harness`) + `run.sh` (mounts the live tree into the container)
+- `harvest_candidates.py`  append-only ledger of judged-real PR candidates (`results/pr_candidates.jsonl`)
+- `build_bug_corpus.py` / `compare_iters.py`  benchmark dataset builder + iteration comparison
+- `skills/`  reusable operator skills (e.g. `detect-java-version`)
+- **Legacy / measurement oracle:** `src/crawl.py` (corpus mining), `src/gepa_run.py` (GEPA adapter),
+  `src/compare.py`, `src/fib_sweep.py`, `src/dataset.py`, `src/metric.py`,
+  `excellent_reviews.json` (the human-review corpus), `prompts/` (evolved prompts)
 
 ## Run
+
+The active bug pipeline runs inside the `review-harness` container against one repo:
+
+```bash
+HARNESS_NAME=h-myrun INVESTIGATE_MODE=repo \
+  docker/run.sh python -u src/current_version/suspicion.py <owner>/<repo> head
+# continuous multi-lane crawl (queue-driven, resumable, self-healing):
+./head_worker.sh        # one lane; run several + ./head_watchdog.sh + ./explore_daemons.sh refill
+```
+
+Legacy GEPA pipeline (maintains the benchmark corpus):
+
 ```bash
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./run_pipeline.sh qwen          # full pipeline against the Qwen endpoint
-# or individual stages:
-./venv/bin/python src/crawl.py discover
-./venv/bin/python src/crawl.py collect
-./venv/bin/python src/gepa_run.py per --login DaveCTurner --profile qwen
-./venv/bin/python src/gepa_run.py single --profile qwen
-./venv/bin/python src/compare.py qwen
-nohup ./run_wide.sh &                      # progressive wide crawl toward ~10k reviewers
-./venv/bin/python src/fib_sweep.py qwen    # Fibonacci scaling curve (auto-extends as pool grows)
+./run_pipeline.sh qwen   # corpus crawl + GEPA + held-out comparison + scaling curve
+nohup ./run_wide.sh &    # progressive wide reviewer crawl
 ```
 
 ## Notes
-- GitHub auth comes from the `gh` CLI keyring at runtime — no token stored.
-- `config.yaml` controls seed repos, selection thresholds, Qwen endpoint, GEPA budget.
-- Qwen reasoning is disabled (`enable_thinking: false`) for speed; the prompt does the work.
-- Claude as a GEPA *task* model is deferred (Qwen-only for now); the client is
-  model-agnostic, so add a `claude` profile + key to extend.
-- "10/10 pain points" is operationalized as substantive review units
-  (CHANGES_REQUESTED, ≥2 anchored inline comments, or a long written body),
-  ranked by a concern-keyword/code-suggestion heuristic and the LLM judge.
+- GitHub auth comes from the `gh` CLI keyring at runtime — **no token stored**.
+- **Exactly one GitHub worker at a time**; rate-limit-aware, backoff on secondary limits (`AGENTS.md` P7).
+- Qwen creds via `.env` (`QWEN_API_KEY`/`QWEN_BASE_URL`), never committed; **reasoning ON**, full 131072 window.
+- The harness Python and repo tree are **mounted**, not baked — a host edit is the whole deploy (no rebuild).
+- `AGENTS.md` is the authoritative contract (P1–P21); this README is the orientation.

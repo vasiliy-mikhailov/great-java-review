@@ -1,9 +1,20 @@
 # AGENTS.md
 
 A delegation protocol, not a checklist. Each entry is a **problem**: one
-autonomous concern the operator has offloaded to the agent. Clustered — meta
-(P1); discipline (P2–P3); recipe/setup (P4–P6); substrate (P7–P12, P19–P20);
-harness (P13–P17); evaluation (P18).
+autonomous concern the operator has offloaded to the agent.
+
+**North star:** find real Java bugs, prove each with a failing unit test, fix
+them, and present the find+fix upstream as ordinary human work — the
+**suspect → reproduce → fix → synthesize** pipeline (apex **P17**; runtime/
+sandbox P14/P19; curation P21). The project *began* as GEPA prompt-evolution to
+**mimic** human reviewers (P4–P6, P11–P12); that goal is superseded, but the
+reviewer corpus it produced is retained as the human-review benchmark oracle
+(P18). Where an older problem still says "mimicry/GEPA," read it as serving that
+benchmark now, not the apex.
+
+Clustered — meta (P1); discipline (P2–P3); origin (mimicry, now measurement:
+P4–P6, P11–P12); substrate (P7–P10, P19–P20); harness + pipeline (P13–P17);
+evaluation (P18); curation (P21).
 
 > **WORKSPACE CONVENTION (operator-set).** ALL work happens in **`current_attempt/`**
 > — the single live directory (`src/`, `data/`, `results/`, `excellent_reviews.json`;
@@ -78,9 +89,9 @@ re-audit.
 
 ---
 
-## P4 — Problem (mimicry prompts) **[MAIN / apex]**: GEPA-evolved prompts that review like a given reviewer.
+## P4 — Problem (mimicry prompts) **[origin — superseded by P17]**: GEPA-evolved prompts that review like a given reviewer.
 
-**Value:** prompts that make the model produce a reviewer's **high-quality reviews** in their voice — per-reviewer and one universal. We mimic their substantive technical feedback (real pain points), NOT LGTM/nits/process chatter. Delete this and nothing else has a reason to run.
+**Value:** prompts that make the model produce a reviewer's **high-quality reviews** in their voice — per-reviewer and one universal. We mimic their substantive technical feedback (real pain points), NOT LGTM/nits/process chatter. This was the project's **original apex**; it is now **superseded by the bug pipeline (P17)**. Its lasting value is the reviewer corpus (P5), which became the human-review **benchmark oracle** (P18) the pipeline is scored against — so this problem is maintained, not chased.
 
 **Contract and constraints** *(operator-only)*: GEPA reflective evolution; task + reflection model = the active profile (`qwen`, model-agnostic via profiles). Produce per-reviewer AND one universal prompt, then a held-out comparison vs the `SEED_SINGLE` baseline. Mimicry metric = `0.85·LLM-judge + 0.15·lexical` vs the real review. **The ceiling is the two-human same-PR agreement ≈ `0.485`** (`results/score_calibration.json`), not 1.0; floor ≈ `0.04`, excellent ≈ `0.48+`. Qwen ≈ `0.29` (~56% floor→ceiling) — closing that gap is the goal (P12 / Attempt 2 chase it).
 
@@ -260,9 +271,9 @@ re-audit.
 
 ---
 
-## P17 — Problem (topology): the pipeline that finds, proves, and fixes bugs as registry entries.
+## P17 — Problem (topology) **[MAIN / apex]**: the pipeline that finds, proves, and fixes bugs as registry entries.
 
-**Value:** the cheapest agent pipeline that surfaces real bugs, proves each with a unit test, and fixes it — buying real depth without paying for over-exploration.
+**Value:** **the project's purpose** — the cheapest agent pipeline that surfaces real bugs, proves each with a failing unit test, and fixes it (then P21 presents the find+fix upstream as ordinary human work) — buying real depth without paying for over-exploration. Delete this and nothing else has a reason to run.
 
 **Contract and constraints** *(operator-only)*: a deterministic **registry pipeline** (`src/current_version/suspicion.py`), each agent given only the tools and the one reward its job needs; everything stored through a tool, never a prose blob (P15). The registry is three linked entry types — **Suspicion → Bug → Solution** — with phase-separated hand-off:
 - **Investigators → Suspicions.** `run_suspicion_review`, `mode` ∈ {`mr`,`repo`,`both`} (env `INVESTIGATE_MODE`, default `mr`). `investigate_mr` reads the diff (the **benchmark path** — the human review oracle is diff-scoped, P18); `investigate_repo` sweeps the whole repo biased to TESTED modules via `repo_map` (the **RLVR path** — execution is the oracle there). A Suspicion = {observation, suspected_bug, location, confidence}; wide net, fire on sight. `add_suspicion` runs a **dedup subagent** (merge into the higher-confidence existing entry; fail-open). **Confidence is the only priority signal** (severity was noise).
