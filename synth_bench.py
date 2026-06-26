@@ -78,6 +78,7 @@ public final class Paginator {
             symptom="Integer division drops the partial last page: pageCount(10,3)=3 but 4 pages are needed.",
             repro="assertEquals(4, Paginator.pageCount(10, 3));",
             fix="ceil division: (totalItems + pageSize - 1) / pageSize",
+            fix_token="pageSize - 1",
         ),
     ),
     dict(
@@ -105,6 +106,7 @@ public final class BinarySearch {
             symptom="(low+high) overflows int for large offsets: midpoint(MAX-1,MAX) is negative, breaking low<=mid<=high.",
             repro="int m = BinarySearch.midpoint(Integer.MAX_VALUE-1, Integer.MAX_VALUE); assertTrue(m >= Integer.MAX_VALUE-1);",
             fix="overflow-safe: low + (high - low) / 2",
+            fix_token="high - low",
         ),
     ),
     dict(
@@ -129,6 +131,45 @@ public final class AbsComparator implements Comparator<Integer> {
             symptom="Math.abs(Integer.MIN_VALUE) is negative and the subtraction overflows, so MIN_VALUE sorts as the smallest magnitude.",
             repro="sort [MIN_VALUE, 1, -1] with AbsComparator; MIN_VALUE must NOT come first.",
             fix="compare on widened longs: Long.compare(Math.abs((long)a), Math.abs((long)b))",
+            fix_token="(long)",
+        ),
+    ),
+    # Derived from a real bug the pipeline flagged in google/gson TypeAdapters.LOCALE.read():
+    # an empty locale string tokenizes to nothing, leaving language null -> new Locale(null) throws.
+    dict(
+        owner="synthbench", name="locale", art="locale",
+        pkg="com/example/locale",
+        src="LocaleParser.java",
+        code='''package com.example.locale;
+
+import java.util.Locale;
+import java.util.StringTokenizer;
+
+/** Parses an underscore-separated locale tag (e.g. "en_US") into a {@link Locale}. */
+public final class LocaleParser {
+    private LocaleParser() {}
+
+    /**
+     * Parses {@code tag} ("en", "en_US", "en_US_POSIX", ...) into a Locale.
+     * An empty tag denotes "no locale" and returns {@link Locale#ROOT}.
+     */
+    public static Locale parse(String tag) {
+        StringTokenizer st = new StringTokenizer(tag, "_");
+        String language = null, country = "", variant = "";
+        if (st.hasMoreTokens()) language = st.nextToken();
+        if (st.hasMoreTokens()) country = st.nextToken();
+        if (st.hasMoreTokens()) variant = st.nextToken();
+        return new Locale(language, country, variant);
+    }
+}
+''',
+        oracle=dict(
+            file="src/main/java/com/example/locale/LocaleParser.java",
+            method="parse",
+            symptom='An empty tag leaves language=null and new Locale(null, ...) throws NPE, but the contract says empty -> Locale.ROOT. (Minimized from gson TypeAdapters.LOCALE.read.)',
+            repro="assertEquals(Locale.ROOT, LocaleParser.parse(\"\"));  // currently throws NullPointerException",
+            fix="guard the empty tag: if (language == null) return Locale.ROOT;",
+            fix_token="ROOT",
         ),
     ),
 ]
@@ -158,7 +199,7 @@ def make(repo):
     return slug, dict(repo=f'{repo["owner"]}/{repo["name"]}', sha=sha, **repo["oracle"])
 
 
-def main():
+def generate():
     REPOS.mkdir(parents=True, exist_ok=True)
     oracle = {}
     for repo in BENCH:
@@ -171,5 +212,41 @@ def main():
     print("run one:  python -u src/current_version/suspicion.py synthbench/paging head")
 
 
+def check(slug):
+    """Assert the pipeline found AND fixed the planted bug for `slug`. Exit 0 = PASS, 1 = FAIL.
+
+    The whole point of the self-assert: take the human (me) out of the smoke loop — no
+    eyeballing reasoning logs. Reads the run JSON the pipeline wrote + the oracle, and
+    checks (a) at least one bug was confirmed, (b) a fixed solution's diff touches the
+    planted method, (c) the fix carries the expected token (the shape of the correct code).
+    """
+    key = slug.replace("/", "__")
+    runp = ROOT / "results" / "susp_runs" / f"{key}__head.json"
+    orap = ROOT / "results" / "synth_oracle.json"
+    if not runp.exists():
+        print(f"[FAIL] {slug}: no run json at {runp} (did the pipeline run?)"); return 1
+    if not orap.exists():
+        print(f"[FAIL] {slug}: no oracle at {orap} (run `synth_bench.py` to generate)"); return 1
+    run = json.load(open(runp))
+    oracle = json.load(open(orap)).get(key)
+    if not oracle:
+        print(f"[FAIL] {slug}: no oracle entry for {key}"); return 1
+    method, token = oracle["method"], oracle.get("fix_token", "")
+    sols = run.get("registry", {}).get("solutions", [])
+    found = run.get("bugs", 0) >= 1
+    fixed_sol = next((s for s in sols
+                      if s.get("fixed") and method in (s.get("fix_diff") or "")), None)
+    fixed = fixed_sol is not None
+    tok_ok = (not token) or (token in (fixed_sol.get("fix_diff", "") if fixed_sol else ""))
+    ok = found and fixed and tok_ok
+    print(f"[{'PASS' if ok else 'FAIL'}] {slug}: "
+          f"found={found} fixed[{method}]={fixed} fix_token[{token!r}]={tok_ok} "
+          f"| suspicions={run.get('n_suspicions')} bugs={run.get('bugs')} solved={run.get('solved')}")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == "check":
+        sys.exit(check(sys.argv[2]))
+    generate()
