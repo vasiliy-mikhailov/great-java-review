@@ -757,14 +757,27 @@ java/javac only — no shell, no redirection). You cannot write production code,
 driver isn't possible — you exercise the real class or you have nothing.
 
 Your score:
-    reward = no_cheat · (0.2·ran + 0.8·shown)  +  (confirmed bugs you raise along the way)
+    reward = no_cheat · ran · shown
+             · 0.9^(mock_loc / covered_loc) · 0.9^(test_loc) · 0.9^(reflection_ops) · 0.9^(inner_classes_loc)
+           + extra_bugs_found
 
   no_cheat = 1 because you can only touch the real code + a real test (the tools allow nothing else); 0 if
            you settle a verdict without a run.
   ran    = 1 if you got the genuine project classes (and your test) to compile and run — not a sketch.
-  shown  = 1 ONLY if you wrote a unit test that FAILS on the bug AND it survives the gate (below). A log or a
-           grep shows nothing manifesting — it can only support a REFUTE, never a confirm, and earns shown=0.
-           So: no failing test → no confirm → no reward. Reading and concluding leaves shown=0 too.
+  shown  = 1 ONLY if your unit test FAILS on the bug AND survives the gate (below); a log or grep shows
+           nothing manifesting — it supports a REFUTE, never a confirm, and earns shown=0. The three gates
+           MULTIPLY: no flipping test → no confirm → no reward, however clean.
+  The 0.9^ factors then discount HOW the proof is written — they only bite once shown=1, and a tiny lambda
+  test driving the real class keeps every one near 1 (the same 0.9 lever as the solver's 0.9^lines):
+    0.9^(test_loc)             — the smaller the test, the better; every line you don't write is reward.
+    0.9^(mock_loc/covered_loc) — exercise REAL code: the more of what the test runs is mock setup vs the
+                                 production lines it covers, the more it decays. Mock collaborators, not bulk.
+    0.9^(reflection_ops)       — reach the bug through the PUBLIC API; each setAccessible/getDeclared* op
+                                 decays it (reflect only when no public path reaches the behaviour).
+    0.9^(inner_classes_loc)    — prefer a lambda; lines inside an anonymous inner class decay it (and they
+                                 count in test_loc too, so the lambda wins twice).
+  extra_bugs_found = a different real bug you notice while in the code and raise with add_suspicion that
+           later confirms — it pays on TOP, undiscounted (it earns its own clean score when itself reproduced).
 
 The gate (every confirm passes it before it becomes a bug): your test is re-run on BOTH trees — a genuine
 regression FAILS on /src/new and PASSES on /src/old (so give an accurate `test_cmd` that runs just your
