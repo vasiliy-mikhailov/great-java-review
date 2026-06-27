@@ -67,6 +67,7 @@ def _add_bug(suspicion, verdict, validation=""):
             suspected_bug=suspicion.suspected_bug, location=suspicion.location,
             repro_kind=str(verdict.get("repro_kind", "")), evidence=str(verdict.get("evidence", ""))[:600],
             reproduction=str(verdict.get("reproduction", ""))[:2000],
+            bug_trace=str(verdict.get("bug_trace", ""))[:2500],
             test_path=str(verdict.get("test_path", "")), test_src=str(verdict.get("test_src", "")),
             test_cmd=str(verdict.get("test_cmd", "")), validation=str(validation),
             build_edit_path=str(verdict.get("build_edit_path", "")),
@@ -80,17 +81,22 @@ def _add_solution(bug, fix):
     """Record the solver's outcome for a bug as a Solution registry entry, with the reward computed from
     MEASURED inputs (not the model's self-report):
         reward = passes · 0.9^lines_changed · (test_changed ? 0 : 1)
-    passes requires a real test that the solver turned green (a grep-only bug has no test -> 0). lines_changed
-    is the production patch size measured from git in solve(); test_changed is whether the solver edited the
-    test itself (disk vs the materialized test). Touch the test -> 0; the smaller the real fix, the higher."""
+    passes requires a real test that the solver turned green AND a captured green run (fix_trace from run_java —
+    a grep-only bug has no test -> 0; a "fixed" claim with no real green run -> 0). lines_changed is the
+    production patch size measured from git in solve(); test_changed is whether the solver edited the test
+    itself (disk vs the materialized test). Touch the test -> 0; the smaller the real fix, the higher."""
     diff = str(fix.get("fix_diff", ""))
     fixed = bool(fix.get("fixed"))
     lines = int(fix.get("lines_changed", 0) or 0)
     test_changed = bool(fix.get("test_changed", False))
-    passes = fixed and bool(bug.test_src)          # only a real, test-backed fix counts
+    # fix_trace = the AUTHORITATIVE green run captured from run_java (Tests run … Failures: 0 + BUILD SUCCESS).
+    # The reward is gated on it: a real demonstrative after-fix trace, not the model's "fixed" word.
+    fix_trace = str(fix.get("fix_trace", "") or "")
+    trace_ok = bool(fix_trace)
+    passes = fixed and bool(bug.test_src) and trace_ok  # real, test-backed fix WITH a captured green run
     reward = (1.0 if passes else 0.0) * (0.9 ** max(0, lines)) * (0.0 if test_changed else 1.0)
     sol = Solution(id=len(_SOLUTIONS), bug_id=bug.id, fixed=fixed, fix_diff=diff[:2000],
-                   fix_rerun=str(fix.get("rerun", ""))[:1500], lines_changed=lines,
+                   fix_rerun=(fix_trace or str(fix.get("rerun", "")))[:1500], lines_changed=lines,
                    test_changed=test_changed, reward=round(reward, 4))
     _SOLUTIONS.append(sol)
     return sol
@@ -150,9 +156,53 @@ def _register_suspicion(observation, suspected_bug, location, confidence):
 
 _VERDICT = {}   # the reproducer writes its verdict here via the record_verdict tool (not parsed prose)
 
+# AUTHORITATIVE run log: every run_java is appended here (the GENUINE tool output, never the model's prose).
+# The reproducer's bug_trace (the failing run that demonstrates the bug) and the solver's fix_rerun (the
+# passing run that demonstrates the fix) are read from THIS, not self-reported — so a trace can't be faked.
+_RUNS = []      # [{"cmd","version","rc","out"}] for the agent currently running; reset per reproduce/solve
+
+
+def _record_run(cmd, version, rc, out):
+    _RUNS.append({"cmd": str(cmd), "version": str(version), "rc": int(rc),
+                  "out": str(out or "")[-4000:]})
+
+
+def _fmt_run(r):
+    return f"$ {r['cmd']}\n{r['out']}".strip()
+
+
+def _trace_shows_fail(r):
+    """A genuine FAILING test run: a non-zero surefire/gradle failure or error count (the bug manifesting)."""
+    s = r.get("out", "")
+    return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)
+                or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s)
+                or (("BUILD FAILURE" in s or r.get("rc", 0) != 0) and re.search(r"(?i)\btest\b", s)))
+
+
+def _trace_shows_pass(r):
+    """A genuine PASSING test run: surefire/gradle reports the test green with zero failures and zero errors."""
+    s = r.get("out", "")
+    return bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0", s)
+                and ("BUILD SUCCESS" in s or r.get("rc", 0) == 0))
+
+
+def _last_fail_trace():
+    for r in reversed(_RUNS):
+        if _trace_shows_fail(r):
+            return _fmt_run(r)
+    return ""
+
+
+def _last_pass_trace():
+    for r in reversed(_RUNS):
+        if _trace_shows_pass(r):
+            return _fmt_run(r)
+    return ""
+
 
 def _reset_verdict():
     _VERDICT.clear()
+    _RUNS.clear()
 
 
 _FIX = {}   # the solver writes its fix here via the record_fix tool
@@ -160,6 +210,7 @@ _FIX = {}   # the solver writes its fix here via the record_fix tool
 
 def _reset_fix():
     _FIX.clear()
+    _RUNS.clear()
 
 
 class AddSuspicionAction(Action):
@@ -286,15 +337,21 @@ class _RecordVerdictExecutor(ToolExecutor):
             _VERDICT["verdict"] = "inconclusive"
             return RecordVerdictObservation.from_text(
                 text="a verdict has to be SHOWN by a run. Inconclusive — run something and record again.")
-        # CONFIRM requires a failing unit test. grep/log can only refute (they show nothing manifesting); a
-        # confirm without a real failing test (test_src) is not a bug — the reproducer earns nothing for it.
+        # bug_trace: the AUTHORITATIVE failing run captured from run_java (the bug manifesting), not the model's
+        # prose. This is the proof that ships in the PR; it is read off the genuine tool output, never typed.
+        _VERDICT["bug_trace"] = _last_fail_trace()
+        # CONFIRM requires a failing unit test that ACTUALLY went red in a run. grep/log can only refute (they
+        # show nothing manifesting); a confirm without a real failing test (test_src) AND a captured failing
+        # trace (_last_fail_trace) is not a bug — the reproducer earns nothing for it.
         if _VERDICT["verdict"] == "confirmed" and (
-                _VERDICT["repro_kind"] not in ("regression_test", "test") or not _VERDICT["test_src"].strip()):
+                _VERDICT["repro_kind"] not in ("regression_test", "test")
+                or not _VERDICT["test_src"].strip() or not _VERDICT["bug_trace"]):
             _VERDICT["verdict"] = "inconclusive"
             return RecordVerdictObservation.from_text(
                 text="a bug is CONFIRMED only by a unit test that FAILS on it — write a @Test that goes red on "
-                     "the bug (test_path + test_src + test_cmd) and record again. A grep/log can only support "
-                     "'refuted'; on its own it is inconclusive, not a confirm.")
+                     "the bug and run_java it so the failure is captured (test_path + test_src + test_cmd), then "
+                     "record again. No captured failing run (Tests run … Failures: >0) → inconclusive, not a "
+                     "confirm. A grep/log can only support 'refuted'.")
         return RecordVerdictObservation.from_text(text=f"recorded verdict: {_VERDICT['verdict']} ({_VERDICT['repro_kind']})")
 
 
@@ -339,6 +396,9 @@ class _RecordFixExecutor(ToolExecutor):
         _FIX["fixed"] = bool(action.fixed)
         _FIX["fix_diff"] = str(action.fix_diff)
         _FIX["rerun"] = str(action.rerun)
+        # AUTHORITATIVE pass trace: the genuine green run captured from run_java (overrides the self-reported
+        # rerun). The solver's reward is gated on this, so "fixed" can't be claimed without a real green run.
+        _FIX["fix_trace"] = _last_pass_trace()
         return RecordFixObservation.from_text(text=f"recorded fix: fixed={_FIX['fixed']}")
 
 
@@ -476,7 +536,9 @@ class _RunJavaExecutor(ToolExecutor):
         if first not in _RUNJAVA_OK or any(b in cmd for b in _RUNJAVA_BAD):
             return RunJavaObservation.from_text(text="rejected: run_java only runs mvn/gradle/java/javac with no "
                 "shell redirection or file-writing. To change code use edit_file (existing files only).")
-        rc, out = _sandbox.exec_(cmd, version=getattr(action, "version", "new"))
+        ver = getattr(action, "version", "new")
+        rc, out = _sandbox.exec_(cmd, version=ver)
+        _record_run(cmd, ver, rc, out)   # authoritative trace capture (bug_trace / fix_rerun read from here)
         return RunJavaObservation.from_text(text=f"exit={rc}\n{out}")
 
 
@@ -766,7 +828,10 @@ Your score:
   ran    = 1 if you got the genuine project classes (and your test) to compile and run — not a sketch.
   shown  = 1 ONLY if your unit test FAILS on the bug AND survives the gate (below); a log or grep shows
            nothing manifesting — it supports a REFUTE, never a confirm, and earns shown=0. The three gates
-           MULTIPLY: no flipping test → no confirm → no reward, however clean.
+           MULTIPLY: no flipping test → no confirm → no reward, however clean. The failing run itself is the
+           proof: the LAST run_java where the test goes red (`Tests run … Failures: >0`) is captured verbatim
+           as the bug's `bug_trace` (the fail-before evidence that ships in the PR) — so you must actually
+           run_java the test and SEE it red; a confirm with no captured red run is downgraded to inconclusive.
   The 0.9^ factors then discount HOW the proof is written — they only bite once shown=1, and a tiny lambda
   test driving the real class keeps every one near 1 (the same 0.9 lever as the solver's 0.9^lines):
     0.9^(test_loc)             — the smaller the test, the better; every line you don't write is reward.
@@ -809,7 +874,10 @@ is green.
 Two things shape your score:
     reward = passes · 0.9^(lines_changed) · test_untouched
 
-  passes         — the test now passes and nothing else breaks. Show it by re-running, not by asserting.
+  passes         — the test now passes and nothing else breaks. Show it by re-running, not by asserting: the
+                   LAST run_java where the test is green (`Tests run … Failures: 0, Errors: 0` + BUILD SUCCESS)
+                   is captured verbatim as the `fix_rerun` (the after-fix proof that ships in the PR), and the
+                   reward is GATED on it — `fixed=true` with no captured green run scores 0.
   0.9^lines      — the fewer production lines you change, the better (0 lines = 1.0, 5 ≈ 0.59, 10 ≈ 0.35), so
                    look for the tight, root-cause fix rather than a broad rewrite.
   test_untouched — 1 if you leave the test exactly as written, 0 if you change even a single line of it.
@@ -849,6 +917,8 @@ class Bug:
     repro_kind: str = ""              # regression_test / test — confirmed only by a failing unit test
     evidence: str = ""                # one-line: file:line + what the run showed
     reproduction: str = ""            # the actual run: command(s) + output proving it fails
+    bug_trace: str = ""               # AUTHORITATIVE failing run captured from run_java (the bug manifesting,
+    #                                   `Tests run … Failures: >0`) — the fail-before proof pasted into the PR
     test_path: str = ""               # the unit/regression test file (ships in the PR)
     test_src: str = ""                # full test source captured from disk (fail-before / pass-after)
     test_cmd: str = ""                # the command that runs just this test (gate re-runs it on both trees)
