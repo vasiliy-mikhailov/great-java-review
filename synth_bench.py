@@ -260,6 +260,21 @@ def make(repo):
     srcdir.mkdir(parents=True)
     (d / "pom.xml").write_text(repo.get("pom") or POM.format(art=repo["art"]))
     (srcdir / repo["src"]).write_text(repo["code"])
+    # A trivial baseline test so the module reads as TESTED in the repo map. Real repos have tests, so the
+    # suspector engages; without one, a synth repo looks unconfirmable ("prefer TESTED modules") and the
+    # suspector gets discouraged and often files 0 suspicions (flaky on paging, dead on verbose). The
+    # reproducer still adds its own bug-specific failing test; this one just keeps the module confirmable.
+    pkg = repo["pkg"].replace("/", ".")
+    testdir = d / "src" / "test" / "java" / repo["pkg"]
+    testdir.mkdir(parents=True)
+    (testdir / "BaselineTest.java").write_text(
+        f"package {pkg};\n\n"
+        "import org.junit.Test;\n"
+        "import static org.junit.Assert.assertTrue;\n\n"
+        "/** Baseline test so this module is a TESTED module (the real bug test is added during repro). */\n"
+        "public class BaselineTest {\n"
+        "    @Test public void baseline() { assertTrue(true); }\n"
+        "}\n")
     sh(["git", "init", "-q"], d)
     sh(["git", "add", "-A"], d)
     sh(["git", "-c", "user.email=bench@example.com", "-c", "user.name=bench",
