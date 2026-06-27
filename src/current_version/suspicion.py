@@ -554,6 +554,11 @@ class _RunJavaExecutor(ToolExecutor):
             return RunJavaObservation.from_text(text="rejected: run_java only runs mvn/gradle/java/javac with no "
                 "shell redirection or file-writing. To change code use edit_file (existing files only).")
         ver = getattr(action, "version", "new")
+        # Strip -q/--quiet: a QUIET passing test prints no surefire summary (`Tests run … Failures: 0`) and no
+        # `BUILD SUCCESS` (both INFO-level), so a genuine green run can't be recognised and the fix scores 0
+        # by the trace gate. Failures print at ERROR even under -q (so bug_trace survived), but the pass does
+        # not — strip it so every run emits a recognisable summary. Output-only flag; safe to drop.
+        cmd = " ".join(t for t in cmd.split() if t not in ("-q", "--quiet", "-quiet"))
         rc, out = _sandbox.exec_(cmd, version=ver)
         _record_run(cmd, ver, rc, out)   # authoritative trace capture (bug_trace / fix_rerun read from here)
         return RunJavaObservation.from_text(text=f"exit={rc}\n{out}")
