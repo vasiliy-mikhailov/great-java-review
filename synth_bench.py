@@ -18,7 +18,7 @@ results/synth_oracle.json so a run can be checked against ground truth.
 
 Run ON mh (writes into data/repos/):  python3 synth_bench.py
 """
-import json, os, subprocess, shutil, pathlib
+import json, os, re, subprocess, shutil, pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent
 REPOS = ROOT / "data" / "repos"
@@ -44,6 +44,48 @@ POM = """<project xmlns="http://maven.apache.org/POM/4.0.0">
   </dependencies>
 </project>
 """
+
+# A deliberately VERBOSE build: a long plugin preamble (antrun banner, ~160 lines) runs in
+# process-test-classes, BEFORE surefire, so the `Tests run`/`BUILD` summary lands far past the first
+# ~1500 chars of `mvn test` output. This reproduces the gson/bnd situation that the trace-condense fix
+# targets: with raw front-truncation the stored trace would be all preamble; with condense it is the
+# test-runner lines. Used by the `verbose` smoke repo below (repo["pom"] overrides the default POM).
+_VERBOSE_BANNER = "\n".join(
+    "      [verbose-build] initialising plugin component %03d of 160 (simulated multi-plugin preamble)" % i
+    for i in range(160))
+VERBOSE_POM = ("""<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>verbose</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <properties>
+    <maven.compiler.source>8</maven.compiler.source>
+    <maven.compiler.target>8</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-antrun-plugin</artifactId>
+      <version>3.1.0</version>
+      <executions><execution>
+        <id>verbose-preamble</id>
+        <phase>process-test-classes</phase>
+        <goals><goal>run</goal></goals>
+        <configuration><target>
+          <echo>%BANNER%</echo>
+        </target></configuration>
+      </execution></executions>
+    </plugin>
+  </plugins></build>
+</project>
+""").replace("%BANNER%", _VERBOSE_BANNER)
 
 # ----- repo definitions: each plants exactly one deterministic bug -----
 BENCH = [
@@ -172,6 +214,34 @@ public final class LocaleParser {
             fix_token="ROOT",
         ),
     ),
+    # Same minimal bug shape, but a VERBOSE build (see VERBOSE_POM): the test summary lands far past the
+    # first ~1500 chars of `mvn test`, so this is the smoke that exercises the trace-condense fix end to end.
+    dict(
+        owner="synthbench", name="verbose", art="verbose",
+        pkg="com/example/verbose",
+        src="Clamp.java",
+        pom=VERBOSE_POM,
+        code='''package com.example.verbose;
+
+/** Confines a value to an inclusive range. */
+public final class Clamp {
+    private Clamp() {}
+
+    /** Returns {@code v} confined to [{@code lo}, {@code hi}] (lo <= hi). */
+    public static int clamp(int v, int lo, int hi) {
+        return v < lo ? lo : v;
+    }
+}
+''',
+        oracle=dict(
+            file="src/main/java/com/example/verbose/Clamp.java",
+            method="clamp",
+            symptom="Upper bound is never applied: clamp(10, 0, 5) returns 10 instead of 5.",
+            repro="assertEquals(5, Clamp.clamp(10, 0, 5));",
+            fix="also clamp above hi: v > hi ? hi : (v < lo ? lo : v)",
+            fix_token="hi",
+        ),
+    ),
 ]
 
 
@@ -187,7 +257,7 @@ def make(repo):
         shutil.rmtree(d)
     srcdir = d / "src" / "main" / "java" / repo["pkg"]
     srcdir.mkdir(parents=True)
-    (d / "pom.xml").write_text(POM.format(art=repo["art"]))
+    (d / "pom.xml").write_text(repo.get("pom") or POM.format(art=repo["art"]))
     (srcdir / repo["src"]).write_text(repo["code"])
     sh(["git", "init", "-q"], d)
     sh(["git", "add", "-A"], d)
@@ -238,10 +308,18 @@ def check(slug):
                       if s.get("fixed") and method in (s.get("fix_diff") or "")), None)
     fixed = fixed_sol is not None
     tok_ok = (not token) or (token in (fixed_sol.get("fix_diff", "") if fixed_sol else ""))
-    ok = found and fixed and tok_ok
+    # trace-quality: the stored before/after traces must carry the real surefire summary, not be empty or
+    # front-truncated to build noise (the bug the condense fix targets — see VERBOSE_POM / `verbose` repo).
+    bugs_reg = run.get("registry", {}).get("bugs", [])
+    bug_trace = next((b.get("bug_trace", "") for b in bugs_reg if (b.get("bug_trace") or "").strip()), "")
+    fix_rerun = (fixed_sol or {}).get("fix_rerun", "") if fixed_sol else ""
+    trace_ok = ("Tests run:" in bug_trace) and bool(re.search(r"Tests run:\s*\d+,\s*Failures:\s*0", fix_rerun))
+    ok = found and fixed and tok_ok and trace_ok
     print(f"[{'PASS' if ok else 'FAIL'}] {slug}: "
-          f"found={found} fixed[{method}]={fixed} fix_token[{token!r}]={tok_ok} "
+          f"found={found} fixed[{method}]={fixed} fix_token[{token!r}]={tok_ok} trace={trace_ok} "
           f"| suspicions={run.get('n_suspicions')} bugs={run.get('bugs')} solved={run.get('solved')}")
+    if not trace_ok:
+        print(f"       bug_trace[:80]={bug_trace[:80]!r}  fix_rerun[:80]={fix_rerun[:80]!r}")
     return 0 if ok else 1
 
 
