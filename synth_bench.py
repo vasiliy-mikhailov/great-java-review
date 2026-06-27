@@ -303,10 +303,19 @@ def check(slug):
     if not oracle:
         print(f"[FAIL] {slug}: no oracle entry for {key}"); return 1
     method, token = oracle["method"], oracle.get("fix_token", "")
+    ofile = (oracle.get("file") or "").split("/")[-1]   # planted source filename, e.g. Paginator.java
     sols = run.get("registry", {}).get("solutions", [])
+    bugs_reg = run.get("registry", {}).get("bugs", [])
+    loc_by_bug = {b.get("id"): (b.get("location") or "") for b in bugs_reg}
     found = run.get("bugs", 0) >= 1
-    fixed_sol = next((s for s in sols
-                      if s.get("fixed") and method in (s.get("fix_diff") or "")), None)
+    # Match the fixed solution to the planted bug by FILE (robust: a bare changed-line fix_diff carries
+    # neither the method name nor the path, so the old `method in fix_diff` false-failed real fixes —
+    # seen on paging). Fall back to method-name-in-diff.
+    def _hits(s):
+        loc = loc_by_bug.get(s.get("bug_id"), "")
+        fd = s.get("fix_diff") or ""
+        return bool((ofile and (ofile in loc or ofile in fd)) or (method in fd))
+    fixed_sol = next((s for s in sols if s.get("fixed") and _hits(s)), None)
     fixed = fixed_sol is not None
     tok_ok = (not token) or (token in (fixed_sol.get("fix_diff", "") if fixed_sol else ""))
     # trace-quality: the stored before/after traces must carry the real surefire summary, not be empty or
