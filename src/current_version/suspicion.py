@@ -189,11 +189,14 @@ def _record_run(cmd, version, rc, out):
 
 
 def _trace_shows_fail(r):
-    """A genuine FAILING test run: a non-zero surefire/gradle failure or error count (the bug manifesting)."""
+    """A genuine FAILING test run: a non-zero surefire/gradle failure or error COUNT (the bug manifesting).
+    A setup BUILD FAILURE (no tests matched, nothing compiled) is NOT a reproduction and must be rejected —
+    otherwise `mvn test -Dtest=X` finding nothing would falsely 'confirm' a bug (seen on synthbench/verbose)."""
     s = r.get("trace", "")
+    if re.search(r"No tests (to run|matching|were executed)|were no tests", s):
+        return False
     return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)
-                or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s)
-                or (("BUILD FAILURE" in s or r.get("rc", 0) != 0) and re.search(r"(?i)\btest\b", s)))
+                or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s))
 
 
 def _trace_shows_pass(r):
