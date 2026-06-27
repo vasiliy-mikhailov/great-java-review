@@ -67,7 +67,7 @@ def _add_bug(suspicion, verdict, validation=""):
             suspected_bug=suspicion.suspected_bug, location=suspicion.location,
             repro_kind=str(verdict.get("repro_kind", "")), evidence=str(verdict.get("evidence", ""))[:600],
             reproduction=str(verdict.get("reproduction", ""))[:2000],
-            bug_trace=str(verdict.get("bug_trace", ""))[:2500],
+            bug_trace=str(verdict.get("bug_trace", ""))[:3500],
             test_path=str(verdict.get("test_path", "")), test_src=str(verdict.get("test_src", "")),
             test_cmd=str(verdict.get("test_cmd", "")), validation=str(validation),
             build_edit_path=str(verdict.get("build_edit_path", "")),
@@ -96,7 +96,7 @@ def _add_solution(bug, fix):
     passes = fixed and bool(bug.test_src) and trace_ok  # real, test-backed fix WITH a captured green run
     reward = (1.0 if passes else 0.0) * (0.9 ** max(0, lines)) * (0.0 if test_changed else 1.0)
     sol = Solution(id=len(_SOLUTIONS), bug_id=bug.id, fixed=fixed, fix_diff=diff[:2000],
-                   fix_rerun=(fix_trace or str(fix.get("rerun", "")))[:1500], lines_changed=lines,
+                   fix_rerun=(fix_trace or str(fix.get("rerun", "")))[:3500], lines_changed=lines,
                    test_changed=test_changed, reward=round(reward, 4))
     _SOLUTIONS.append(sol)
     return sol
@@ -162,18 +162,35 @@ _VERDICT = {}   # the reproducer writes its verdict here via the record_verdict 
 _RUNS = []      # [{"cmd","version","rc","out"}] for the agent currently running; reset per reproduce/solve
 
 
+# A verbose Maven build buries the test result (Tests run / BUILD line) at the END of a long log, after
+# pages of plugin setup (bnd, central-publishing, jacoco...). A raw dump that is later FRONT-truncated for
+# storage loses exactly the lines that matter. So CONDENSE at record time: keep only the test-runner lines,
+# pulled from anywhere in the full output, before any truncation. The result is short, meaningful, and
+# survives storage caps. _trace_shows_fail/pass then read this condensed form (the summary lines are kept).
+_TRACE_KEEP = re.compile(
+    r"Running [\w.]+"
+    r"|Tests run:"
+    r"|<<< (FAILURE|ERROR)"
+    r"|BUILD (SUCCESS|FAILURE)"
+    r"|Expecting |expected[:<]|but was|AssertionError|[A-Za-z][\w.]*Exception"
+    r"|^\s+at [\w.$]+\([^)]*:\d+\)"
+    r"|No tests (to run|matching)|There (was|were) .*failure")
+
+
+def _condense(cmd, out):
+    keep = [ln.rstrip() for ln in str(out or "").splitlines() if _TRACE_KEEP.search(ln)]
+    body = "\n".join(keep[-25:]) if keep else str(out or "")[-1000:]
+    return (f"$ {cmd}\n{body}").strip()
+
+
 def _record_run(cmd, version, rc, out):
     _RUNS.append({"cmd": str(cmd), "version": str(version), "rc": int(rc),
-                  "out": str(out or "")[-4000:]})
-
-
-def _fmt_run(r):
-    return f"$ {r['cmd']}\n{r['out']}".strip()
+                  "trace": _condense(cmd, out)})
 
 
 def _trace_shows_fail(r):
     """A genuine FAILING test run: a non-zero surefire/gradle failure or error count (the bug manifesting)."""
-    s = r.get("out", "")
+    s = r.get("trace", "")
     return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)
                 or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s)
                 or (("BUILD FAILURE" in s or r.get("rc", 0) != 0) and re.search(r"(?i)\btest\b", s)))
@@ -181,7 +198,7 @@ def _trace_shows_fail(r):
 
 def _trace_shows_pass(r):
     """A genuine PASSING test run: surefire/gradle reports the test green with zero failures and zero errors."""
-    s = r.get("out", "")
+    s = r.get("trace", "")
     return bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0", s)
                 and ("BUILD SUCCESS" in s or r.get("rc", 0) == 0))
 
@@ -189,14 +206,14 @@ def _trace_shows_pass(r):
 def _last_fail_trace():
     for r in reversed(_RUNS):
         if _trace_shows_fail(r):
-            return _fmt_run(r)
+            return r["trace"]
     return ""
 
 
 def _last_pass_trace():
     for r in reversed(_RUNS):
         if _trace_shows_pass(r):
-            return _fmt_run(r)
+            return r["trace"]
     return ""
 
 
