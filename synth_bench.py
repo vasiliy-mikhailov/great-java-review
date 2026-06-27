@@ -45,14 +45,15 @@ POM = """<project xmlns="http://maven.apache.org/POM/4.0.0">
 </project>
 """
 
-# A deliberately VERBOSE build: a long plugin preamble (antrun banner, ~160 lines) runs in
-# process-test-classes, BEFORE surefire, so the `Tests run`/`BUILD` summary lands far past the first
-# ~1500 chars of `mvn test` output. This reproduces the gson/bnd situation that the trace-condense fix
-# targets: with raw front-truncation the stored trace would be all preamble; with condense it is the
-# test-runner lines. Used by the `verbose` smoke repo below (repo["pom"] overrides the default POM).
+# A moderately VERBOSE build: a plugin preamble (antrun banner) runs in process-test-classes, BEFORE
+# surefire, so the `Tests run`/`BUILD` summary lands PAST the first ~1500 chars of `mvn test` output (the
+# old front-truncation window) — reproducing the gson/bnd situation the trace-condense fix targets. Kept
+# modest (~28 lines ≈ 2.7k chars) on purpose: enough to overshoot 1500 and exercise condensing, but NOT
+# so large that the raw run_java output floods the agent's context (160 lines ≈ 20k did, starving the
+# suspector/reproducer). Used by the `verbose` smoke repo below (repo["pom"] overrides the default POM).
 _VERBOSE_BANNER = "\n".join(
-    "      [verbose-build] initialising plugin component %03d of 160 (simulated multi-plugin preamble)" % i
-    for i in range(160))
+    "      [verbose-build] initialising plugin component %03d of 28 (simulated multi-plugin preamble)" % i
+    for i in range(28))
 VERBOSE_POM = ("""<project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.example</groupId>
