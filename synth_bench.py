@@ -256,6 +256,13 @@ def make(repo):
     d = REPOS / slug
     if d.exists():
         shutil.rmtree(d)
+    # Also drop the harness's reused HEAD checkouts (<slug>__new-head/__old-head); otherwise a regenerate
+    # updates the repo but the suspector keeps seeing a STALE checkout (old pom/tests) — which silently made
+    # every verbose run use the old 160-line banner + no baseline test, so the fixes never took effect.
+    for suffix in ("__new-head", "__old-head"):
+        co = REPOS / (slug + suffix)
+        if co.exists():
+            shutil.rmtree(co)
     srcdir = d / "src" / "main" / "java" / repo["pkg"]
     srcdir.mkdir(parents=True)
     (d / "pom.xml").write_text(repo.get("pom") or POM.format(art=repo["art"]))
