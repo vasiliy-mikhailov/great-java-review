@@ -88,6 +88,41 @@ VERBOSE_POM = ("""<project xmlns="http://maven.apache.org/POM/4.0.0">
 </project>
 """).replace("%BANNER%", _VERBOSE_BANNER)
 
+# A GRADLE build (vs the Maven default) so the smoke exercises the Gradle/JUnitCore trace path: a green
+# Gradle run prints "BUILD SUCCESSFUL" (+ "> Task :…test"), not surefire's "Tests run: … Failures: 0", and
+# a raw JUnit run prints "OK (N tests)" — formats the trace gate must recognize. Needs the default network
+# (gradle downloads its dist + junit); run with: SANDBOX_NETWORK=default ./synth_smoke.sh synthbench/gradlebug
+GRADLE_BUILD = """plugins { id 'java' }
+repositories { mavenCentral() }
+dependencies { testImplementation 'junit:junit:4.13.2' }
+test { useJUnit() }
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+"""
+GRADLE_WRAPPER_PROPS = (
+    "distributionBase=GRADLE_USER_HOME\n"
+    "distributionPath=wrapper/dists\n"
+    "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip\n"
+    "networkTimeout=10000\n"
+    "zipStoreBase=GRADLE_USER_HOME\n"
+    "zipStorePath=wrapper/dists\n")
+GRADLE_WRAPPER_REF = "ReactiveX__RxJava"   # an existing clone to copy gradlew + gradle-wrapper.jar from
+
+
+def _write_gradle(d, repo):
+    (d / "build.gradle").write_text(GRADLE_BUILD)
+    (d / "settings.gradle").write_text(f'rootProject.name = "{repo["art"]}"\n')
+    ref = REPOS / GRADLE_WRAPPER_REF
+    wdir = d / "gradle" / "wrapper"
+    wdir.mkdir(parents=True)
+    shutil.copy(ref / "gradlew", d / "gradlew")
+    os.chmod(d / "gradlew", 0o755)
+    shutil.copy(ref / "gradle" / "wrapper" / "gradle-wrapper.jar", wdir / "gradle-wrapper.jar")
+    (wdir / "gradle-wrapper.properties").write_text(GRADLE_WRAPPER_PROPS)
+
+
 # ----- repo definitions: each plants exactly one deterministic bug -----
 BENCH = [
     dict(
@@ -243,6 +278,34 @@ public final class Clamp {
             fix_token="hi",
         ),
     ),
+    # GRADLE build (build="gradle" -> build.gradle + wrapper instead of pom.xml). Exercises the Gradle /
+    # JUnitCore trace path. Run with the default network: SANDBOX_NETWORK=default ./synth_smoke.sh ...
+    dict(
+        owner="synthbench", name="gradlebug", art="gradlebug",
+        pkg="com/example/gradlebug",
+        src="Clamp.java",
+        build="gradle",
+        code='''package com.example.gradlebug;
+
+/** Confines a value to an inclusive range. */
+public final class Clamp {
+    private Clamp() {}
+
+    /** Returns {@code v} confined to [{@code lo}, {@code hi}] (lo <= hi). */
+    public static int clamp(int v, int lo, int hi) {
+        return v < lo ? lo : v;
+    }
+}
+''',
+        oracle=dict(
+            file="src/main/java/com/example/gradlebug/Clamp.java",
+            method="clamp",
+            symptom="Upper bound never applied (Gradle build): clamp(10, 0, 5) returns 10 instead of 5.",
+            repro="assertEquals(5, Clamp.clamp(10, 0, 5));",
+            fix="also clamp above hi: v > hi ? hi : (v < lo ? lo : v)",
+            fix_token="hi",
+        ),
+    ),
 ]
 
 
@@ -265,8 +328,11 @@ def make(repo):
             shutil.rmtree(co)
     srcdir = d / "src" / "main" / "java" / repo["pkg"]
     srcdir.mkdir(parents=True)
-    (d / "pom.xml").write_text(repo.get("pom") or POM.format(art=repo["art"]))
     (srcdir / repo["src"]).write_text(repo["code"])
+    if repo.get("build") == "gradle":
+        _write_gradle(d, repo)
+    else:
+        (d / "pom.xml").write_text(repo.get("pom") or POM.format(art=repo["art"]))
     # A trivial baseline test so the module reads as TESTED in the repo map. Real repos have tests, so the
     # suspector engages; without one, a synth repo looks unconfirmable ("prefer TESTED modules") and the
     # suspector gets discouraged and often files 0 suspicions (flaky on paging, dead on verbose). The
@@ -345,7 +411,13 @@ def check(slug):
     bugs_reg = run.get("registry", {}).get("bugs", [])
     bug_trace = next((b.get("bug_trace", "") for b in bugs_reg if (b.get("bug_trace") or "").strip()), "")
     fix_rerun = (fixed_sol or {}).get("fix_rerun", "") if fixed_sol else ""
-    trace_ok = ("Tests run:" in bug_trace) and bool(re.search(r"Tests run:\s*\d+,\s*Failures:\s*0", fix_rerun))
+    # accept Maven (surefire), Gradle (BUILD SUCCESSFUL + a test task / "N tests completed"), and the raw
+    # JUnit console runner ("OK (N tests)") — the trace gate understands all three.
+    red = bool(re.search(r"(Failures|Errors):\s*[1-9]|Tests run:\s*\d+,\s*Failures:\s*[1-9]"
+                         r"|\d+ tests? completed,\s*[1-9]\d* failed|<<< (FAILURE|ERROR)", bug_trace))
+    green = bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0|OK \(\d+ tests?\)", fix_rerun)
+                 or ("BUILD SUCCESSFUL" in fix_rerun and re.search(r"> Task :[\w:.-]*test|\d+ tests? completed", fix_rerun)))
+    trace_ok = red and green
     ok = found and fixed and tok_ok and trace_ok
     print(f"[{'PASS' if ok else 'FAIL'}] {slug}: "
           f"found={found} fixed[{method}]={fixed} fix_token[{token!r}]={tok_ok} trace={trace_ok} "
