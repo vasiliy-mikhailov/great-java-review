@@ -167,11 +167,15 @@ _RUNS = []      # [{"cmd","version","rc","out"}] for the agent currently running
 # storage loses exactly the lines that matter. So CONDENSE at record time: keep only the test-runner lines,
 # pulled from anywhere in the full output, before any truncation. The result is short, meaningful, and
 # survives storage caps. _trace_shows_fail/pass then read this condensed form (the summary lines are kept).
+# Keep the test-runner lines across all three runners we see: Maven/surefire (`Tests run: …`, `<<< FAILURE`,
+# `BUILD SUCCESS/FAILURE`), Gradle (`> Task :…test`, `BUILD SUCCESSFUL/FAILED`, `N tests completed, M failed`),
+# and the raw JUnit console runner (`OK (N tests)`, and `Tests run: N, Failures: N` on failure).
 _TRACE_KEEP = re.compile(
     r"Running [\w.]+"
     r"|Tests run:"
     r"|<<< (FAILURE|ERROR)"
-    r"|BUILD (SUCCESS|FAILURE)"
+    r"|BUILD (SUCCESS|FAILURE|SUCCESSFUL|FAILED)"
+    r"|> Task :[\w:.-]*test|\d+ tests? completed|OK \(\d+ tests?\)"
     r"|Expecting |expected[:<]|but was|AssertionError|[A-Za-z][\w.]*Exception"
     r"|^\s+at [\w.$]+\([^)]*:\d+\)"
     r"|No tests (to run|matching)|There (was|were) .*failure")
@@ -189,21 +193,25 @@ def _record_run(cmd, version, rc, out):
 
 
 def _trace_shows_fail(r):
-    """A genuine FAILING test run: a non-zero surefire/gradle failure or error COUNT (the bug manifesting).
-    A setup BUILD FAILURE (no tests matched, nothing compiled) is NOT a reproduction and must be rejected —
-    otherwise `mvn test -Dtest=X` finding nothing would falsely 'confirm' a bug (seen on synthbench/verbose)."""
+    """A genuine FAILING test run across Maven / Gradle / JUnitCore: a non-zero failure/error COUNT (the bug
+    manifesting). A setup BUILD FAILURE (no tests matched, nothing compiled) is NOT a reproduction and must be
+    rejected — `mvn test -Dtest=X` finding nothing would falsely 'confirm' a bug (seen on synthbench/verbose)."""
     s = r.get("trace", "")
     if re.search(r"No tests (to run|matching|were executed)|were no tests", s):
         return False
-    return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)
-                or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s))
+    return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)                       # surefire / JUnitCore
+                or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s)
+                or re.search(r"\d+ tests? completed,\s*[1-9]\d* failed", s))       # gradle
 
 
 def _trace_shows_pass(r):
-    """A genuine PASSING test run: surefire/gradle reports the test green with zero failures and zero errors."""
+    """A genuine PASSING test run across Maven / Gradle / JUnitCore: a test actually ran and is green."""
     s = r.get("trace", "")
-    return bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0", s)
-                and ("BUILD SUCCESS" in s or r.get("rc", 0) == 0))
+    rc0 = r.get("rc", 0) == 0
+    maven = bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0", s)) and ("BUILD SUCCESS" in s or rc0)
+    gradle = ("BUILD SUCCESSFUL" in s) and bool(re.search(r"> Task :[\w:.-]*test|\d+ tests? completed", s))
+    junitcore = bool(re.search(r"\bOK \(\d+ tests?\)", s)) and rc0
+    return bool(maven or gradle or junitcore)
 
 
 def _last_fail_trace():
