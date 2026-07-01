@@ -1,6 +1,6 @@
 ---
 name: fix-java-bugs
-description: Find and fix real bugs in a Java (Maven or Gradle) file: read one source file, prove each suspected bug with a test that FAILS on the current code, then fix the ROOT CAUSE so the test passes, never a workaround. Use when asked to find and fix bugs in Java code, review a Java file for defects and fix them, or harden a class against a bug you suspect.
+description: "Find and fix real bugs in a Java (Maven or Gradle) file: read one source file, prove each suspected bug with a test that FAILS on the current code, then fix the ROOT CAUSE so the test passes, never a workaround. Use when asked to find and fix bugs in Java code, review a Java file for defects and fix them, or harden a class against a bug you suspect."
 ---
 
 # Fix real bugs in a Java file
