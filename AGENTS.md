@@ -131,7 +131,7 @@ re-audit.
 
 **Value:** a multi-hour run that is interrupted resumes from where it stopped, not from zero.
 
-**Contract and constraints** *(operator-only)*: append-only progress to disk (e.g. `results/*.jsonl`); a flock work-queue for parallel lanes that pop atomically; resumable by re-reading state. Long local jobs run under `caffeinate -dimsu` (a closed lid suspends the process and looks like a hang).
+**Contract and constraints** *(operator-only)*: append-only progress to disk (e.g. `results/*.jsonl`); a flock work-queue (`head_queue.txt`) for parallel lanes that pop atomically; resumable by re-reading state. **Lane count is a RUNTIME KNOB, not a constant:** `head_lanes.max` holds the target, and the self-healing `head_watchdog.sh` reads it EVERY cycle and CONVERGES — STARTS the missing lanes among `1..MAX` while the queue has work, and STOPS any live lane numbered `> MAX` (kills its worker PID + its `review-*-head` container) — so `echo N > head_lanes.max` scales the fleet up OR down live, no restart. The watchdog flags a lane STUCK only when its reasoning-log token stream is silent `> STUCK_MIN` (never kills on a timer; that is the operator's criterion), and prunes images under disk pressure. Long local jobs run under `caffeinate -dimsu` (a closed lid suspends the process and looks like a hang).
 
 **Solution search approach and hints:** make each unit of work idempotent and recorded before/after; a resumed run skips completed units.
 
