@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Two lightweight background loops that turn the one-pass batch into CONTINUOUS exploration,
 # without restarting (and orphaning) the busy head/judge lanes.
-cd ~/great-java-review || exit 1
-LOCK=~/great-java-review/head_queue.lock
+cd ~/fix-java-bugs || exit 1
+LOCK=~/fix-java-bugs/head_queue.lock
 case "$1" in
   refill)
     # Keep head_queue topped up from the master cycle list so the lanes never drain & exit —

@@ -1,0 +1,32 @@
+{"repo":"alibaba__druid","findings":[
+  {
+    "file":"core/src/main/java/com/alibaba/druid/DbType.java",
+    "symbol":"DbType#oceanbase_oracle",
+    "line":"47",
+    "bug":"oceanbase_oracle is declared with the int expression (1 << 31), which evaluates to Integer.MIN_VALUE (-2147483648) and is sign-extended when widened to the long field 'mask', producing mask=0xFFFFFFFF80000000 instead of the intended single bit; this sets all 33 high bits and collides with polardb, ali_oracle, mock and every subsequent 1L<<n mask.",
+    "why_real":"Constructor is DbType(long mask); the argument 1 << 31 is int arithmetic (literal 1 is int), so 1<<31 = Integer.MIN_VALUE, and int->long widening sign-extends to 0xFFFFFFFF80000000. Sibling enum constants from index 32 up correctly use the long literal form (1L << 32); oceanbase_oracle should likewise be 1L << 31. The mask field is documented/used as a unique single bit in DbType.of(DbType...) which ORs masks together.",
+    "severity":"high",
+    "confidence":"high",
+    "how_to_prove":"assertEquals(0x80000000L, DbType.oceanbase_oracle.mask) FAILS: actual is 0xFFFFFFFF80000000L. Also (DbType.oceanbase_oracle.mask & DbType.polardb.mask) expected 0 but is polardb.mask (nonzero); and DbType.of(DbType.oceanbase_oracle) spuriously has the polardb/ali_oracle bits set. Verified by compiling: 1<<31 widened to long yields ffffffff80000000, overlapping 1L<<32 and 1L<<33."
+  },
+  {
+    "file":"core/src/main/java/com/alibaba/druid/wall/spi/WallVisitorUtils.java",
+    "symbol":"WallVisitorUtils#form",
+    "line":"2457",
+    "bug":"form(String) throws StringIndexOutOfBoundsException on a single-quote-character name such as \"\\\"\", \"'\" or \"`\": the guard startsWith(q) && endsWith(q) is satisfied by a length-1 string equal to the quote char, then substring(1, length()-1) becomes substring(1, 0) which throws.",
+    "why_real":"For a 1-char string s equal to the quote character, s.startsWith(q) and s.endsWith(q) are both true, and s.length()-1 == 0, so s.substring(1, 0) is called with beginIndex(1) > endIndex(0), which per String.substring's contract throws StringIndexOutOfBoundsException. This method is reached from WallConfig.isDenyObjects/isDenySchema/isDenyFunction on caller-supplied identifiers.",
+    "severity":"low",
+    "confidence":"high",
+    "how_to_prove":"WallVisitorUtils.form(\"\\\"\") -> expected \"\\\"\" (or empty string) but actually throws StringIndexOutOfBoundsException. Same for form(\"'\") and form(\"`\")."
+  },
+  {
+    "file":"core/src/main/java/com/alibaba/druid/util/StringUtils.java",
+    "symbol":"StringUtils#removeNameQuotes",
+    "line":"381",
+    "bug":"removeNameQuotes returns null (instead of the input) for any input of length <= 1, so a legitimate single-character unquoted identifier like \"a\" is turned into null rather than being returned unchanged.",
+    "why_real":"The method's contract (per its siblings and name) is to strip surrounding quotes and otherwise return the string; for the non-quoted, non-empty case it returns s unchanged (last line). But the early guard 's.length() <= 1' returns null, conflating a valid 1-char name with the null/empty case, whereas a 1-char name has no surrounding quote pair to strip and should be returned as-is.",
+    "severity":"low",
+    "confidence":"medium",
+    "how_to_prove":"StringUtils.removeNameQuotes(\"a\") -> expected \"a\" but actual is null; contrast removeNameQuotes(\"ab\") -> \"ab\" (returned unchanged), showing the length-1 case is inconsistently dropped to null."
+  }
+]}

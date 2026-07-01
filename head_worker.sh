@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-cd ~/great-java-review || exit 1
-Q=~/great-java-review/head_queue.txt; LOCK=~/great-java-review/head_queue.lock; CHAIN=~/great-java-review/head_chain.log
+cd ~/fix-java-bugs || exit 1
+Q=~/fix-java-bugs/head_queue.txt; LOCK=~/fix-java-bugs/head_queue.lock; CHAIN=~/fix-java-bugs/head_chain.log
 LANE="$1"
 log(){ ( flock 9; echo "$1" >> "$CHAIN" ) 9>"$LOCK"; }
 while true; do

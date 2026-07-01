@@ -62,6 +62,12 @@ call instead of grep-then-view.
 """
 
 
+# Hint when a searched path is absent. It must NOT mention sandbox_exec: no agent holding `search` also
+# holds sandbox_exec (retired, P11), so the old hint pointed the model at a tool it doesn't have.
+_MISSING_PATH_HINT = ("The workspace is the POST-PR code, so a missing path usually means the PR DELETED or "
+                      "RENAMED it — check `pr_file_diff` / `pr_files` for its current path.")
+
+
 class SearchExecutor(ToolExecutor):
     _MAX_CHARS = 12000
 
@@ -86,10 +92,7 @@ class SearchExecutor(ToolExecutor):
         abs = target if os.path.isabs(target) else os.path.join(self.working_dir, target)
         if action.path and not os.path.exists(abs):
             return SearchObservation.from_text(
-                text=(f"Path '{action.path}' does not exist in this tree. The workspace is the "
-                      "POST-PR code, so a missing path usually means the PR DELETED or RENAMED "
-                      "it — check `pr_file_diff`/`pr_files`, or read the base version with "
-                      "`sandbox_exec` version='old'."),
+                text=f"Path '{action.path}' does not exist in this tree. {_MISSING_PATH_HINT}",
                 pattern=action.pattern, is_error=True)
         ctx = max(0, min(int(action.context), 20))
         cmd = ["rg", "-n", "-i", "--no-heading", "--color", "never", "-C", str(ctx)]

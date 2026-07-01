@@ -53,7 +53,7 @@ def detect_jdk(repo_dir: str) -> int:
     target 8; most 'java 8' enforcers want 11+); 11->11; 12-17->17; >=18->21. Default 21 if undeclared."""
     import glob as _glob, re as _re
     levels = []
-    poms = _glob.glob(os.path.join(repo_dir, "**", "pom.xml"), recursive=True)[:400]
+    poms = sorted(_glob.glob(os.path.join(repo_dir, "**", "pom.xml"), recursive=True))[:400]
     for p in poms:
         try:
             t = open(p, errors="ignore").read()
@@ -67,12 +67,17 @@ def detect_jdk(repo_dir: str) -> int:
     # JavaLanguageVersion.of(<n>), and RxJava-style toolchainJdk / sourceCompatibility = "<n>". Without this,
     # a Gradle repo (RxJava) fell to DEFAULT_JDK 21 and its JDK-26 source could not compile (build failed →
     # the executable flip-check could not run → every bug fell back to the reading critic).
-    for g in _glob.glob(os.path.join(repo_dir, "**", "build.gradle*"), recursive=True)[:200]:
+    for g in sorted(_glob.glob(os.path.join(repo_dir, "**", "build.gradle*"), recursive=True))[:200]:
         try:
             t = open(g, errors="ignore").read()
         except Exception:  # noqa: BLE001
             continue
-        levels += [int(m) for m in _re.findall(r"VERSION_(\d{1,2})\b", t)]
+        # JavaVersion.VERSION_<n> AND the legacy 1.x form VERSION_1_<n> (e.g. VERSION_1_8). The old
+        # r"VERSION_(\d{1,2})\b" could NOT match VERSION_1_8 — \b fails between the word chars 1 and _ —
+        # so every Java<=10 Gradle repo silently fell to DEFAULT_JDK 21 (wrong image -> false compile
+        # errors -> the flip can't run). Capture the minor when the 1.x form is present, else the major.
+        for major, minor in _re.findall(r"VERSION_(\d{1,2})(?:_(\d{1,2}))?", t):
+            levels.append(int(minor) if minor else int(major))
         levels += [int(m) for m in _re.findall(r"JavaLanguageVersion\.of\(\s*[\"']?(\d{1,2})", t)]
         levels += [int(m) for m in _re.findall(
             r"(?:sourceCompatibility|targetCompatibility|toolchainJdk)\s*=\s*[\"']?(?:1\.)?(\d{1,2})", t)]
@@ -161,7 +166,10 @@ def diff_numstat(version: str = "new"):
         parts = ln.split("\t")
         if len(parts) == 3:
             a, d, path = parts
-            n = (int(a) if a.isdigit() else 0) + (int(d) if d.isdigit() else 0)
+            # lines TOUCHED = max(added, deleted), not added+deleted: git reports an in-place edit of N
+            # lines as +N -N, so summing double-counts it and the solver's 0.9^lines penalty came out
+            # twice as steep as the prompt advertises ("5 lines ~ 0.59"). max() = the size of the hunk.
+            n = max(int(a) if a.isdigit() else 0, int(d) if d.isdigit() else 0)
             rows.append((path, n))
     return rows
 
@@ -216,14 +224,28 @@ def _augment_maven(command: str) -> str:
     return command + _MVN_SKIPS if parts and parts[0] in _MVN_FIRST else command
 
 
-def exec_(command: str, timeout_s: int = 120, version: str = "new") -> tuple[int, str]:
+def exec_(command: str, timeout_s: int | None = None, version: str = "new") -> tuple[int, str]:
     """Run `command` (bash) inside the session container, cwd = /src/<version> (new = post-PR,
     old = base); return (exit_code, full combined stdout+stderr — no truncation, download chatter stripped).
     A Maven command is auto-augmented to skip cosmetic/lint plugins. The probe is wrapped in an INNER
-    `timeout -k` so it self-exits even if the client is interrupted."""
+    `timeout -k` so it self-exits even if the client is interrupted.
+
+    The inner bound is NOT a throttle — the old hardcoded 120s was the exit=124 wall-clock cap the contract
+    forbids (P2/P8/P14): a cold-cache or reactor `mvn test` routinely exceeds 2 min, and a 124 with no
+    `Tests run`/`BUILD` summary poisons the flip (reads as new-fails) and coerces a real reproduction to
+    inconclusive. There is a genuine tension with P6 (the container MUST self-bound, or a hung build holds
+    cache locks forever), so this isn't literally a year: the default is a large 2h that a scoped
+    `-pl X -am -Dtest=…` probe never reaches, finite enough that a wedged container still self-exits. Raise
+    it via SANDBOX_EXEC_TIMEOUT_S for a rare whole-reactor build; callers wanting a short probe pass
+    timeout_s explicitly. It is not meant to ever fire on a real scoped build."""
     name = _SESSION["name"]
     if not name:
         return 127, "sandbox not started (call start())"
+    if timeout_s is None:
+        try:
+            timeout_s = int(os.environ.get("SANDBOX_EXEC_TIMEOUT_S", "7200"))
+        except ValueError:
+            timeout_s = 7200
     command = _augment_maven(command)
     wd = "/src/old" if version == "old" else "/src/new"
     inner = f"cd {wd} && timeout -k 5 {timeout_s} bash -s"
