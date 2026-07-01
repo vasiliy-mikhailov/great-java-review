@@ -92,6 +92,32 @@ from git, even when the diff text in your context is truncated.
 * Takes no arguments."""
 
 
+def _resolve_rename(path):
+    """git renders a rename as `a/{Old => New}.java` or `old.java => new.java`. Resolve to the NEW path so
+    its numstat counts can be looked up by the name-status path (they used the brace form -> '+? -?')."""
+    if " => " not in path:
+        return path
+    if "{" in path and "}" in path:
+        pre, rest = path.split("{", 1)
+        mid, post = rest.split("}", 1)
+        _old, new = mid.split(" => ", 1)
+        return (pre + new + post).replace("//", "/")
+    return path.split(" => ", 1)[1]
+
+
+def _numstat_counts(stdout):
+    """Map each numstat row's path -> (added, deleted), indexed under BOTH the raw key AND the rename-resolved
+    new path, so a renamed+edited file's line counts are found instead of printing '+? -?' (L10)."""
+    counts = {}
+    for line in stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            val = (parts[0], parts[1])
+            counts[parts[-1]] = val
+            counts[_resolve_rename(parts[-1])] = val
+    return counts
+
+
 class PrFilesExecutor(ToolExecutor):
     def __call__(self, action: PrFilesAction, conversation: "LocalConversation | None" = None):  # noqa: ARG002
         err = _ready()
@@ -104,11 +130,7 @@ class PrFilesExecutor(ToolExecutor):
             return PrFilesObservation.from_text(
                 text=f"git diff failed for {rng}: {st.stderr.strip() or 'empty diff'}",
                 is_error=True)
-        counts = {}
-        for line in num.stdout.splitlines():
-            parts = line.split("\t")
-            if len(parts) >= 3:
-                counts[parts[-1]] = (parts[0], parts[1])
+        counts = _numstat_counts(num.stdout)
         rows = []
         for line in st.stdout.splitlines():
             parts = line.split("\t")

@@ -1,0 +1,32 @@
+{"repo":"Stirling-Tools__Stirling-PDF","findings":[
+  {
+    "file":"app/common/src/main/java/stirling/software/common/util/GeneralUtils.java",
+    "symbol":"GeneralUtils#handlePart",
+    "line":"810",
+    "bug":"A page token of just \"-\" (or \"--\") reaches the range branch, where part.split(\"-\") returns a length-0 array, so rangeParts[0] throws ArrayIndexOutOfBoundsException instead of being handled.",
+    "why_real":"Verified in a JVM: \"-\".split(\"-\") has length 0 (trailing empty strings are stripped by String.split with the default limit). The catch clause on line 822 only catches NumberFormatException, so the AIOOBE from rangeParts[0] escapes. The public entry parsePageList(String) (line 636) only catches NumberFormatException too, so it also propagates to the caller, breaking the class's own contract of gracefully returning List.of(1) for bad input.",
+    "severity":"high",
+    "confidence":"high",
+    "how_to_prove":"GeneralUtils.parsePageList(\"-\", 10, false) -> expected List.of(1) (per the NumberFormatException fallback contract) or a valid page list; actual throws java.lang.ArrayIndexOutOfBoundsException. Directly: handlePart(\"-\", 10, 0) throws AIOOBE."
+  },
+  {
+    "file":"app/common/src/main/java/stirling/software/common/util/GeneralUtils.java",
+    "symbol":"GeneralUtils#handlePart",
+    "line":"801",
+    "bug":"Any page token containing 'n' that is not a valid n-expression (e.g. \"nx\", \"n)\") makes handlePart call evaluateNFunc, which throws IllegalArgumentException on a failed format check; handlePart does not catch it, so it escapes uncaught.",
+    "why_real":"evaluateNFunc (lines 700-705) throws IllegalArgumentException when the expression fails the math-expression regex; handlePart's n-branch (lines 801-807) invokes it with no try/catch, and the outer parsePageList(String) (line 642) catches only NumberFormatException, so an invalid page string produces an uncaught IllegalArgumentException instead of the intended List.of(1) fallback. The same escape occurs when totalPages > 10000, because evaluateNFunc rejects maxValue > 10000 (line 692).",
+    "severity":"medium",
+    "confidence":"medium",
+    "how_to_prove":"GeneralUtils.parsePageList(\"nx\", 10, false) -> expected graceful fallback List.of(1); actual throws java.lang.IllegalArgumentException(\"Invalid expression format: nx\")."
+  },
+  {
+    "file":"app/common/src/main/java/stirling/software/common/util/ProcessExecutor.java",
+    "symbol":"ProcessExecutor#getInstance",
+    "line":"51",
+    "bug":"getInstance(processType, liveUpdates) memoizes the executor via computeIfAbsent keyed only on processType, so the liveUpdates flag is captured only on the first call; later calls with a different liveUpdates value silently reuse the original setting.",
+    "why_real":"computeIfAbsent(processType, ...) (line 52) only runs the mapping function on first insertion, and liveUpdates is read inside that lambda. A second call getInstance(TESSERACT, false) after getInstance(TESSERACT, true) returns the cached instance with liveUpdates=true, contradicting the caller's requested value.",
+    "severity":"low",
+    "confidence":"high",
+    "how_to_prove":"Call getInstance(Processes.TESSERACT, true) then getInstance(Processes.TESSERACT, false); expected an executor honoring liveUpdates=false, actual returns the same instance with liveUpdates=true (observable via a getter or by verifying identical object reference while the flag differs)."
+  }
+]}

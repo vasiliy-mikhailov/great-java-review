@@ -1,0 +1,126 @@
+{
+ "repo": "netty__netty",
+ "findings": [
+  {
+   "file": "common/src/main/java/io/netty/util/AsciiString.java",
+   "symbol": "AsciiString#trim(CharSequence)",
+   "line": "998",
+   "bug": "For a generic CharSequence (not String/AsciiString) the trim returns c.subSequence(start, end) where end is the INCLUSIVE index of the last non-space char, but CharSequence.subSequence's end parameter is EXCLUSIVE. This drops the last character of the trimmed result.",
+   "why_real": "The sibling instance method AsciiString#trim() (line 1007-1019) computes the same inclusive 'end' and correctly converts it to a length via 'end - start + 1' when constructing the result. The static generic branch instead passes the inclusive 'end' directly as the exclusive end of subSequence, so it is off by one and truncates the last kept char. CharSequence.subSequence(start,end) is specified with end exclusive.",
+   "severity": "high",
+   "confidence": "high",
+   "how_to_prove": "Pass a non-String, non-AsciiString CharSequence, e.g. StringBuilder sb=new StringBuilder(\" ab \"); AsciiString.trim(sb). Expected \"ab\"; actual \"a\". Also new StringBuilder(\"ab \") -> expected \"ab\", actual \"a\"."
+  },
+  {
+   "file": "common/src/main/java/io/netty/util/concurrent/MpscIntQueue.java",
+   "symbol": "MpscIntQueue.MpscAtomicIntegerArrayQueue#weakPeekReduce(int,int,IntBinaryOperator)",
+   "line": "266",
+   "bug": "When limit == 0 the method returns 0 instead of returning the 'initial' seed value.",
+   "why_real": "A reduction over zero elements must yield the initial value. The interface default implementation of weakPeekReduce (line 86-90) documents and returns 'initial' as the extreme weak case, and the Javadoc says the method returns 'the last result of the reduction operation' (which for zero processed elements is 'initial'). Returning the hard-coded 0 contradicts both the default impl and the contract for any non-zero initial.",
+   "severity": "medium",
+   "confidence": "high",
+   "how_to_prove": "MpscIntQueue q = MpscIntQueue.create(8, -1); int r = q.weakPeekReduce(0, 42, (a,b)->a+b); Expected 42; actual 0."
+  },
+  {
+   "file": "common/src/main/java/io/netty/util/internal/AppendableCharSequence.java",
+   "symbol": "AppendableCharSequence#charAt(int)",
+   "line": "50",
+   "bug": "Bounds check uses 'if (index > pos)' instead of 'if (index < 0 || index >= pos)'. charAt(pos) does not throw and instead reads chars[pos], which is outside the logical length (returns a stale/uninitialized char) whenever pos < chars.length; a negative index is also not validated.",
+   "why_real": "The CharSequence contract requires charAt to throw IndexOutOfBoundsException when index is negative or >= length(). Here length() == pos, so charAt(pos) must throw but instead returns the raw backing-array element at index pos (e.g. '\u0000' from the unused tail of the doubled buffer). length() returns pos, confirming the valid index range is [0, pos).",
+   "severity": "medium",
+   "confidence": "high",
+   "how_to_prove": "AppendableCharSequence s = new AppendableCharSequence(16); s.append('a'); // pos=1, chars.length=16. s.charAt(1) is expected to throw IndexOutOfBoundsException (index == length()) but returns '\u0000'."
+  },
+  {
+   "file": "common/src/main/java/io/netty/util/internal/AppendableCharSequence.java",
+   "symbol": "AppendableCharSequence#substring(int,int)",
+   "line": "137",
+   "bug": "The bounds check 'if (start > pos || length > pos)' fails to reject end > pos when start >= 1. e.g. start=2,end=4,pos=3 passes (length=2<=3, start=2<=3) and reads chars[3] which is past the logical content.",
+   "why_real": "substring is documented to create a String 'from the given start to end' of the logical sequence whose length is pos. The correct guard must reject end > pos (i.e. start + length > pos), as done implicitly by String.substring. The current check only limits start and length individually, allowing reads of uninitialized/stale tail bytes instead of throwing IndexOutOfBoundsException.",
+   "severity": "low",
+   "confidence": "medium",
+   "how_to_prove": "AppendableCharSequence s = new AppendableCharSequence(16); s.append('a'); s.append('b'); s.append('c'); // pos=3, chars.length=16. s.substring(2,4) is expected to throw IndexOutOfBoundsException (end 4 > length 3) but returns \"c\u0000\"."
+  },
+  {
+   "file": "codec-http/src/main/java/io/netty/handler/codec/http/HttpObjectDecoder.java",
+   "symbol": "HttpObjectDecoder static init of ISO_CONTROL_OR_WHITESPACE / LATIN_WHITESPACE",
+   "line": "1220-1222, 1384-1385",
+   "bug": "The classification tables are populated with `for (byte b = Byte.MIN_VALUE; b < Byte.MAX_VALUE; b++)`, which stops at 126 and never sets the entry for b == 127 (0x7F, DEL). Thus ISO_CONTROL_OR_WHITESPACE[128+127] stays false even though DEL is an ISO control char, so isControlOrWhitespaceAsciiChar((byte)0x7F) wrongly returns false.",
+   "why_real": "Character.isISOControl(0x7F) is true (0x7F is a C0 control, DEL). The table is intended to mark all control/whitespace bytes; every other control byte is marked. The loop bound `< Byte.MAX_VALUE` is an off-by-one that leaves index 127 unset. Consequence: in splitInitialLine() the trailing-byte guard (line 1072-1083) fails to reject a request/response line ending in DEL, and skipLineChars treats DEL inconsistently \u2014 a control character leaks through where the code clearly intends to flag it.",
+   "severity": "low",
+   "confidence": "medium",
+   "how_to_prove": "Feed the request-line bytes 'GET / HTTP/1.1\\x7f\\r\\n' to HttpRequestDecoder. Expected (matching how other control chars like 0x1f are handled): an IllegalArgumentException 'Illegal character in request line' via splitInitialLine's lastByte guard. Actual: no exception is raised for the trailing 0x7F because isControlOrWhitespaceAsciiChar(0x7F) returns false. A direct unit test: assert HttpObjectDecoder's isControlOrWhitespaceAsciiChar((byte)0x7f) \u2014 reachable via the same table \u2014 is expected true but is false."
+  },
+  {
+   "file": "codec-mqtt/src/main/java/io/netty/handler/codec/mqtt/MqttReasonCodes.java",
+   "symbol": "MqttReasonCodes#valueOfHelper (used by SubAck/UnsubAck/PubAck/PubRec/PubComp/PubRel/Disconnect/Auth valueOf)",
+   "line": "30-36",
+   "bug": "valueOfHelper returns values[b & 0xFF] and only catches ArrayIndexOutOfBoundsException; for an index that is in array bounds but never populated (a gap in the sparse VALUES table), it returns null instead of throwing. Every sibling valueOf in the codebase (MqttConnectReturnCode.valueOf, MqttProperties.MqttPropertyType.valueOf) null-checks and throws IllegalArgumentException; this one does not.",
+   "why_real": "The VALUES arrays are sparse: e.g. SubAck VALUES has length 163 but only indices 0,1,2,128,131,135,143,145,151,158,161,162 are filled, so index 3 is null. MqttDecoder.decodeSubackPayload builds List<Integer> and calls new MqttSubAckPayload(Iterable<Integer>), which invokes MqttReasonCodes.SubAck.valueOf(v.byteValue()). A SUBACK carrying an undefined-but-in-range reason-code byte (e.g. 0x03) causes list.add(null). The supposedly-typed List<MqttReasonCodes.SubAck> then holds null, and any subsequent MqttSubAckPayload.reasonCodes()/grantedQoSLevels() (also called by MqttEncoder.encodeSubAckMessage) dereferences code.byteValue() -> NullPointerException. Contract: sibling valueOf methods reject unknown codes with IllegalArgumentException; this silently yields null. Confirmed empirically that VALUES[3] is null.",
+   "severity": "medium",
+   "confidence": "high",
+   "how_to_prove": "MqttReasonCodes.SubAck.valueOf((byte) 0x03): expected IllegalArgumentException (as MqttConnectReturnCode.valueOf throws for unknown codes), actual returns null. End-to-end: decode a SUBACK whose payload granted-code byte is 0x03, then call payload.grantedQoSLevels() -> expected a value or a clean decode failure, actual NullPointerException on code.byteValue()."
+  },
+  {
+   "file": "codec-mqtt/src/main/java/io/netty/handler/codec/mqtt/MqttProperties.java",
+   "symbol": "MqttProperties.MqttProperty#equals / #hashCode (as inherited by BinaryProperty)",
+   "line": "184-198, 313-323",
+   "bug": "MqttProperty.equals compares value via this.value.equals(that.value) and hashCode uses value.hashCode(); BinaryProperty's value is a byte[], so equals/hashCode use array identity, not content. Two BinaryProperty instances with identical propertyId and identical byte content are not equal and (almost always) hash differently.",
+   "why_real": "BinaryProperty (CORRELATION_DATA 0x09, AUTHENTICATION_DATA 0x16) does not override equals/hashCode, so it inherits the base implementation that calls value.equals()/value.hashCode() on a byte[] \u2014 which is Object identity for arrays, violating the value-object equals contract that sibling properties (StringProperty, IntegerProperty) satisfy. A decode of two packets with identical correlation data yields BinaryProperty objects that are not equal, breaking property/collection comparisons and round-trip equality checks.",
+   "severity": "low",
+   "confidence": "high",
+   "how_to_prove": "new MqttProperties.BinaryProperty(CORRELATION_DATA, new byte[]{1,2,3}).equals(new MqttProperties.BinaryProperty(CORRELATION_DATA, new byte[]{1,2,3})): expected true (equal propertyId and content), actual false; hashCode() of the two also differ. Contrast with StringProperty of equal content which returns true."
+  },
+  {
+   "file": "codec-protobuf/src/main/java/io/netty/handler/codec/protobuf/ProtobufVarint32FrameDecoder.java",
+   "symbol": "ProtobufVarint32FrameDecoder#readRawVarint40 (called from readRawVarint32/decode)",
+   "line": "143",
+   "bug": "When a valid 5-byte protobuf varint32 length field is delivered split so that exactly 4 bytes are currently in the buffer (all four with the continuation bit set), readRawVarint40 throws CorruptedFrameException(\"malformed varint.\") instead of waiting for the 5th byte.",
+   "why_real": "readRawVarint32 routes to readRawVarint40 only when firstOneOnStop == 0, i.e. all four buffered bytes have the high (continuation) bit set. That is exactly the prefix of a legal 5-byte varint (values with bit>=28 set, e.g. any frame length >= 0x10000000, which is representable since maxFrameLength defaults to Integer.MAX_VALUE and ProtobufVarint32LengthFieldPrepender.computeRawVarint32Size returns 5 for such lengths). The condition `buffer.readableBytes() == 4` on line 143 means the 5th (terminating) byte has simply not arrived yet. A ByteToMessageDecoder can be handed exactly 4 bytes and then more later, so this is valid, incomplete input. The correct behavior is the same as every other incomplete-varint path in this class (readRawVarint24 resets and returns 0, and decode() then leaves readerIndex unchanged so it retries on the next read). Instead readRawVarint40 throws, and the exception propagates out of decode() to the pipeline as an exceptionCaught, aborting decoding of a perfectly valid stream. The sibling `> 4` branch on the same line correctly reads getByte(readerIndex+4) and only throws when that 5th byte itself has the continuation bit set (a genuinely malformed >5-byte varint), confirming the == 4 case is meant to be 'need more data', not 'malformed'.",
+   "severity": "high",
+   "confidence": "high",
+   "how_to_prove": "Encode a body whose length needs a 5-byte varint (>= 0x10000000). Take the 5-byte length prefix L[0..4] (L[0..3] each have 0x80 set, L[4] is the terminating byte). Feed only the first 4 bytes L[0..3] to an EmbeddedChannel with ProtobufVarint32FrameDecoder: expected -> decoder produces no output and leaves readerIndex unchanged (waits for more); actual -> throws CorruptedFrameException(\"malformed varint.\"). Equivalent direct unit test: ProtobufVarint32FrameDecoder.readRawVarint32(Unpooled.wrappedBuffer(new byte[]{(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF})) throws instead of leaving readerIndex at 0."
+  },
+  {
+   "file": "codec-smtp/src/main/java/io/netty/handler/codec/smtp/SmtpResponseDecoder.java",
+   "symbol": "SmtpResponseDecoder#decode",
+   "line": "54",
+   "bug": "The minimum-length guard is `readable < 3`, but decoding needs 4 bytes (3-digit code + 1 separator). A 3-byte line makes parseCode() consume all 3 bytes and then `frame.readByte()` on line 58 throws IndexOutOfBoundsException.",
+   "why_real": "parseCode() reads exactly 3 bytes; line 58 unconditionally reads a 4th (the separator). The guard should be `readable < 4`. A line that is exactly a 3-char code with no separator/text (e.g. server sends \"250\\r\\n\") passes the guard and crashes with a raw IOOBE instead of the intended DecoderException produced by newDecoderException(). The off-by-one is in the bound: the code contractually requires code(3)+separator(1).",
+   "severity": "medium",
+   "confidence": "high",
+   "how_to_prove": "Feed the decoder the bytes \"250\\r\\n\". LineBasedFrameDecoder (stripDelimiter=true) yields a 3-byte frame \"250\". Expected: a clean DecoderException(\"Received invalid line...\"). Actual: IndexOutOfBoundsException from frame.readByte() at line 58 (wrapped by ByteToMessageDecoder into a DecoderException whose cause is IOOBE)."
+  },
+  {
+   "file": "codec-smtp/src/main/java/io/netty/handler/codec/smtp/SmtpResponseDecoder.java",
+   "symbol": "SmtpResponseDecoder#parseNumber / parseCode",
+   "line": "108-116",
+   "bug": "parseNumber() returns Character.digit(...) which is -1 for any non-digit byte, and parseCode() never validates the result. Non-digit code characters silently produce a wrong numeric code (or a negative one), instead of being rejected as an invalid line.",
+   "why_real": "For input like \"2X0 ok\", digit('X')=-1, so code = 200 + (-1*10) + 0 = 190 \u2014 an in-range but completely wrong code, returned as a valid DefaultSmtpResponse with NO error (silent data corruption). For input like \"XYZ ok\", code = -100-10-1 = -111, which then makes the DefaultSmtpResponse constructor throw IllegalArgumentException(\"code must be 100 <= code <= 599\") rather than the decoder's intended DecoderException. A response-code parser must reject non-digit characters; here it does not.",
+   "severity": "medium",
+   "confidence": "high",
+   "how_to_prove": "Input \"2X0 ok\\r\\n\": expected a DecoderException (invalid code), actual is DefaultSmtpResponse with code()==190. Input \"XYZ ok\\r\\n\": expected DecoderException(\"Received invalid line\"), actual is an IllegalArgumentException from the DefaultSmtpResponse constructor (wrapped as DecoderException with the wrong message/cause)."
+  },
+  {
+   "file": "codec-smtp/src/main/java/io/netty/handler/codec/smtp/SmtpResponseDecoder.java",
+   "symbol": "SmtpResponseDecoder#newDecoderException",
+   "line": "55, 91, 99-102",
+   "bug": "newDecoderException is called with `readerIndex`/`readable` taken from `frame` (lines 52-53) but reads from the raw `buffer` argument: `buffer.toString(readerIndex, readable, ...)`. Because frame is a readRetainedSlice, its readerIndex is 0 (slice-relative) while buffer's readerIndex has already advanced past the consumed line, so the diagnostic string is read from the wrong region of the wrong buffer.",
+   "why_real": "The error message is supposed to echo the invalid line. frame's slice-relative index 0 does not correspond to the invalid line's position in buffer (buffer.readerIndex has moved forward by the line length after super.decode). The method should call `frame.toString(...)` using frame's own content, not `buffer`. The result is a misleading/garbage error message (and, if buffer capacity were smaller, could even IOOBE).",
+   "severity": "low",
+   "confidence": "high",
+   "how_to_prove": "Feed an invalid separator, e.g. \"250!text\\r\\n\" (separator '!' hits the default branch -> newDecoderException). Expected message contains \"250!text\"; actual message contains whatever bytes sit at buffer offset [0, readable), which is not the line just decoded."
+  },
+  {
+   "file": "codec-stomp/src/main/java/io/netty/handler/codec/stomp/StompSubframeDecoder.java",
+   "symbol": "StompSubframeDecoder#decode (READ_CONTENT)",
+   "line": "139",
+   "bug": "contentLength is a long parsed from the content-length header, but remainingLength is computed as `(int)(contentLength - alreadyReadChunkSize)`. For a declared content-length > Integer.MAX_VALUE the cast overflows to a negative value, which then flows into readBytes(...) as a negative length.",
+   "why_real": "getContentLength() accepts any non-negative long (only rejects < 0). The sibling StompSubframeAggregator#isContentLengthInvalid deliberately guards the same value with `Math.min(Integer.MAX_VALUE, getLong(...))`, showing the intended contract that content-length must be clamped before use as an int. The decoder omits this clamp: with contentLength = 3_000_000_000, remainingLength becomes negative, toRead is set negative, and readBytes throws IllegalArgumentException, turning a (large but structurally valid) header into a decode failure via the wrong path.",
+   "severity": "low",
+   "confidence": "medium",
+   "how_to_prove": "Send a STOMP frame with header \"content-length:3000000000\" followed by body bytes and NUL. Expected: content is read/chunked according to maxChunkSize (or a clean 'too large' rejection). Actual: (int)(3000000000L) overflows to -1294967296, toRead goes negative, and readBytes(ctx.alloc(), in, negative) throws IllegalArgumentException, producing a BAD_FRAME error subframe."
+  }
+ ],
+ "source": "deep-hunt (whole modules)"
+}

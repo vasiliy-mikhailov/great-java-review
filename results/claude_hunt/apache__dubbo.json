@@ -1,0 +1,42 @@
+{"repo":"apache__dubbo","findings":[
+{
+  "file":"dubbo-common/src/main/java/org/apache/dubbo/common/utils/StringUtils.java",
+  "symbol":"StringUtils#toBoolean",
+  "line":"1430",
+  "bug":"The case for \"off\" returns Boolean.TRUE instead of Boolean.FALSE.",
+  "why_real":"The method's own Javadoc says it supports 'on'/'off' pairs, and the sibling cases are consistent (\"on\"->TRUE, \"no\"->FALSE, '0'->FALSE, \"false\"->FALSE). \"off\" is a falsey token, so returning TRUE is a clear copy-paste defect (should be Boolean.FALSE).",
+  "severity":"high",
+  "confidence":"high",
+  "how_to_prove":"assertEquals(Boolean.FALSE, StringUtils.toBoolean(\"off\")); currently returns Boolean.TRUE. Also StringUtils.toBoolean(\"off\", true) returns true instead of false."
+},
+{
+  "file":"dubbo-common/src/main/java/org/apache/dubbo/common/utils/StringUtils.java",
+  "symbol":"StringUtils#getServiceKey",
+  "line":"915",
+  "bug":"The version segment is appended based on whether the GROUP is non-empty (isNotEmpty(group)) rather than whether the VERSION is non-empty, so a group-only service produces 'group/interface:null' and a version-only service silently drops its version.",
+  "why_real":"The canonical Dubbo service key format is group/interface:version. The append at line 916 uses the value of `version` but is guarded by isNotEmpty(group) (line 915) — an obvious copy-paste of the group guard on line 910. Correct guard is isNotEmpty(version).",
+  "severity":"high",
+  "confidence":"high",
+  "how_to_prove":"Map m={GROUP_KEY:\"g\", INTERFACE_KEY:\"com.I\"} (no version) -> expected \"g/com.I\", actual \"g/com.I:null\". Map m2={INTERFACE_KEY:\"com.I\", VERSION_KEY:\"1.0\"} (no group) -> expected \"com.I:1.0\", actual \"com.I\" (version dropped)."
+},
+{
+  "file":"dubbo-cluster/src/main/java/org/apache/dubbo/rpc/cluster/router/state/BitList.java",
+  "symbol":"BitList#randomSelectOne",
+  "line":"160",
+  "bug":"randomSelectOne computes `int rate = originSize / cardinality` with no guard for cardinality == 0, throwing ArithmeticException (/ by zero) on a non-empty BitList whose elements all live in tailList.",
+  "why_real":"A BitList can be non-empty (size() > 0) while rootSet.cardinality() == 0: construct empty (rootSet unset) then addToTailList(e). size() = cardinality + tailSize > 0 makes randomSelectOne a legitimate call, but line 160 divides originSize by cardinality(0) before ever consulting tailList.",
+  "severity":"medium",
+  "confidence":"high",
+  "how_to_prove":"BitList<String> b = new BitList<>(new ArrayList<>(List.of(\"a\")), true); b.addToTailList(\"x\"); b.randomSelectOne(); -> throws ArithmeticException(\"/ by zero\") instead of returning \"x\"."
+},
+{
+  "file":"dubbo-serialization/dubbo-serialization-fastjson2/src/main/java/org/apache/dubbo/common/serialize/fastjson2/FastJson2ObjectInput.java",
+  "symbol":"FastJson2ObjectInput#readObject/readBytes/readLength",
+  "line":"114",
+  "bug":"Deserialization assumes a single InputStream.read(bytes,0,length) call reads exactly `length` bytes and throws IllegalArgumentException when `read != length`, but InputStream.read is only contractually required to read *some* bytes (up to length), so a payload split across multiple reads (e.g. a network/chunked stream) fails spuriously.",
+  "why_real":"Per java.io.InputStream#read(byte[],int,int) Javadoc, the method reads 'up to len bytes' and 'may return fewer' even when more data will arrive; only readNBytes / DataInputStream.readFully guarantee a full read. Lines 96, 114, 153, and 197 all use the single-read pattern and reject any short read.",
+  "severity":"medium",
+  "confidence":"medium",
+  "how_to_prove":"Wrap the JSONB bytes in an InputStream whose read(b,off,len) returns at most 1 byte per call (or a slow socket stream); readObject throws IllegalArgumentException(\"expected read length ... but actual read: 1\") even though all bytes are ultimately available. A correct impl (readNBytes) returns the object."
+}
+]}

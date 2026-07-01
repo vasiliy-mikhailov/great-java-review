@@ -1,0 +1,32 @@
+{"repo":"dbeaver__dbeaver","findings":[
+  {
+    "file":"plugins/org.jkiss.dbeaver.model.sql/src/org/jkiss/dbeaver/model/sql/semantics/OffsetKeyedTreeMap.java",
+    "symbol":"OffsetKeyedTreeMap#nodesIteratorAt / deleteNode",
+    "line":"414",
+    "bug":"A logically-empty map (size()==0) still yields a phantom entry when iterated: after all keys are removed, iteration from Integer.MIN_VALUE returns one node with content==null.",
+    "why_real":"deleteNode's two-children path (lines 1087-1101) leaves the deleted node as a permanent tombstone (content=null, tombstonesCount++), and never physically removes it. nodesIteratorAt switches on the RAW field this.size (line 414), which still counts tombstones, so a map holding exactly one tombstone dispatches to the size==1 iterator branch (lines 437-478). That branch does NOT filter tombstones: its next() returns true and getCurrOffset() returns theOnlyNode.offset while getCurrValue() returns null. size() (line 408) correctly returns 0, so size() and iteration contradict each other.",
+    "severity":"high",
+    "confidence":"high",
+    "how_to_prove":"put(36),put(28),put(127),put(45); then removeAt(36),removeAt(127),removeAt(45),removeAt(28). Expected: size()==0 and nodesIteratorAt(Integer.MIN_VALUE).next()==false (empty). Actual: size()==0 but the iterator yields one entry offset=36, value=null. Verified by compiling the class and running this sequence."
+  },
+  {
+    "file":"plugins/org.jkiss.dbeaver.model.sql/src/org/jkiss/dbeaver/model/sql/semantics/OffsetKeyedTreeMap.java",
+    "symbol":"OffsetKeyedTreeMap#deleteNode",
+    "line":"1087",
+    "bug":"Deleting an internal node whose in-order successor has a left child never physically removes the node; it is only marked as a tombstone, so removeAt cannot ever truly empty a tree of such shape and dead nodes accumulate as the map root.",
+    "why_real":"The standard red-black successor-splice path is commented out (lines 1084-1086) and replaced by a tombstone fallback (lines 1087-1101) guarded by 'if (y.left.isNotSentinel())'. The author's own FIXME at line 1087 ('standard rb-tree removal strategy cannot be applied, just mark z as tombstone for now') and lines 1147-1148 ('this does happen apparently, so we need another removal strategy') confirm the offset-fixup invariant (lines 1142-1150) is violated for real inputs.",
+    "severity":"medium",
+    "confidence":"high",
+    "how_to_prove":"put(36),put(28),put(127),put(45) builds a tree where 36 is the root with two children and successor 127 has a left child 45. removeAt(36) leaves the root node in place with content=null (visible via collect(): '[36 as 36] null'); the tree still has this node after removeAt(127),removeAt(45),removeAt(28). Expected a physically empty tree; actual is a residual tombstone root."
+  },
+  {
+    "file":"plugins/org.jkiss.dbeaver.data.transfer/src/org/jkiss/dbeaver/tools/transfer/stream/exporter/DataExporterXML.java",
+    "symbol":"DataExporterXML#escapeXmlElementName",
+    "line":"175",
+    "bug":"escapeXmlElementName(\"\") throws StringIndexOutOfBoundsException on escapedName.charAt(0) when the element name is empty; this is reachable from exportRow via column.getName() and from printHeader via getSource().getName() with no empty-name guard.",
+    "why_real":"replaceAll on an empty string returns an empty string, and charAt(0) on \"\" throws (verified: 'Index 0 out of bounds for length 0'). exportRow (line 105) passes column.getName() directly with no CommonUtils.isEmpty fallback, unlike printHeader which only guards the label path (lines 81-83) but still calls escapeXmlElementName(columns[i].getName()) unguarded at line 91, and escapes getSource().getName() unguarded at line 73. An empty/unnamed result column or unnamed source therefore crashes the whole XML export.",
+    "severity":"medium",
+    "confidence":"medium",
+    "how_to_prove":"Call escapeXmlElementName(\"\") (or export a result set whose column getName() returns an empty string). Expected: a valid element name such as \"_\". Actual: java.lang.StringIndexOutOfBoundsException at line 175."
+  }
+]}

@@ -413,8 +413,12 @@ def check(slug):
     fix_rerun = (fixed_sol or {}).get("fix_rerun", "") if fixed_sol else ""
     # accept Maven (surefire), Gradle (BUILD SUCCESSFUL + a test task / "N tests completed"), and the raw
     # JUnit console runner ("OK (N tests)") — the trace gate understands all three.
+    # Mirror the pipeline's own _trace_shows_fail (suspicion.py) — Gradle's DEFAULT failing output is terse
+    # (`> Task :test FAILED` + `BUILD FAILED`, no surefire-style count), so accept the test-task-FAILED form
+    # and "There were failing tests" too, but NEVER a compile task (compileJava/compileTestJava = setup error).
     red = bool(re.search(r"(Failures|Errors):\s*[1-9]|Tests run:\s*\d+,\s*Failures:\s*[1-9]"
-                         r"|\d+ tests? completed,\s*[1-9]\d* failed|<<< (FAILURE|ERROR)", bug_trace))
+                         r"|\d+ tests? completed,\s*[1-9]\d* failed|<<< (FAILURE|ERROR)"
+                         r"|> Task :(?!compile)[\w:.-]*[Tt]est\w*\s+FAILED|There were failing tests", bug_trace))
     green = bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0|OK \(\d+ tests?\)", fix_rerun)
                  or ("BUILD SUCCESSFUL" in fix_rerun and re.search(r"> Task :[\w:.-]*test|\d+ tests? completed", fix_rerun)))
     trace_ok = red and green
