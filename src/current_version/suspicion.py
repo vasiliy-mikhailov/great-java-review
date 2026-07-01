@@ -89,14 +89,19 @@ def _add_solution(bug, fix):
     fixed = bool(fix.get("fixed"))
     lines = int(fix.get("lines_changed", 0) or 0)
     test_changed = bool(fix.get("test_changed", False))
-    # fix_trace = the AUTHORITATIVE green run captured from run_java (Tests run … Failures: 0 + BUILD SUCCESS).
-    # The reward is gated on it: a real demonstrative after-fix trace, not the model's "fixed" word.
-    fix_trace = str(fix.get("fix_trace", "") or "")
+    # fix_trace = the AUTHORITATIVE green run (Tests run … Failures: 0 + BUILD SUCCESS), captured from
+    # run_java AND BOUND to THIS bug's own test (selector from test_cmd/test_path). Recomputed from _RUNS
+    # here, not trusted from the model: a green run of some OTHER already-passing test must not count as
+    # proof, or a no-op "fix" that just runs an unrelated green test would score 1.0. No real green run for
+    # this test -> no proof -> reward 0. The reward is gated on it, not on the model's "fixed" word.
+    fix_trace = _last_pass_trace(_selector(bug.test_cmd, bug.test_path))
     trace_ok = bool(fix_trace)
     passes = fixed and bool(bug.test_src) and trace_ok  # real, test-backed fix WITH a captured green run
     reward = (1.0 if passes else 0.0) * (0.9 ** max(0, lines)) * (0.0 if test_changed else 1.0)
+    # fix_rerun is the after-fix proof that ships in the PR — it is ONLY the captured green run, never the
+    # model's free-text `rerun` arg (paraphrased/fabricated traces in PRs are forbidden, P17).
     sol = Solution(id=len(_SOLUTIONS), bug_id=bug.id, fixed=fixed, fix_diff=diff[:2000],
-                   fix_rerun=(fix_trace or str(fix.get("rerun", "")))[:3500], lines_changed=lines,
+                   fix_rerun=fix_trace[:3500], lines_changed=lines,
                    test_changed=test_changed, reward=round(reward, 4))
     _SOLUTIONS.append(sol)
     return sol
@@ -124,11 +129,19 @@ def _dedup_against_store(observation, suspected_bug, location):
         ans = (_llm_call(DEDUP_SYS, msg) or "").strip()
     except Exception:  # noqa: BLE001
         return None
-    if "new" in ans.lower():
+    a = ans.strip()
+    low = a.lower()
+    # A distinctness signal (or NEW) means DO NOT merge — this is the safe direction (a false merge DROPS a
+    # real bug; a missed merge only wastes reproduce budget). This catches the false-merge case the old
+    # first-\d+ parse fell for ("distinct, but relates to line 7").
+    if "new" in low or any(w in low for w in ("distinct", "unrelated", "different", "none", "not a", "no dup")):
         return None
-    m = re.search(r"\d+", ans)
-    if m:
-        i = int(m.group())
+    # Otherwise accept a TERSE id reference — a real (slightly non-compliant) LLM says "3" / "#3" / "id 3" /
+    # "same as #3" / "duplicate of 3" / "3.". Bounded length keeps it to a merge answer, not a long prose
+    # explanation that merely happens to contain a number.
+    m = re.search(r"#?\s*(\d+)", a)
+    if m and len(a) <= 60:
+        i = int(m.group(1))
         if any(d["id"] == i for d in _STORE):
             return i
     return None
@@ -201,7 +214,14 @@ def _trace_shows_fail(r):
         return False
     return bool(re.search(r"(Failures|Errors):\s*[1-9]", s)                       # surefire / JUnitCore
                 or re.search(r"Tests run:\s*\d+,\s*Failures:\s*[1-9]", s)
-                or re.search(r"\d+ tests? completed,\s*[1-9]\d* failed", s))       # gradle
+                or re.search(r"\d+ tests? completed,\s*[1-9]\d* failed", s)        # gradle (with counts)
+                # Gradle often prints a failing run WITHOUT a surefire-style count line — only the failed
+                # test TASK and the literal "There were failing tests" notice. Match those, but NEVER a
+                # compile task failure (:compileJava/:compileTestJava FAILED is a SETUP error, not the bug
+                # manifesting), and use the EXACT Gradle phrase — a broad `.*fail(ing|ure)` matched benign
+                # "There were no failures." and non-test plugin failures (spotbugs/enforcer) as test fails.
+                or re.search(r"> Task :(?!compile)[\w:.-]*[Tt]est\w*\s+FAILED", s)
+                or "There were failing tests" in s)
 
 
 def _trace_shows_pass(r):
@@ -209,21 +229,55 @@ def _trace_shows_pass(r):
     s = r.get("trace", "")
     rc0 = r.get("rc", 0) == 0
     maven = bool(re.search(r"Tests run:\s*[1-9]\d*,\s*Failures:\s*0,\s*Errors:\s*0", s)) and ("BUILD SUCCESS" in s or rc0)
-    gradle = ("BUILD SUCCESSFUL" in s) and bool(re.search(r"> Task :[\w:.-]*test|\d+ tests? completed", s))
+    # Gradle: BUILD SUCCESSFUL is necessary but not sufficient — a cached `> Task :test UP-TO-DATE` (or
+    # NO-SOURCE / SKIPPED) means NO test ran, so it must not count as a passing test run. Require a test
+    # EXECUTION task with no cached/skipped suffix, or an explicit "N tests completed" (and no failures).
+    gradle_ran = any(
+        re.search(r"> Task :(?!compile)[\w:.-]*[Tt]est\w*\b", ln)
+        and not re.search(r"UP-TO-DATE|NO-SOURCE|SKIPPED|FROM-CACHE", ln)
+        for ln in s.splitlines())
+    gradle = (("BUILD SUCCESSFUL" in s)
+              and (gradle_ran or bool(re.search(r"\d+ tests? completed", s)))
+              and not re.search(r"\d+ tests? completed,\s*[1-9]", s))
     junitcore = bool(re.search(r"\bOK \(\d+ tests?\)", s)) and rc0
     return bool(maven or gradle or junitcore)
 
 
-def _last_fail_trace():
+def _selector(test_cmd, test_path=""):
+    """The simple test-class token identifying the bug's OWN test (e.g. 'FooBugTest'), parsed from the test
+    command (-Dtest=… / --tests …) or, failing that, the test file's basename. Used to BIND the captured
+    before/after traces to this one test — a green/red run of some OTHER test must not become the proof."""
+    cmd = str(test_cmd or "")
+    m = re.search(r"-D(?:it\.)?test=([^\s]+)", cmd) or re.search(r"--tests[=\s]+[\"']?([^\s\"']+)", cmd)
+    tok = (m.group(1) if m else "").strip("\"'")   # drop surrounding quotes (e.g. -Dtest='Outer$Nested')
+    tok = re.split(r"[#,(]", tok)[0]               # drop #method / a,b / params
+    tok = tok.rsplit(".", 1)[-1].strip("*")        # simple class name, drop package + globs
+    if not tok and test_path:
+        tok = os.path.basename(str(test_path)).rsplit(".", 1)[0]
+    return tok
+
+
+def _run_matches(r, sel):
+    """True if run `r` exercised the selected test. The selector must appear as a WHOLE identifier token in
+    the command or condensed trace (bounded by non-word chars), not as a naive substring — else a
+    pathological-but-legal class name like `Test` (substring of 'Tests run:') or `C` (of 'BUILD SUCCESSFUL')
+    would match every run and re-open the unbound-proof hole. Empty selector = unbound (no test identity)."""
+    if not sel:
+        return True
+    pat = re.compile(r"(?:^|[^\w])" + re.escape(sel) + r"(?![\w])")
+    return bool(pat.search(str(r.get("cmd", "")))) or bool(pat.search(str(r.get("trace", ""))))
+
+
+def _last_fail_trace(sel=""):
     for r in reversed(_RUNS):
-        if _trace_shows_fail(r):
+        if _run_matches(r, sel) and _trace_shows_fail(r):
             return r["trace"]
     return ""
 
 
-def _last_pass_trace():
+def _last_pass_trace(sel=""):
     for r in reversed(_RUNS):
-        if _trace_shows_pass(r):
+        if _run_matches(r, sel) and _trace_shows_pass(r):
             return r["trace"]
     return ""
 
@@ -366,8 +420,9 @@ class _RecordVerdictExecutor(ToolExecutor):
             return RecordVerdictObservation.from_text(
                 text="a verdict has to be SHOWN by a run. Inconclusive — run something and record again.")
         # bug_trace: the AUTHORITATIVE failing run captured from run_java (the bug manifesting), not the model's
-        # prose. This is the proof that ships in the PR; it is read off the genuine tool output, never typed.
-        _VERDICT["bug_trace"] = _last_fail_trace()
+        # prose. This is the proof that ships in the PR; it is read off the genuine tool output, never typed —
+        # and BOUND to this suspicion's own test (selector), so an unrelated failing run can't satisfy the gate.
+        _VERDICT["bug_trace"] = _last_fail_trace(_selector(_VERDICT["test_cmd"], _VERDICT["test_path"]))
         # CONFIRM requires a failing unit test that ACTUALLY went red in a run. grep/log can only refute (they
         # show nothing manifesting); a confirm without a real failing test (test_src) AND a captured failing
         # trace (_last_fail_trace) is not a bug — the reproducer earns nothing for it.
@@ -553,17 +608,43 @@ _RUNJAVA_DESC = ("Run the project's tests/build or compile/run the REAL classes:
                  "shell redirection / file-writing — you cannot create files here (use edit_file to modify an "
                  "existing one). This is how you exercise the real code after adding logging.")
 _RUNJAVA_OK = {"mvn", "./mvnw", "mvnw", "gradle", "./gradlew", "gradlew", "java", "javac"}
-_RUNJAVA_BAD = (">", "|", ";", "&&", "||", "`", "$(", "<<", "cat ", "tee", " cp ", " mv ", "touch ",
-                "mkdir", "echo ", "printf", "ln ", "dd ", "rsync")
+# run_java must be ONE invocation of an allowed program. exec_ pipes the WHOLE string to `bash -s`, so any
+# statement separator lets a SECOND program run and overwrite the class-under-test with a stub (no_cheat
+# fully bypassed). A denylist of separators is whack-a-mole — the original blocked ; && || | but missed a
+# bare newline, and then `&` (background), `(` (subshell), `$(`/backtick (substitution), and exotic unicode
+# line separators. So reject STRUCTURALLY: no shell metacharacter, and no whitespace other than space/tab
+# (every other whitespace char — \n \r \v \f NEL LS PS … — is a statement separator). With no separator a
+# second program cannot be expressed at all, so cp/mv/rm/sed/truncate/install can never overwrite the class.
+# `$` is deliberately NOT here: a JUnit5 @Nested selector is `-Dtest='Outer$Nested'`, and the dangerous
+# substitution forms `$(` and `${` are ALREADY blocked by the `(` and `{` rules, so a bare `$` (a quoted
+# nested-class name, or a $VAR that can only expand to a value — the agent can't set env vars) is safe.
+_RUNJAVA_META = re.compile(r"[;&|<>(){}`\\]")
+
+
+def _runjava_reject(cmd):
+    """Reason a run_java command is refused, or None if it's a single allowed invocation. Shared by the
+    run_java executor AND the flip gate, so neither can be handed a multi-statement command."""
+    s = str(cmd)
+    toks = s.split()
+    first = toks[0] if toks else ""
+    if first not in _RUNJAVA_OK:
+        return ("run_java only runs mvn/gradle/java/javac with no shell redirection or file-writing. "
+                "To change code use edit_file (existing files only).")
+    if any(ch.isspace() and ch not in (" ", "\t") for ch in s):
+        return ("run_java runs ONE command on ONE line — no newlines or other whitespace separators. "
+                "To change code use edit_file (existing files only).")
+    if _RUNJAVA_META.search(s):
+        return ("run_java runs ONE build/run command — no shell separators (; & |), redirection (< >), "
+                "subshells (), substitution ($ `), or file-writing. To change code use edit_file.")
+    return None
 
 
 class _RunJavaExecutor(ToolExecutor):
     def __call__(self, action, conversation=None):  # noqa: ARG002
         cmd = str(action.command).strip()
-        first = cmd.split()[0] if cmd else ""
-        if first not in _RUNJAVA_OK or any(b in cmd for b in _RUNJAVA_BAD):
-            return RunJavaObservation.from_text(text="rejected: run_java only runs mvn/gradle/java/javac with no "
-                "shell redirection or file-writing. To change code use edit_file (existing files only).")
+        reason = _runjava_reject(cmd)
+        if reason:
+            return RunJavaObservation.from_text(text="rejected: " + reason)
         ver = getattr(action, "version", "new")
         # Strip -q/--quiet: a QUIET passing test prints no surefire summary (`Tests run … Failures: 0`) and no
         # `BUILD SUCCESS` (both INFO-level), so a genuine green run can't be recognised and the fix scores 0
@@ -644,10 +725,12 @@ class EditFileTool(ToolDefinition[EditFileAction, EditFileObservation]):
 # write under src/main, so the production class stays unfakeable and the copy/stub cheat stays structurally
 # dead — the only thing this tool can author is the test that proves the bug (fail-before / pass-after).
 def _is_test_path(rel):
-    rel = str(rel).replace("\\", "/")
+    # NORMALIZE first: a raw string like "mod/src/test/../../src/main/x/FooTest.java" textually contains
+    # /src/test/ but resolves into src/main — create_test validates this predicate on the raw rel yet writes
+    # at the normalized path, so without normalizing here a *Test.java could land outside a src/test tree.
+    rel = os.path.normpath(str(rel).replace("\\", "/")).replace("\\", "/")
     base = rel.rsplit("/", 1)[-1]
-    return ("/src/test/" in ("/" + rel)) and base.endswith((".java",)) and (
-        base.endswith(("Test.java", "Tests.java", "IT.java")))
+    return ("/src/test/" in ("/" + rel)) and base.endswith(("Test.java", "Tests.java", "IT.java"))
 
 
 class CreateTestAction(Action):
@@ -723,7 +806,12 @@ _EDIT_CODE_DESC = ("Modify an EXISTING production source file by replacing exact
 
 class _EditCodeExecutor(_EditFileExecutor):
     def __call__(self, action, conversation=None):
-        if "/src/test/" in ("/" + str(getattr(action, "path", "")).replace("\\", "/")):
+        # NORMALIZE before the src/test check: the raw-string check missed a traversal like
+        # 'mod/src/main/../test/java/x/FooBugTest.java' (no literal '/src/test/' substring) which
+        # _EditFileExecutor then normalizes back INTO src/test and edits — letting the solver weaken the
+        # very test that grades it. Normalize so the guard sees the real destination.
+        norm = os.path.normpath(str(getattr(action, "path", "")).replace("\\", "/")).replace("\\", "/")
+        if "/src/test/" in ("/" + norm):
             return EditFileObservation.from_text(text="refused: edit_code changes production code only — you "
                 "cannot edit the regression test that grades you. Fix the real class (under src/main).")
         return super().__call__(action, conversation)
@@ -796,21 +884,6 @@ class RepoMapTool(ToolDefinition[RepoMapAction, RepoMapObservation]):
 
 
 # --- prompts (the genome for this architecture) -----------------------------------------
-
-INVESTIGATE_MR_SYS = """You read a pull request and flag things that might be bugs, for a reproducer to check.
-
-Your score:
-    reward = Σ confidence(s)  over your suspicions that get CONFIRMED
-
-You bank the confidence you stated, but only on the ones that turn out real. A suspicion that gets refuted
-costs nothing (it just scores 0), and one pointing at code that isn't in the diff can't be confirmed at
-all, so it scores 0 too — there's no penalty for either, so flag generously: a bug you miss is gone for
-good, an extra guess is free. The only thing that pays is a real bug you surfaced — and more when you were
-sure of it. So put high confidence on what you genuinely believe, lower on the long shots; be honest, since
-honest confidence is also what gets the surest ones reproduced first.
-
-Flag each the moment you see it with add_suspicion(observation = the specific thing you saw, suspected_bug =
-the bug it might cause, location, confidence). Don't keep them in your head; sweep the whole diff."""
 
 REPRODUCER_SYS = """You're given one suspected bug in a Java project (an observation + the problem it might
 cause, at a location). Find out whether it's real by making the genuine code show you — and the best way to
@@ -900,9 +973,9 @@ If the test's expectation actually contradicts the spec (e.g. it asserts a throw
 value should map back to a canonical default), do NOT force a wrong-but-green fix — record fixed=false and say
 the test encodes the wrong expectation. Pick the canonical answer (e.g. `Locale.ROOT`, not `new Locale("")`).
 
-You have `edit_file` to change existing source and `run_java` to re-run the test (mvn/./mvnw/gradle/./gradlew/
-java/javac — no shell). Work the natural loop: edit the code, run the test, read the output, repeat until it
-is green.
+You have `edit_code` to change existing PRODUCTION source (it refuses src/test, so you cannot weaken the
+test that grades you) and `run_java` to re-run the test (mvn/./mvnw/gradle/./gradlew/java/javac — no shell).
+Work the natural loop: edit the code, run the test, read the output, repeat until it is green.
 
 Two things shape your score:
     reward = passes · 0.9^(lines_changed) · test_untouched
@@ -1130,7 +1203,11 @@ def _llm_call(system_prompt, user_msg, profile="qwen"):
 # --- the four roles ---------------------------------------------------------------------
 
 def _store_to_suspicions(by_id):
-    """Pull any store entries not yet tracked into by_id as pending Suspicion objects."""
+    """Pull any store entries not yet tracked into by_id as pending Suspicion objects, AND propagate a dedup
+    confidence bump onto an already-tracked entry. A confident re-sighting during reproduction bumps
+    _STORE[id]["confidence"], but that bump used to live only in _STORE — it never reached the scheduler
+    (which reads Suspicion.confidence) or the registry JSON, so a surer re-sighting could not raise priority.
+    Re-sync here, max-only (never lower a confidence)."""
     for d in _STORE:
         if d["id"] not in by_id:
             try:
@@ -1139,45 +1216,71 @@ def _store_to_suspicions(by_id):
                                            confidence=float(d["confidence"]))
             except Exception:  # noqa: BLE001
                 pass
+        else:
+            try:
+                by_id[d["id"]].confidence = max(by_id[d["id"]].confidence, float(d["confidence"]))
+            except Exception:  # noqa: BLE001
+                pass
 
 
-INVESTIGATE_REPO_SYS = """You investigate a whole Java repository to find real bugs — not tied to any diff.
+INVESTIGATE_FILE_SYS = """You investigate a Java repository for real bugs, starting from ONE entrance file.
 Real reviewers find bugs everywhere, and every confirmable bug you surface is valuable.
 
 Your score:
-    reward = ( Σ confidence(s) over your suspicions that get CONFIRMED ) · 0.9 ^ (source files you never opened)
+    reward = Σ confidence(s) over your suspicions that get CONFIRMED
 
-Two things move it and they MULTIPLY. The first is the confirmed bugs you surface, each weighted by the
-confidence you staked on it — a refuted or un-confirmable guess just scores 0, so flag generously: a bug you
-miss is gone for good, an extra guess is free. The second is COVERAGE — every source file you leave unread
-multiplies your score by 0.9, so each file you actually open is worth about 10% more of whatever you find.
-The repo is large and you will not read all of it; that is fine, the point is to keep reading. Do not stop
-after a few modules — the more of the codebase you actually look at, the more your confirmed bugs are worth
-and the more bugs there are to confirm at all. Breadth is the job.
+Only confirmed bugs pay, each weighted by the confidence you staked on it — a refuted or un-confirmable guess
+scores 0, so flag generously: a bug you miss is gone for good, an extra guess is free. Put high confidence on
+what you genuinely believe, lower on the long shots; honest confidence is also what gets the surest ones
+reproduced first. (You do NOT have to read the whole repo or worry about coverage — coverage is handled for
+you: a separate investigator enters from EVERY other file. Your job is just YOUR entrance and its neighbours.)
 
-Where to look: call repo_map first to see the modules. Bias toward modules that HAVE TESTS — a suspicion
-there can be confirmed by running the real code, which is what makes it bankable; a bug in code nothing can
-exercise is a guess. But cover widely within and across those modules: read the actual source
-(search/grep/glob/file_editor) file after file, and the moment you SEE something off — a contract violation,
-a copy-paste slip, a wrong comparison/operator, an off-by-one, a resource leak, a mis-handled edge case —
-record it with add_suspicion (observation + suspected_bug + location + confidence). Do not verify it
-yourself; the reproducer will. Do not flag style, naming, or pure speculation — only concrete things you
-actually saw in the code."""
+You are handed ONE entrance file. READ IT IN FULL with file_editor, then explore OUTWARD from it as the code
+leads you — the classes it calls, its callers, a sibling that shares the pattern — using search/grep/glob. Do
+not wander the whole tree; cover your entrance and its immediate neighbourhood well. The moment you SEE
+something off — a contract violation, a copy-paste slip, a wrong comparison/operator, an off-by-one, a
+resource leak, a mishandled edge case — record it with add_suspicion (observation + suspected_bug + location +
+confidence). Do not verify it yourself; the reproducer will. Do not flag style, naming, or pure speculation —
+only concrete things you actually saw in the code. Bias to bugs the tests can exercise — those are bankable."""
 
 
-def investigate_mr(repo_dir, ctx):
-    """Diff-anchored investigator: read the PR and flag suspicions on the change."""
-    _run_agent(INVESTIGATE_MR_SYS, "PULL REQUEST:\n" + ctx +
-               "\n\nRecord the suspicions now — call add_suspicion once for each (observation + suspected_bug).",
-               repo_dir, extra_tools=[CAPTURE])
+def _source_files(root, cap=8000):
+    """Every MAIN-source .java file — the entrance points, one investigator each. Excludes tests, generated
+    code, and build output (not where a shippable, ownable bug lives). Falls back to all non-test .java if a
+    repo doesn't use the src/main/java layout, so no repo yields an empty worklist."""
+    skip = {".git", "target", "build", "out", "bin", "node_modules", ".idea", ".gradle"}
+    main, other = [], []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in dns if d not in skip]
+        norm = dp.replace("\\", "/") + "/"
+        if "/src/test/" in norm or "/test/" in norm or "generated" in norm:
+            continue
+        for fn in fns:
+            if not fn.endswith(".java"):
+                continue
+            rel = os.path.relpath(os.path.join(dp, fn), root)
+            (main if "/src/main/java/" in norm else other).append(rel)
+    return sorted(main or other)[:cap]
+
+
+def investigate_file(repo_dir, entry_file):
+    """One investigator seeded at ONE entrance file: reads it in full and explores outward, flagging bugs."""
+    _run_agent(INVESTIGATE_FILE_SYS,
+               f"Your entrance file is:\n    {entry_file}\n\nOpen it in full with file_editor, then explore "
+               "outward from it as the code leads you, and record each suspicion with add_suspicion.",
+               repo_dir, base=("search", "grep", "glob", "file_editor"), extra_tools=[CAPTURE])
 
 
 def investigate_repo(repo_dir):
-    """Whole-repo investigator: sweep the codebase (biased to tested/exercisable modules) for bugs."""
-    _run_agent(INVESTIGATE_REPO_SYS,
-               "Investigate this repository for real bugs. Start with repo_map to find the tested modules, "
-               "then read their source and record each suspicion with add_suspicion.",
-               repo_dir, base=("search", "grep", "glob", "file_editor"), extra_tools=[CAPTURE, "repo_map"])
+    """Whole-repo investigator, BY FILE: one investigator per source file (its entrance point), all writing the
+    shared suspicion store. Coverage of the repo is STRUCTURAL — every file is handed out, so there is no
+    coverage reward term; the per-file reward is just confirmed bugs. This is the fan-out that actually reads
+    every file (one agent's context window can't), at the cost of one investigator run per source file."""
+    files = _source_files(repo_dir)
+    print(f"  [investigate] {len(files)} source files -> one investigator per file (entrance points)", flush=True)
+    for i, rel in enumerate(files, 1):
+        print(f"  [file {i}/{len(files)}] {rel}", flush=True)
+        investigate_file(repo_dir, rel)
 
 
 def schedule(pending):
@@ -1256,7 +1359,8 @@ def _write_scaffold(root, files):
             continue
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
-            open(p, "w").write(content)
+            with open(p, "w") as f:
+                f.write(content)
             n += 1
         except Exception:  # noqa: BLE001
             pass
@@ -1284,26 +1388,37 @@ def _materialize_test(s):
 _BUILD_FILES = ("pom.xml", "build.gradle", "build.gradle.kts")
 
 
-def _materialize_build_edit(s):
-    """Re-apply the reproducer's build-file edit (e.g. adding mockito-core at test scope) into the clean
-    worktree so the solver's re-run of the regression test still compiles. reset_clean() reverts the tracked
-    pom/build, dropping the dep; we overwrite it with the captured content. Restricted to build files, and the
-    target must already exist (we only restore a tracked build file, never create one). Returns True if written."""
-    if not (s.build_edit_src.strip() and s.build_edit_path.strip()):
+def _write_build_edit(root, build_edit_path, build_edit_src):
+    """Overwrite a tracked build file (pom.xml / build.gradle[.kts]) under `root` with captured content (the
+    reproducer's test-scope dep edit, e.g. mockito-core). reset_clean() reverts the tracked pom/build,
+    dropping the dep; this restores it. Restricted to build files; the target must already exist (we only
+    restore a tracked file, never create one). Returns True if written."""
+    if not (str(build_edit_src).strip() and str(build_edit_path).strip()):
         return False
-    if os.path.basename(s.build_edit_path) not in _BUILD_FILES:
+    if os.path.basename(str(build_edit_path)) not in _BUILD_FILES:
         return False
-    root = _sandbox.workdir("new")
     if not root:
         return False
-    p = os.path.normpath(os.path.join(root, s.build_edit_path))
+    p = os.path.normpath(os.path.join(root, str(build_edit_path)))
     if not p.startswith(os.path.normpath(root) + os.sep) or not os.path.isfile(p):
         return False
     try:
-        open(p, "w").write(s.build_edit_src)
+        with open(p, "w") as f:
+            f.write(str(build_edit_src))
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def _materialize_build_edit(s):
+    """Re-apply the reproducer's build-file edit into the clean /src/new worktree so the solver's re-run of
+    the regression test still compiles (reset_clean reverts the tracked pom/build, dropping the dep)."""
+    return _write_build_edit(_sandbox.workdir("new"), s.build_edit_path, s.build_edit_src)
+
+
+# The solver edits PRODUCTION code only: edit_code is edit_file plus a refusal of any src/test path, so it
+# structurally CANNOT weaken the regression test that grades it (plain edit_file would let it, then revert).
+_SOLVER_TOOLS = ("run_java", "edit_code", "record_fix")
 
 
 def solve(repo_dir, bug):
@@ -1322,13 +1437,13 @@ def solve(repo_dir, bug):
            "A unit test fails because of this bug. First decide what the code SHOULD do here (the type/library "
            "spec, the serialization round-trip contract, sibling code) — then fix the production code in /src/new "
            "to do that; the test going green is the side effect, not the goal. Re-run it to confirm, changing "
-           "nothing else. Tools: `edit_file` (change existing source), `run_java` (re-run the test). Keep the "
+           "nothing else. Tools: `edit_code` (change existing production source — refuses src/test), `run_java` "
+           "(re-run the test). Keep the "
            "change small, and don't edit the test itself — a changed test scores zero. If the test's expectation "
            "actually contradicts the correct behaviour, record fixed=false and say so rather than forcing it. "
            "When the test passes, call record_fix (fixed, fix_diff = your change, rerun = the passing output).")
     # No reset_workspace for the solver — a reset would wipe the materialized test (the thing it must pass).
-    out = _run_agent(SOLVER_SYS, msg, repo_dir, base=_READONLY_BASE,
-                     extra_tools=["run_java", "edit_file", "record_fix"])
+    out = _run_agent(SOLVER_SYS, msg, repo_dir, base=_READONLY_BASE, extra_tools=list(_SOLVER_TOOLS))
     fix = dict(_FIX) if "fixed" in _FIX else {"fixed": False, "fix_diff": "", "rerun": (out or "")[-300:]}
     # MEASURED reward inputs (not the model's self-report). lines_changed = production lines in the worktree
     # diff, excluding the materialized test (src/test) and the re-applied dep (build_edit_path). test_changed
@@ -1378,23 +1493,43 @@ TEST_CRITIC_SYS = ("You judge whether a FAILING Java test genuinely demonstrates
 
 
 def _flip_check(verdict):
-    """Run the reproducer's test on BOTH trees. A real regression FAILS on /src/new and PASSES on /src/old.
-    Returns (ran, new_fails, old_passes); ran=False when we can't run it (no test_cmd / bad cmd / no worktree)."""
+    """Run the reproducer's test on BOTH trees, HERMETICALLY. A real regression FAILS on /src/new and PASSES
+    on /src/old. Returns (ran, new_fails, old_passes); ran=False when we can't run it (no test_cmd / bad cmd
+    / no worktree). Two guarantees the old version lacked:
+      - RESET both trees to pristine PR code first, then re-materialize ONLY the test scaffolding. The
+        reproducer is allowed to edit_file production code (to add logging); without a reset the flip would
+        run against that contaminated tree, so a FABRICATED regression (production edited to break, test
+        asserting the original behaviour) would 'flip' and mint a false bug. Resetting makes the flip run
+        against the REAL PR code plus the test alone.
+      - judge by _trace_shows_fail / _trace_shows_pass, NOT raw exit codes: a compile failure (exit!=0 with
+        no test) or a no-tests-matched run (exit 0) would otherwise read as the bug manifesting / the test
+        passing, a vacuous flip."""
     cmd = str(verdict.get("test_cmd", "")).strip()
     tp, ts = str(verdict.get("test_path", "")), str(verdict.get("test_src", ""))
-    first = cmd.split()[0] if cmd else ""
-    if not (cmd and tp and ts and _is_test_path(tp)) or first not in _RUNJAVA_OK or any(b in cmd for b in _RUNJAVA_BAD):
+    if not (cmd and tp and ts and _is_test_path(tp)) or _runjava_reject(cmd):
         return (False, False, False)
-    rc_new, _ = _sandbox.exec_(cmd, version="new")          # test is on /src/new (the reproducer left it)
-    root_old = _sandbox.workdir("old")
-    if not root_old:
-        return (False, rc_new != 0, False)
+    root_new, root_old = _sandbox.workdir("new"), _sandbox.workdir("old")
+    if not (root_new and root_old):
+        return (False, False, False)
+    scaffold = _scaffold_of(verdict.get("test_files"), tp, ts)
+    be_path, be_src = str(verdict.get("build_edit_path", "")), str(verdict.get("build_edit_src", ""))
+    _sandbox.reset_clean()                                   # pristine PR code on BOTH trees (drop any prover edits)
+    if _write_scaffold(root_new, scaffold) == 0:            # re-materialize the test the reset just wiped
+        return (False, False, False)
+    # re-apply the reproducer's test-scope dep (e.g. mockito-core) the reset wiped — WITHOUT this a
+    # mock-based regression test (the dominant repro style here) fails to COMPILE on /src/new, reads as
+    # not-failing, and a GENUINE bug is wrongly rejected. solve() does the same; the flip must mirror it.
+    _write_build_edit(root_new, be_path, be_src)
+    rc_new, out_new = _sandbox.exec_(cmd, version="new")
+    new_fails = _trace_shows_fail({"trace": out_new})
     # materialize the FULL test scaffolding into /src/old (not just the named test) so a multi-file test still
     # compiles there — otherwise it fails on a missing helper stub, not on the bug, and the flip can't fire.
-    if _write_scaffold(root_old, _scaffold_of(verdict.get("test_files"), tp, ts)) == 0:
-        return (False, rc_new != 0, False)
-    rc_old, _ = _sandbox.exec_(cmd, version="old")
-    return (True, rc_new != 0, rc_old == 0)
+    if _write_scaffold(root_old, scaffold) == 0:
+        return (False, new_fails, False)
+    _write_build_edit(root_old, be_path, be_src)
+    rc_old, out_old = _sandbox.exec_(cmd, version="old")
+    old_passes = _trace_shows_pass({"trace": out_old, "rc": rc_old})
+    return (True, new_fails, old_passes)
 
 
 def _validate_test_agent(s, verdict):
@@ -1423,65 +1558,103 @@ def _validate_bug(s, verdict):
     return _validate_test_agent(s, verdict)                   # no decisive flip -> ask the critic
 
 
-def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks=60, log=print, mode=None):
-    # LEAN context (Q2 / v10): the model gets the diff + the changed-files LIST and pulls full
-    # file content on demand via pr_file_diff/file_editor — no pre-loaded blob. Verified: the lean
-    # generator terminates cleanly (6222: 23 suspicions in ~9min, vs the fat blob's 17 — higher
-    # recall) and the lean fact-check verifies one suspicion without overflowing the window.
-    ctx = pr_input
-    mode = (mode or os.environ.get("INVESTIGATE_MODE", "mr")).lower()   # mr | repo | both
-    _reset_store()
-    if mode in ("mr", "both"):
-        investigate_mr(repo_dir, ctx)         # diff-anchored investigator -> store (deduped on register)
-    if mode in ("repo", "both"):
-        investigate_repo(repo_dir)            # whole-repo investigator -> store (deduped on register)
-    by_id = {}
-    _store_to_suspicions(by_id)
-    log(f"generated {len(by_id)} suspicions (mode={mode})")
-    for s in sorted(by_id.values(), key=lambda x: -x.confidence):   # surest first — confidence is the order
-        mark = "" if s.confidence >= conf_floor else "  (below conf floor, won't check)"
-        log(f"   S[{s.id}] conf={s.confidence} :: {s.suspected_bug[:80]}{mark}")
+def _modules_with_files(repo_dir):
+    """Group the repo's source files by MODULE (the src/main/java root above them), for the harness's
+    repo -> module -> file descent. Returns [(module_rel, [file_rel, ...]), ...] in a stable order."""
+    from collections import OrderedDict
+    mods = OrderedDict()
+    for rel in _source_files(repo_dir):
+        norm = rel.replace("\\", "/")
+        i = norm.find("/src/main/java/")
+        mod = norm[:i] if i >= 0 else "."
+        mods.setdefault(mod, []).append(rel)
+    return list(mods.items())
 
-    # PHASE 2 — REPRODUCE: drain pending suspicions (surest first); a proven one becomes a Bug in _BUGS.
-    checks = 0
-    while checks < max_checks:
-        _store_to_suspicions(by_id)            # pick up any new suspicions the reproducer recorded
-        pending = [s for s in by_id.values() if s.status == "pending" and s.confidence >= conf_floor]
+
+def _file_of(location):
+    """The bare filename of a suspicion's location — binds a suspicion to the FILE it was raised in."""
+    return (location or "").split(":")[0].replace("\\", "/").split("/")[-1]
+
+
+def _fix_one_file(repo_dir, rel, by_id, conf_floor, max_checks_per_file, log):
+    """The fix-java-bugs skill applied to ONE file (the harness's leaf unit): FIND (investigate_file) ->
+    PROVE (reproduce, a failing test) -> FIX (solve, the root cause) for each of THIS file's suspicions.
+    The portable skills/fix-java-bugs/SKILL.md is the standalone single-agent version of this same procedure.
+    Returns the number of reproduce checks it spent."""
+    investigate_file(repo_dir, rel)                    # FIND — this file is the entrance point
+    _store_to_suspicions(by_id)
+    fname = rel.replace("\\", "/").split("/")[-1]
+    fchecks = 0
+    while fchecks < max_checks_per_file:
+        _store_to_suspicions(by_id)                    # pick up anything the reproducer just raised
+        pending = [s for s in by_id.values()
+                   if s.status == "pending" and s.confidence >= conf_floor and _file_of(s.location) == fname]
         if not pending:
             break
-        s = schedule(pending)
-        before = len(_STORE)
-        res = reproduce(repo_dir, s)
+        s = schedule(pending)                          # surest first
+        res = reproduce(repo_dir, s)                   # PROVE with a failing test
+        fchecks += 1
         verdict = str(res.get("verdict", "inconclusive")).lower()
-        checks += 1
         if verdict == "confirmed":
-            ok, how = _validate_bug(s, res)    # GATE: the test must really demonstrate the bug
+            ok, how = _validate_bug(s, res)            # GATE: the test must really demonstrate the bug
             if ok:
                 s.status = "proven"
                 bug = _add_bug(s, res, validation=how)
-                log(f"  check {checks}: [S{s.id}] PROVEN -> Bug[{bug.id}] ({bug.repro_kind}; {how}) "
-                    f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+                log(f"    [S{s.id}] PROVEN -> Bug[{bug.id}] ({bug.repro_kind}; {how}) — {s.suspected_bug[:60]}")
+                if bug.test_src.strip():
+                    fx = solve(repo_dir, bug)          # FIX the root cause; test red -> green
+                    sol = _add_solution(bug, fx)
+                    log(f"      solve Bug[{bug.id}]: {'FIXED' if sol.fixed else 'no fix'} "
+                        f"({sol.lines_changed} lines, reward={sol.reward}{', TEST TOUCHED!' if sol.test_changed else ''})")
+                else:
+                    log(f"      Bug[{bug.id}]: no unit test ({bug.repro_kind}) — left for the author, not guessed")
             else:
-                s.status = "inconclusive"      # test rejected by the gate -> not a bug
-                log(f"  check {checks}: [S{s.id}] REJECTED test ({how}) — not a bug "
-                    f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+                s.status = "inconclusive"
+                log(f"    [S{s.id}] REJECTED test ({how}) — not a bug — {s.suspected_bug[:60]}")
         else:
-            s.status = verdict                 # refuted / inconclusive
-            log(f"  check {checks}: [S{s.id}] {verdict}/{res.get('repro_kind') or '-'} "
-                f"(+{len(_STORE) - before} new) — {s.suspected_bug[:60]}")
+            s.status = verdict
+            log(f"    [S{s.id}] {verdict}/{res.get('repro_kind') or '-'} — {s.suspected_bug[:60]}")
+    return fchecks
 
-    # PHASE 3 — SOLVE: the solver reads each Bug from the registry and writes a Solution. It ONLY attempts a
-    # bug the reproducer proved WITH A UNIT TEST (test_src present) — there's a failing test to turn green.
-    # A grep/log-only bug gives the solver nothing to verify against, so it's left for the author, not guessed.
-    for bug in list(_BUGS):
-        if not bug.test_src.strip():
-            log(f"    skip Bug[{bug.id}] (S{bug.suspicion_id}): no unit test ({bug.repro_kind}) — "
-                "not handed to the solver, left for the author")
-            continue
-        fx = solve(repo_dir, bug)
-        sol = _add_solution(bug, fx)
-        log(f"    solve Bug[{bug.id}] (S{bug.suspicion_id}): {'FIXED' if sol.fixed else 'no fix'} "
-            f"({sol.lines_changed} lines, reward={sol.reward}{', TEST TOUCHED!' if sol.test_changed else ''})")
+
+def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks_per_file=12, log=print):
+    # repo -> module -> file descent — the fix-java-bugs skill applied FILE BY FILE. The harness opens the
+    # repo, iterates its modules, and inside each iterates the source FILES; each file is one self-contained
+    # find -> prove -> fix unit (_fix_one_file). Coverage is structural (every module, every file addressed);
+    # each file proves + fixes its OWN bugs, so there is no global reproduce cap. pr_input is kept only as
+    # context for the final synthesize() writeup; it does NOT scope what the harness looks at.
+    ctx = pr_input
+    _reset_store()
+    by_id = {}
+    modules = _modules_with_files(repo_dir)
+    nfiles = sum(len(fs) for _, fs in modules)
+    log(f"repo -> {len(modules)} modules, {nfiles} source files (repo -> module -> file)")
+    checks = 0
+    for mi, (module_rel, files) in enumerate(modules, 1):
+        log(f"module [{mi}/{len(modules)}] {module_rel or '.'} : {len(files)} files")
+        for fi, rel in enumerate(files, 1):
+            log(f"  file [{fi}/{len(files)}] {rel}")
+            checks += _fix_one_file(repo_dir, rel, by_id, conf_floor, max_checks_per_file, log)
+
+    # Stragglers: a reproducer can raise a suspicion in a file already passed (extra_bugs_found). Drain any
+    # left pending so a confirmable bug is never silently dropped.
+    _store_to_suspicions(by_id)
+    for s in sorted([x for x in by_id.values() if x.status == "pending" and x.confidence >= conf_floor],
+                    key=lambda x: -x.confidence):
+        if checks >= nfiles + 40:                      # bound the straggler drain
+            break
+        res = reproduce(repo_dir, s); checks += 1
+        if str(res.get("verdict", "inconclusive")).lower() == "confirmed":
+            ok, how = _validate_bug(s, res)
+            if ok:
+                s.status = "proven"; bug = _add_bug(s, res, validation=how)
+                if bug.test_src.strip():
+                    _add_solution(bug, solve(repo_dir, bug))
+            else:
+                s.status = "inconclusive"
+        else:
+            s.status = str(res.get("verdict", "inconclusive")).lower()
+    _store_to_suspicions(by_id)
 
     # PHASE 4 — PR: the writer reads the registry (bugs + solutions) and the open suspicions.
     open_suspicions = [s for s in by_id.values() if s.status == "inconclusive"]
@@ -1524,7 +1697,6 @@ def gen_probe(repo, pr):
     import time as _t
     d, pi, tag = _setup(repo, pr)
     _reset_store()
-    mode = os.environ.get("INVESTIGATE_MODE", "mr").lower()
     # investigate_repo's repo_map + version-aware reads need a live session (the post-PR worktree),
     # so start the per-PR sandbox even for the generator-only probe; reproduce/solve are skipped.
     os.makedirs("results/probes", exist_ok=True)
@@ -1534,15 +1706,12 @@ def gen_probe(repo, pr):
     _sandbox.start(repo, pr, jdk=jdk, log_path=f"results/probes/{tag}.log")
     t0 = _t.time()
     try:
-        if mode in ("mr", "both"):
-            investigate_mr(d, pi)   # lean: diff + changed-files list; reads files on demand via tools
-        if mode in ("repo", "both"):
-            investigate_repo(d)
+        investigate_repo(d)         # whole-repo is the only investigation mode
     finally:
         _sandbox.stop()
     by_id = {}
     _store_to_suspicions(by_id)
-    print(f"\n=== GEN PROBE {repo}#{pr} (mode={mode}): {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
+    print(f"\n=== GEN PROBE {repo}#{pr} (whole-repo): {len(by_id)} suspicions in {_t.time()-t0:.0f}s ===")
     for s in sorted(by_id.values(), key=lambda x: -x.confidence):
         print(f"  S[{s.id}] conf={s.confidence} :: {s.suspected_bug[:80]}")
     return by_id
@@ -1705,7 +1874,7 @@ def run_head(repo, conf_floor=0.4):
     print(f"=== HEAD bug-hunt {repo}@{(sha or '')[:12]} | JDK {jdk} ===", flush=True)
     _sandbox.start(repo, "head", jdk=jdk, log_path=f"results/probes/{tag}.log", new_ref="HEAD")
     try:
-        review, reg = run_suspicion_review(d, pi, conf_floor=conf_floor, mode="repo")
+        review, reg = run_suspicion_review(d, pi, conf_floor=conf_floor)
     finally:
         _sandbox.stop()
     os.makedirs("results/susp_runs", exist_ok=True)
