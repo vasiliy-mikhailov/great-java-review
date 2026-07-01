@@ -3,8 +3,8 @@
 # has work), and flags a lane as STUCK only when its REASONING log (the token stream) goes
 # silent > STUCK_MIN — i.e. it genuinely stopped producing tokens (operator's criterion).
 # Also watches disk/load. Read head_watchdog.log; heartbeat in head_watchdog.heartbeat.
-cd ~/great-java-review || exit 1
-WLOG=~/great-java-review/head_watchdog.log
+cd ~/fix-java-bugs || exit 1
+WLOG=~/fix-java-bugs/head_watchdog.log
 NLANES=5; STUCK_MIN=90
 wlog(){ echo "[$(date +%F\ %H:%M:%S)] $1" >> "$WLOG"; }
 wlog "watchdog START (pid $$) — token-stream stuck-detection"
@@ -43,6 +43,6 @@ while true; do
   use=$(df / | awk 'NR==2{gsub(/%/,"",$5); print $5}')
   [ "$use" -gt 88 ] && { wlog "DISK ${use}% — pruning dangling images"; docker image prune -f >/dev/null 2>&1; }
   la=$(awk '{print $1}' /proc/loadavg)
-  echo "$(date +%H:%M) q=$qn lanes=[$alive] load=$la disk=${use}%" >> ~/great-java-review/head_watchdog.heartbeat
+  echo "$(date +%H:%M) q=$qn lanes=[$alive] load=$la disk=${use}%" >> ~/fix-java-bugs/head_watchdog.heartbeat
   sleep 300
 done

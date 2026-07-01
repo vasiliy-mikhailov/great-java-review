@@ -79,7 +79,7 @@ def split_diff(diff):
 def load_susp_index():
     """(repo, basename) -> list of {observation, suspected_bug, location, confidence, status}."""
     idx = {}
-    for f in glob.glob(os.path.expanduser("~/great-java-review/results/susp_runs/*.json")):
+    for f in glob.glob(os.path.expanduser("~/fix-java-bugs/results/susp_runs/*.json")):
         try:
             d = json.load(open(f))
         except Exception:
@@ -212,12 +212,12 @@ def main():
     if only:
         print(json.dumps(out[0], indent=2))
         return
-    os.makedirs(os.path.expanduser("~/great-java-review/results/bug_corpus"), exist_ok=True)
-    cp = os.path.expanduser("~/great-java-review/results/bug_corpus/corpus.jsonl")
+    os.makedirs(os.path.expanduser("~/fix-java-bugs/results/bug_corpus"), exist_ok=True)
+    cp = os.path.expanduser("~/fix-java-bugs/results/bug_corpus/corpus.jsonl")
     with open(cp, "w") as f:
         for e in out:
             f.write(json.dumps(e) + "\n")
-    ip = os.path.expanduser("~/great-java-review/results/bug_corpus/INDEX.md")
+    ip = os.path.expanduser("~/fix-java-bugs/results/bug_corpus/INDEX.md")
     with open(ip, "w") as f:
         f.write("# Bug benchmark corpus\n\n")
         by_state = {}
