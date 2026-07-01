@@ -107,6 +107,26 @@ def _add_solution(bug, fix):
     return sol
 
 
+def _persist_bug(bug, solution=None):
+    """APPEND a proven Bug (+ its Solution, if any) to a durability log the MOMENT it is proven/fixed, so a
+    multi-day whole-repo descent that is interrupted keeps every confirmed bug (P6). Path mirrors the final
+    registry: results/susp_runs/<tag>.jsonl (tag from REASONING_LOG). The end-of-run <tag>.json is still the
+    complete structured registry; this JSONL is the append-only, harvestable-live, resume-enabling record.
+    Best-effort — a write hiccup must never crash the run."""
+    rl = os.environ.get("REASONING_LOG", "")
+    tag = os.path.basename(rl).replace(".log", "") if rl else ""
+    if not tag:
+        return
+    rec = {"bug": asdict(bug), "solution": (asdict(solution) if solution is not None else None)}
+    try:
+        os.makedirs("results/susp_runs", exist_ok=True)
+        with open(f"results/susp_runs/{tag}.jsonl", "a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            f.flush()
+    except Exception as e:  # noqa: BLE001 — durability is best-effort, never crash the run on a write
+        print(f"  [persist] Bug[{getattr(bug, 'id', '?')}] append failed: {e}", flush=True)
+
+
 # --- dedup-on-register -------------------------------------------------------------------------------
 # Two investigators (mr + repo) plus the reproducer all file suspicions, so the worklist fills with
 # near-duplicates (same root cause, different words) that would waste the reproduce budget. Every
@@ -1604,9 +1624,11 @@ def _fix_one_file(repo_dir, rel, by_id, conf_floor, max_checks_per_file, log):
                 if bug.test_src.strip():
                     fx = solve(repo_dir, bug)          # FIX the root cause; test red -> green
                     sol = _add_solution(bug, fx)
+                    _persist_bug(bug, sol)             # DURABILITY (P6): on disk the moment it's proven+solved
                     log(f"      solve Bug[{bug.id}]: {'FIXED' if sol.fixed else 'no fix'} "
                         f"({sol.lines_changed} lines, reward={sol.reward}{', TEST TOUCHED!' if sol.test_changed else ''})")
                 else:
+                    _persist_bug(bug, None)            # proven but no test to solve against — persist it anyway
                     log(f"      Bug[{bug.id}]: no unit test ({bug.repro_kind}) — left for the author, not guessed")
             else:
                 s.status = "inconclusive"
@@ -1649,7 +1671,9 @@ def run_suspicion_review(repo_dir, pr_input, conf_floor=0.4, max_checks_per_file
             if ok:
                 s.status = "proven"; bug = _add_bug(s, res, validation=how)
                 if bug.test_src.strip():
-                    _add_solution(bug, solve(repo_dir, bug))
+                    sol = _add_solution(bug, solve(repo_dir, bug)); _persist_bug(bug, sol)
+                else:
+                    _persist_bug(bug, None)
             else:
                 s.status = "inconclusive"
         else:
